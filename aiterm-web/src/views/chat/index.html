@@ -1,0 +1,118 @@
+<section class="page page--chat">
+  <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon :closable="false" />
+
+  <div class="chat-workspace">
+    <aside class="card chat-sidebar">
+      <div class="chat-sidebar__header">
+        <!-- <div>
+          <p class="label">AITerm Workspace</p>
+          <div class="value">会话与任务</div>
+        </div> -->
+        <div class="chat-sidebar__header-actions">
+          <el-button type="primary" @click="startNewConversation">新对话</el-button>
+          <el-button plain @click="startNewConversation(); setActiveMode('task')">新任务</el-button>
+        </div>
+      </div>
+
+      <div class="chat-sidebar__node-selector">
+        <el-select :model-value="selectedNodeId" placeholder="选择节点" :disabled="loading || streaming"
+          class="chat-sidebar__node-select" @update:model-value="setSelectedNodeId">
+          <el-option v-for="node in availableNodes" :key="node.id" :label="`${node.name} (${node.host}:${node.port})`"
+            :value="node.id" />
+        </el-select>
+      </div>
+
+      <div class="chat-sidebar__toolbar">
+        <el-input v-model="sidebarSearch" placeholder="搜索对话、任务、关键字" clearable class="chat-sidebar__search" />
+        <el-radio-group :model-value="sidebarTab" size="small" @update:model-value="setSidebarTab"
+          class="chat-sidebar__tabs">
+          <el-radio-button label="conversations">历史对话</el-radio-button>
+          <el-radio-button label="tasks">任务</el-radio-button>
+        </el-radio-group>
+        <div class="chat-sidebar__toolbar-meta">
+          <span>{{ sidebarTab === 'conversations' ? visibleConversationCount : visibleTaskCount }} 条</span>
+          <el-button text :loading="sidebarLoading" @click="reloadSidebarData">刷新</el-button>
+        </div>
+      </div>
+
+      <div v-if="sidebarTab === 'conversations'" class="chat-sidebar__list">
+        <div v-for="group in conversationGroups" :key="group.key" class="chat-sidebar__group">
+          <div class="chat-sidebar__group-title">{{ group.label }}</div>
+          <div v-for="item in group.items" :key="item.id" class="chat-sidebar__item"
+            :class="{ 'is-active': item.id === conversationLabel }" @click="switchConversation(item.id)">
+            <div class="chat-sidebar__item-header">
+              <div class="chat-sidebar__item-title">{{ item.title }}</div>
+              <el-button text @click.stop="removeConversationItem(item.id)">删除</el-button>
+            </div>
+            <div class="chat-sidebar__item-text">{{ item.last_message || '暂无内容' }}</div>
+            <div class="chat-sidebar__item-meta">
+              <span>{{ item.message_count }} 条消息</span>
+              <span>{{ formatDateTime(item.updated_at) }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-if="!sidebarLoading && !hasConversationResults" class="chat-sidebar__empty">
+          暂无历史对话，点击"新对话"开始。
+        </div>
+      </div>
+
+      <div v-else class="chat-sidebar__list">
+        <el-radio-group :model-value="taskStatusFilter" size="small" class="chat-sidebar__task-filters"
+          @update:model-value="setTaskStatusFilter">
+          <el-radio-button label="executing">执行中</el-radio-button>
+          <el-radio-button label="completed">已完成</el-radio-button>
+          <el-radio-button label="failed">失败</el-radio-button>
+        </el-radio-group>
+        <div v-for="task in filteredTaskItems" :key="task.id" class="chat-sidebar__item"
+          :class="{ 'is-active': task.id === activeTaskId }" @click="openTaskFromSidebar(task)">
+          <div class="chat-sidebar__item-header">
+            <div class="chat-sidebar__item-title">{{ task.title }}</div>
+            <el-button text @click.stop="removeTaskItem(task.id)">删除</el-button>
+          </div>
+          <div class="chat-sidebar__item-text">状态：{{ task.status }} · 进度：{{ task.progress }}%</div>
+          <div class="chat-sidebar__item-meta">
+            <span>任务 {{ task.id }}</span>
+            <span>{{ formatDateTime(task.created_at) }}</span>
+          </div>
+        </div>
+        <div v-if="!sidebarLoading && !hasTaskResults" class="chat-sidebar__empty">
+          当前筛选下暂无任务记录，切换状态或发送任务后可查看。
+        </div>
+      </div>
+    </aside>
+
+    <div class="card chat-main">
+      <div class="chat-main__header">
+        <div>
+          <p class="label">当前对话</p>
+          <div class="value">{{ activeConversationTitle }}</div>
+          <p class="chat-main__node-note">节点上下文：{{ selectedNode?.name || '未选择节点' }}</p>
+        </div>
+        <div class="chat-main__meta">
+          <el-tag :type="activeMode === 'task' ? 'warning' : 'success'">{{ activeMode === 'task' ? '任务模式' : '对话模式'
+            }}</el-tag>
+          <span>{{ selectedNode?.name || '未选择节点' }}</span>
+          <span>会话 {{ conversationLabel }}</span>
+          <span v-if="activeTaskId">任务 {{ activeTaskId }}</span>
+        </div>
+      </div>
+
+      <TaskStatusCard v-if="taskDetail" :task="taskDetail" :streaming="streaming" :confirming="confirming"
+        :can-stop="canStopTask" :can-restart="canRestartTask" @stop="stopActiveTask" @restart="restartActiveTask" />
+
+      <div class="chat-main__messages">
+        <MessageList :messages="messages" :actionable-message-ids="actionableAssistantMessageIds"
+          :assistant-label="assistantLabel" :assistant-title="assistantTitle"
+          :retryable-message-ids="retryableAssistantMessageIds" :task-approval-hint="taskDetail?.risk_reason"
+          :task-approval-loading="confirming" :task-approval-message-id="taskApprovalMessageId" :user-label="userLabel"
+          :user-title="userTitle" @copy="copyMessage" @retry="retryAssistantMessage"
+          @task-confirm="confirmActiveTask" />
+      </div>
+
+      <ChatComposer v-model="input" :active-mode="activeMode" :chat-streaming="chatStreaming"
+        :conversation-label="conversationLabel" :active-task-id="activeTaskId" :available-nodes="availableNodes"
+        :selected-node-id="selectedNodeId" :loading="loading" :streaming="streaming" @submit="submitMessage"
+        @stop-chat="stopChatResponse" />
+    </div>
+  </div>
+</section>

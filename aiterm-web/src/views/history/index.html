@@ -1,0 +1,27 @@
+<section class="page">
+  <div class="hero">
+    <p class="label">历史</p>
+    <h1>会话历史</h1>
+    <p>这里展示当前保存在 sqlite 中的历史会话摘要。</p>
+  </div>
+
+  <el-alert v-if="errorMessage" :title="errorMessage" type="warning" show-icon :closable="false" />
+
+  <div class="card">
+    <div class="history-header">
+      <div>
+        <p class="label">会话列表</p>
+        <div class="value">{{ items.length }} 个会话</div>
+      </div>
+      <el-button :loading="loading" @click="loadConversations">刷新</el-button>
+    </div>
+
+    <ConversationHistoryTable
+      :items="items"
+      :loading="loading"
+      :deleting-conversation-id="deletingConversationId"
+      @open="openConversation"
+      @delete="removeConversation"
+    />
+  </div>
+</section>

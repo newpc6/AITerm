@@ -1,0 +1,82 @@
+<section class="page page--terminal">
+  <el-alert v-if="errorMessage" :title="errorMessage" type="error" show-icon :closable="false" />
+
+  <div class="terminal-workspace">
+    <div class="card terminal-container">
+      <div class="terminal-header">
+        <div class="terminal-header__info">
+          <p class="label">终端</p>
+          <div class="value">{{ selectedNode?.name ?? '本地节点' }}</div>
+        </div>
+        <div class="terminal-header__actions">
+          <el-select v-model="selectedNodeId" placeholder="选择节点" class="terminal-header__node-select">
+            <el-option v-for="node in nodes" :key="node.id" :label="`${node.name} (${node.host}:${node.port})`"
+              :value="node.id" />
+          </el-select>
+          <el-button :disabled="history.length === 0" @click="clearHistory">清空</el-button>
+          <el-button @click="toggleCommandPanel">{{ showCommandPanel ? '隐藏命令' : '命令参考' }}</el-button>
+        </div>
+      </div>
+
+      <div class="terminal-body">
+        <div ref="terminalRef" class="terminal-screen">
+          <div v-if="history.length === 0" class="terminal-welcome">
+            <div class="terminal-welcome__title">AITerm 终端</div>
+            <div class="terminal-welcome__desc">输入命令后按回车执行，支持跨平台命令（Windows: PowerShell, Linux/Mac: Shell）</div>
+            <div class="terminal-welcome__hint">
+              <span class="terminal-prompt">$</span>
+              <span class="terminal-welcome__example">输入命令开始...</span>
+            </div>
+          </div>
+          <template v-else>
+            <div v-for="entry in history" :key="entry.id" class="terminal-entry">
+              <div class="terminal-entry__header">
+                <span class="terminal-prompt">$</span>
+                <span class="terminal-entry__command">{{ entry.command }}</span>
+                <span class="terminal-entry__meta">{{ entry.nodeName }} · {{ formatDateTime(entry.timestamp) }}</span>
+              </div>
+              <div class="terminal-entry__output" :class="{ 'terminal-entry__output--error': entry.exitCode !== 0 }">
+                <pre>{{ entry.output || '(无输出)' }}</pre>
+              </div>
+              <div v-if="entry.exitCode !== 0" class="terminal-entry__exit-code">
+                退出码: {{ entry.exitCode }}
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <div v-if="showCommandPanel" class="terminal-commands">
+          <div class="terminal-commands__header">
+            <el-radio-group v-model="selectedPlatform" size="small">
+              <el-radio-button label="common">通用</el-radio-button>
+              <el-radio-button label="windows">Windows</el-radio-button>
+              <el-radio-button label="linux">Linux/Mac</el-radio-button>
+              <el-radio-button label="mac">macOS</el-radio-button>
+            </el-radio-group>
+          </div>
+          <div class="terminal-commands__content">
+            <div v-for="category in currentCommands.categories" :key="category.name"
+              class="terminal-commands__category">
+              <div class="terminal-commands__category-name">{{ category.name }}</div>
+              <div class="terminal-commands__list">
+                <div v-for="cmd in category.commands" :key="cmd.command" class="terminal-commands__item"
+                  @click="insertCommand(cmd.command)">
+                  <div class="terminal-commands__item-name">{{ cmd.name }}</div>
+                  <div class="terminal-commands__item-command">{{ cmd.command }}</div>
+                  <div class="terminal-commands__item-desc">{{ cmd.description }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="terminal-input">
+        <span class="terminal-prompt">$</span>
+        <input v-model="commandInput" type="text" class="terminal-input__field" placeholder="输入命令..."
+          :disabled="loading" @keydown="handleKeydown" />
+        <el-button type="primary" :loading="loading" @click="executeCommand">执行</el-button>
+      </div>
+    </div>
+  </div>
+</section>
