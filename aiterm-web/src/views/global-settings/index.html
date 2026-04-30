@@ -1,0 +1,78 @@
+<section class="page">
+  <div class="hero">
+    <p class="label">配置</p>
+    <h1>全局配置</h1>
+    <p>配置系统提示词、命令规则等全局设置。</p>
+  </div>
+
+  <el-form v-loading="loading" label-position="top">
+    <div class="card" style="margin-bottom: 20px">
+      <div class="card-header">
+        <p class="label">提示词配置</p>
+      </div>
+
+      <el-form-item label="对话系统提示词">
+        <el-input v-model="form.chat_system_prompt" type="textarea" :rows="4" resize="vertical"
+          placeholder="可使用 {{node_description}}、{{user_request}} 等占位符" :disabled="loading || saving" />
+      </el-form-item>
+
+      <el-form-item label="任务规划提示词">
+        <el-input v-model="form.task_planner_prompt" type="textarea" :rows="8" resize="vertical"
+          placeholder="可使用 {{node_description}}、{{user_request}} 等占位符" :disabled="loading || saving" />
+      </el-form-item>
+
+      <el-form-item label="任务规划用户提示词">
+        <el-input v-model="form.task_planner_user_prompt" type="textarea" :rows="10" resize="vertical"
+          placeholder="可使用 {{user_request}}、{{conversation_history}}、{{platform_name}}、{{platform_tool_prompt}} 等占位符"
+          :disabled="loading || saving" />
+      </el-form-item>
+
+      <el-form-item label="Windows 工具提示词">
+        <el-input v-model="form.task_windows_tool_prompt" type="textarea" :rows="8" resize="vertical"
+          placeholder="告诉模型在 Windows 上下载、删除、移动、查找、查看文件等常见操作优先使用哪些命令" :disabled="loading || saving" />
+      </el-form-item>
+
+      <el-form-item label="Linux 工具提示词">
+        <el-input v-model="form.task_linux_tool_prompt" type="textarea" :rows="8" resize="vertical"
+          placeholder="告诉模型在 Linux 上下载、删除、移动、查找、查看文件等常见操作优先使用哪些命令" :disabled="loading || saving" />
+      </el-form-item>
+
+      <el-form-item label="macOS 工具提示词">
+        <el-input v-model="form.task_mac_tool_prompt" type="textarea" :rows="8" resize="vertical"
+          placeholder="告诉模型在 macOS 上下载、删除、移动、查找、查看文件等常见操作优先使用哪些命令" :disabled="loading || saving" />
+      </el-form-item>
+
+      <el-form-item label="任务失败修正提示词">
+        <el-input v-model="form.task_failure_repair_prompt" type="textarea" :rows="10" resize="vertical"
+          placeholder="可使用 {{user_request}}、{{step_title}}、{{failed_command}}、{{execution_output}}、{{failure_text}} 等占位符"
+          :disabled="loading || saving" />
+      </el-form-item>
+
+      <el-form-item label="任务命令风控规则提示词">
+        <el-input v-model="form.task_command_rules_prompt" type="textarea" :rows="5" resize="vertical"
+          placeholder="可使用 {{command_rules}}、{{blacklist}}、{{whitelist}} 等占位符" :disabled="loading || saving" />
+      </el-form-item>
+    </div>
+
+    <div class="card">
+      <div class="card-header">
+        <p class="label">命令规则配置</p>
+      </div>
+
+      <el-form-item label="任务命令黑名单">
+        <el-input v-model="commandBlacklistText" type="textarea" :rows="6" resize="vertical"
+          placeholder="每行一条规则，命中后任务必须人工确认，例如 delete、rm、shutdown" :disabled="loading || saving" />
+      </el-form-item>
+
+      <el-form-item label="任务命令白名单">
+        <el-input v-model="commandWhitelistText" type="textarea" :rows="4" resize="vertical"
+          placeholder="每行一条规则，命中后可跳过黑名单误判，例如安全查询命令" :disabled="loading || saving" />
+      </el-form-item>
+
+      <div class="form-actions">
+        <el-button :disabled="loading || saving" @click="resetForm">重置</el-button>
+        <el-button type="primary" :loading="saving" @click="saveSettings">保存</el-button>
+      </div>
+    </div>
+  </el-form>
+</section>

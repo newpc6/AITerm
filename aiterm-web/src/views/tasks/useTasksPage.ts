@@ -10,19 +10,34 @@ export function useTasksPage() {
   const successMessage = ref('')
   const tasks = ref<TaskItem[]>([])
   const deletingTaskId = ref('')
+  const page = ref(1)
+  const pageSize = ref(10)
+  const total = ref(0)
 
   async function loadTasks() {
     loading.value = true
     errorMessage.value = ''
 
     try {
-      const data = await getTasks()
+      const data = await getTasks({ page: page.value, page_size: pageSize.value })
       tasks.value = data.items
+      total.value = data.total
     } catch {
       errorMessage.value = '任务接口不可用。'
     } finally {
       loading.value = false
     }
+  }
+
+  function handlePageChange(newPage: number) {
+    page.value = newPage
+    void loadTasks()
+  }
+
+  function handlePageSizeChange(newSize: number) {
+    pageSize.value = newSize
+    page.value = 1
+    void loadTasks()
   }
 
   async function removeTask(taskId: string) {
@@ -43,6 +58,10 @@ export function useTasksPage() {
     try {
       await deleteTask(taskId)
       successMessage.value = '任务删除成功。'
+      total.value = Math.max(0, total.value - 1)
+      if (tasks.value.length === 0 && page.value > 1) {
+        page.value -= 1
+      }
       await loadTasks()
     } catch {
       errorMessage.value = '删除任务失败。'
@@ -63,5 +82,10 @@ export function useTasksPage() {
     removeTask,
     successMessage,
     tasks,
+    page,
+    pageSize,
+    total,
+    handlePageChange,
+    handlePageSizeChange,
   }
 }

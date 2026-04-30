@@ -11,19 +11,34 @@ export function useConversationHistoryPage() {
   const deletingConversationId = ref('')
   const errorMessage = ref('')
   const items = ref<ConversationListItem[]>([])
+  const page = ref(1)
+  const pageSize = ref(10)
+  const total = ref(0)
 
   async function loadConversations() {
     loading.value = true
     errorMessage.value = ''
 
     try {
-      const data = await getConversations()
+      const data = await getConversations({ page: page.value, page_size: pageSize.value })
       items.value = data.items
+      total.value = data.total
     } catch {
       errorMessage.value = '历史会话接口不可用。'
     } finally {
       loading.value = false
     }
+  }
+
+  function handlePageChange(newPage: number) {
+    page.value = newPage
+    void loadConversations()
+  }
+
+  function handlePageSizeChange(newSize: number) {
+    pageSize.value = newSize
+    page.value = 1
+    void loadConversations()
   }
 
   function openConversation(conversationId: string) {
@@ -52,7 +67,12 @@ export function useConversationHistoryPage() {
     try {
       await deleteConversation(conversationId)
       items.value = items.value.filter((item) => item.id !== conversationId)
+      total.value = Math.max(0, total.value - 1)
       ElMessage.success('会话已删除。')
+      if (items.value.length === 0 && page.value > 1) {
+        page.value -= 1
+        void loadConversations()
+      }
     } catch {
       errorMessage.value = '删除会话失败。'
     } finally {
@@ -72,5 +92,10 @@ export function useConversationHistoryPage() {
     loading,
     removeConversation,
     openConversation,
+    page,
+    pageSize,
+    total,
+    handlePageChange,
+    handlePageSizeChange,
   }
 }

@@ -20,6 +20,11 @@
           <el-option v-for="node in availableNodes" :key="node.id" :label="`${node.name} (${node.host}:${node.port})`"
             :value="node.id" />
         </el-select>
+        <el-select :model-value="selectedModelId" placeholder="选择模型" :disabled="loading || streaming"
+          class="chat-sidebar__model-select" @update:model-value="setSelectedModelId">
+          <el-option v-for="model in availableModels" :key="model.id"
+            :label="model.is_default ? `${model.name} (默认)` : model.name" :value="model.id" />
+        </el-select>
       </div>
 
       <div class="chat-sidebar__toolbar">
@@ -51,34 +56,42 @@
             </div>
           </div>
         </div>
+        <div v-if="hasMoreConversations" class="chat-sidebar__load-more">
+          <el-button text :loading="sidebarLoading" @click="loadMoreConversations">加载更多</el-button>
+        </div>
         <div v-if="!sidebarLoading && !hasConversationResults" class="chat-sidebar__empty">
           暂无历史对话，点击"新对话"开始。
         </div>
       </div>
 
-      <div v-else class="chat-sidebar__list">
+      <template v-else>
         <el-radio-group :model-value="taskStatusFilter" size="small" class="chat-sidebar__task-filters"
           @update:model-value="setTaskStatusFilter">
           <el-radio-button label="executing">执行中</el-radio-button>
           <el-radio-button label="completed">已完成</el-radio-button>
           <el-radio-button label="failed">失败</el-radio-button>
         </el-radio-group>
-        <div v-for="task in filteredTaskItems" :key="task.id" class="chat-sidebar__item"
-          :class="{ 'is-active': task.id === activeTaskId }" @click="openTaskFromSidebar(task)">
-          <div class="chat-sidebar__item-header">
-            <div class="chat-sidebar__item-title">{{ task.title }}</div>
-            <el-button text @click.stop="removeTaskItem(task.id)">删除</el-button>
+        <div class="chat-sidebar__list">
+          <div v-for="task in filteredTaskItems" :key="task.id" class="chat-sidebar__item"
+            :class="{ 'is-active': task.id === activeTaskId }" @click="openTaskFromSidebar(task)">
+            <div class="chat-sidebar__item-header">
+              <div class="chat-sidebar__item-title">{{ task.title }}</div>
+              <el-button text @click.stop="removeTaskItem(task.id)">删除</el-button>
+            </div>
+            <div class="chat-sidebar__item-text">状态：{{ task.status }} · 进度：{{ task.progress }}%</div>
+            <div class="chat-sidebar__item-meta">
+              <span>任务 {{ task.id }}</span>
+              <span>{{ formatDateTime(task.created_at) }}</span>
+            </div>
           </div>
-          <div class="chat-sidebar__item-text">状态：{{ task.status }} · 进度：{{ task.progress }}%</div>
-          <div class="chat-sidebar__item-meta">
-            <span>任务 {{ task.id }}</span>
-            <span>{{ formatDateTime(task.created_at) }}</span>
+          <div v-if="hasMoreTasks" class="chat-sidebar__load-more">
+            <el-button text :loading="sidebarLoading" @click="loadMoreTasks">加载更多</el-button>
+          </div>
+          <div v-if="!sidebarLoading && !hasTaskResults" class="chat-sidebar__empty">
+            当前筛选下暂无任务记录，切换状态或发送任务后可查看。
           </div>
         </div>
-        <div v-if="!sidebarLoading && !hasTaskResults" class="chat-sidebar__empty">
-          当前筛选下暂无任务记录，切换状态或发送任务后可查看。
-        </div>
-      </div>
+      </template>
     </aside>
 
     <div class="card chat-main">
@@ -86,27 +99,32 @@
         <div>
           <p class="label">当前对话</p>
           <div class="value">{{ activeConversationTitle }}</div>
-          <p class="chat-main__node-note">节点上下文：{{ selectedNode?.name || '未选择节点' }}</p>
+          <p class="chat-main__node-note">节点上下文：{{ selectedNode?.name || '未选择节点' }} · 模型：{{ selectedModel?.name ||
+            '未选择模型' }}</p>
         </div>
         <div class="chat-main__meta">
           <el-tag :type="activeMode === 'task' ? 'warning' : 'success'">{{ activeMode === 'task' ? '任务模式' : '对话模式'
             }}</el-tag>
           <span>{{ selectedNode?.name || '未选择节点' }}</span>
+          <span>{{ selectedModel?.name || '未选择模型' }}</span>
           <span>会话 {{ conversationLabel }}</span>
           <span v-if="activeTaskId">任务 {{ activeTaskId }}</span>
         </div>
       </div>
 
       <TaskStatusCard v-if="taskDetail" :task="taskDetail" :streaming="streaming" :confirming="confirming"
-        :can-stop="canStopTask" :can-restart="canRestartTask" @stop="stopActiveTask" @restart="restartActiveTask" />
+        :can-stop="canStopTask" :can-restart="canRestartTask" @stop="stopActiveTask" @restart="restartActiveTask"
+        @submit-input="submitTaskInput" />
 
       <div class="chat-main__messages">
         <MessageList :messages="messages" :actionable-message-ids="actionableAssistantMessageIds"
           :assistant-label="assistantLabel" :assistant-title="assistantTitle"
           :retryable-message-ids="retryableAssistantMessageIds" :task-approval-hint="taskDetail?.risk_reason"
           :task-approval-loading="confirming" :task-approval-message-id="taskApprovalMessageId" :user-label="userLabel"
-          :user-title="userTitle" @copy="copyMessage" @retry="retryAssistantMessage"
-          @task-confirm="confirmActiveTask" />
+          :user-title="userTitle" :streaming-message-id="streamingMessageId" :can-stop-task="canStopTask"
+          :task-input-request="taskInputRequest" :task-input-loading="loading" :task-user-input="taskUserInput"
+          @copy="copyMessage" @retry="retryAssistantMessage" @task-confirm="confirmActiveTask"
+          @stop-task="stopActiveTask" @submit-task-input="submitTaskInput" />
       </div>
 
       <ChatComposer v-model="input" :active-mode="activeMode" :chat-streaming="chatStreaming"

@@ -12,10 +12,12 @@
     <div class="tasks-header">
       <div>
         <p class="label">任务列表</p>
-        <div class="value">{{ tasks.length }} 个任务</div>
+        <div class="value">{{ total }} 个任务</div>
       </div>
       <el-button :loading="loading" @click="loadTasks">刷新</el-button>
     </div>
     <TaskTable :tasks="tasks" :loading="loading" :deleting-task-id="deletingTaskId" @delete="removeTask" />
+    <Pagination :page="page" :page-size="pageSize" :total="total" @update:page="handlePageChange"
+      @update:page-size="handlePageSizeChange" />
   </div>
 </section>

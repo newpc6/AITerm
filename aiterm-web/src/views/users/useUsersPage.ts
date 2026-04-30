@@ -23,19 +23,34 @@ export function useUsersPage() {
   const form = ref<UserPayload>(createDefaultForm())
   const editingUser = ref<UserItem | null>(null)
   const dialogVisible = ref(false)
+  const page = ref(1)
+  const pageSize = ref(10)
+  const total = ref(0)
 
   async function loadUsers() {
     loading.value = true
     errorMessage.value = ''
 
     try {
-      const data = await getUsers()
+      const data = await getUsers({ page: page.value, page_size: pageSize.value })
       users.value = data.items
+      total.value = data.total
     } catch {
       errorMessage.value = '用户接口不可用。'
     } finally {
       loading.value = false
     }
+  }
+
+  function handlePageChange(newPage: number) {
+    page.value = newPage
+    void loadUsers()
+  }
+
+  function handlePageSizeChange(newSize: number) {
+    pageSize.value = newSize
+    page.value = 1
+    void loadUsers()
   }
 
   function syncFormFromUser(user: UserItem) {
@@ -117,6 +132,10 @@ export function useUsersPage() {
     try {
       await deleteUser(user.id)
       successMessage.value = '用户删除成功。'
+      total.value = Math.max(0, total.value - 1)
+      if (users.value.length === 0 && page.value > 1) {
+        page.value -= 1
+      }
       await loadUsers()
     } catch {
       errorMessage.value = '删除用户失败，请避免删除当前登录用户或最后一个管理员。'
@@ -159,7 +178,7 @@ export function useUsersPage() {
     }
   }
 
-  const userCount = computed(() => users.value.length)
+  const userCount = computed(() => total.value)
   const isEditing = computed(() => !!editingUser.value)
   const dialogTitle = computed(() => (editingUser.value ? '编辑用户' : '新建用户'))
 
@@ -186,5 +205,10 @@ export function useUsersPage() {
     saveUser,
     userCount,
     users,
+    page,
+    pageSize,
+    total,
+    handlePageChange,
+    handlePageSizeChange,
   }
 }

@@ -6,6 +6,14 @@ export type ApiResponse<T> = {
   data: T
 }
 
+export type PaginatedData<T> = {
+  items: T[]
+  total: number
+  page: number
+  page_size: number
+  total_pages: number
+}
+
 export type HealthData = {
   status: string
   bootstrap?: {
@@ -18,6 +26,7 @@ export type HealthData = {
 export type ConversationPayload = {
   conversation_id: string
   node_id: string
+  model_id?: string
   message: string
   mode: ConversationMode
 }
@@ -70,10 +79,7 @@ export type ConversationListItem = {
   updated_at: string
 }
 
-export type ConversationListData = {
-  items: ConversationListItem[]
-  total: number
-}
+export type ConversationListData = PaginatedData<ConversationListItem>
 
 export type TaskItem = {
   id: string
@@ -82,6 +88,8 @@ export type TaskItem = {
   progress: number
   conversation_id: string
   node_id: string
+  model_id?: string
+  model_name?: string
   pending_command?: string
   risk_reason?: string
   created_at: string
@@ -103,6 +111,14 @@ export type TaskDetailStep = {
   repaired_command?: string
 }
 
+export type TaskInputRequest = {
+  question: string
+  input_type: 'text' | 'select' | 'multiselect'
+  options: string[]
+  placeholder: string
+  default_value: string
+}
+
 export type TaskDetail = {
   id: string
   title: string
@@ -110,31 +126,62 @@ export type TaskDetail = {
   progress: number
   conversation_id: string
   node_id: string
+  model_id?: string
+  model_name?: string
   pending_command?: string
   risk_reason?: string
   summary: string
   final_result?: string
   steps: TaskDetailStep[]
+  input_question?: string
+  input_type?: 'text' | 'select' | 'multiselect'
+  input_options?: string[]
+  input_placeholder?: string
+  user_input?: string
   created_at: string
   updated_at: string
+}
+
+export type TaskInputPayload = {
+  user_input: string
 }
 
 export type TaskConfirmPayload = {
   approved: boolean
 }
 
-export type TaskListData = {
-  items: TaskItem[]
-  total: number
-  page: number
-  page_size: number
-}
+export type TaskListData = PaginatedData<TaskItem>
 
-export type LLMSettingsData = {
+export type ModelConfigItem = {
+  id: string
+  name: string
   api_url: string
   api_key: string
   model: string
   temperature: number
+  extra_params: Record<string, unknown>
+  extra_body: Record<string, unknown>
+  extra_headers: Record<string, string>
+  is_default: boolean
+  created_at: string
+  updated_at: string
+}
+
+export type ModelConfigListData = PaginatedData<ModelConfigItem>
+
+export type ModelConfigPayload = {
+  name: string
+  api_url: string
+  api_key: string
+  model: string
+  temperature: number
+  extra_params: Record<string, unknown>
+  extra_body: Record<string, unknown>
+  extra_headers: Record<string, string>
+  is_default: boolean
+}
+
+export type GlobalSettingsData = {
   chat_system_prompt: string
   task_planner_prompt: string
   task_planner_user_prompt: string
@@ -145,29 +192,19 @@ export type LLMSettingsData = {
   task_command_rules_prompt: string
   task_command_blacklist: string[]
   task_command_whitelist: string[]
-  configured: boolean
 }
 
-export type LLMPublicInfo = {
-  model: string
-  configured: boolean
-}
-
-export type LLMSettingsPayload = {
-  api_url: string
-  api_key: string
-  model: string
-  temperature: number
-  chat_system_prompt: string
-  task_planner_prompt: string
-  task_planner_user_prompt: string
-  task_windows_tool_prompt: string
-  task_linux_tool_prompt: string
-  task_mac_tool_prompt: string
-  task_failure_repair_prompt: string
-  task_command_rules_prompt: string
-  task_command_blacklist: string[]
-  task_command_whitelist: string[]
+export type GlobalSettingsPayload = {
+  chat_system_prompt?: string
+  task_planner_prompt?: string
+  task_planner_user_prompt?: string
+  task_windows_tool_prompt?: string
+  task_linux_tool_prompt?: string
+  task_mac_tool_prompt?: string
+  task_failure_repair_prompt?: string
+  task_command_rules_prompt?: string
+  task_command_blacklist?: string[]
+  task_command_whitelist?: string[]
 }
 
 export type AuthSettingsData = {
@@ -203,10 +240,7 @@ export type UserUpdatePayload = {
   status: string
 }
 
-export type UserListData = {
-  items: UserItem[]
-  total: number
-}
+export type UserListData = PaginatedData<UserItem>
 
 export type AuthLoginPayload = {
   username: string
@@ -243,9 +277,7 @@ export type NodeItem = {
   status: string
 }
 
-export type NodeListData = {
-  items: NodeItem[]
-}
+export type NodeListData = PaginatedData<NodeItem>
 
 export type NodePayload = {
   name: string

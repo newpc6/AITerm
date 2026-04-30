@@ -5,11 +5,20 @@ import { renderMarkdown } from '@/utils/markdown'
 
 const props = defineProps<{
   content: string
+  mode?: 'auto' | 'markdown' | 'plain'
 }>()
 
-const plainTextPattern = /(^|\n)(#{1,6}\s|\d+\.\s|[-*+]\s|>\s|```)|`[^`]+`|\[[^\]]+\]\([^)]+\)|\|.+\|/
+const plainTextPattern = /(^|\n)(#{1,6}\s|#{1,6}\S|\d+\.\s|[-*+]\s|>\s|```)|`[^`\r\n]+`|\[[^\]]+\]\([^)]+\)|\|.+\|/
 const normalizedContent = computed(() => props.content.trim())
-const shouldRenderMarkdown = computed(() => plainTextPattern.test(normalizedContent.value))
+const shouldRenderMarkdown = computed(() => {
+  if (props.mode === 'markdown') {
+    return true
+  }
+  if (props.mode === 'plain') {
+    return false
+  }
+  return plainTextPattern.test(normalizedContent.value)
+})
 const renderedHtml = computed(() => renderMarkdown(props.content))
 </script>
 
@@ -39,16 +48,32 @@ const renderedHtml = computed(() => renderMarkdown(props.content))
 .markdown-content :deep(pre),
 .markdown-content :deep(blockquote),
 .markdown-content :deep(table) {
-  margin: 0 0 12px;
+  margin: 0;
 }
 
-.markdown-content :deep(p:last-child),
-.markdown-content :deep(ul:last-child),
-.markdown-content :deep(ol:last-child),
-.markdown-content :deep(pre:last-child),
-.markdown-content :deep(blockquote:last-child),
-.markdown-content :deep(table:last-child) {
-  margin-bottom: 0;
+.markdown-content :deep(p + p),
+.markdown-content :deep(p + ul),
+.markdown-content :deep(p + ol),
+.markdown-content :deep(p + pre),
+.markdown-content :deep(p + blockquote),
+.markdown-content :deep(p + table),
+.markdown-content :deep(ul + p),
+.markdown-content :deep(ol + p),
+.markdown-content :deep(pre + p),
+.markdown-content :deep(blockquote + p),
+.markdown-content :deep(table + p),
+.markdown-content :deep(ul + ul),
+.markdown-content :deep(ul + ol),
+.markdown-content :deep(ol + ul),
+.markdown-content :deep(ol + ol),
+.markdown-content :deep(pre + pre),
+.markdown-content :deep(blockquote + blockquote),
+.markdown-content :deep(table + table),
+.markdown-content :deep(ul + pre),
+.markdown-content :deep(ol + pre),
+.markdown-content :deep(pre + ul),
+.markdown-content :deep(pre + ol) {
+  margin-top: 10px;
 }
 
 .markdown-content :deep(ul),

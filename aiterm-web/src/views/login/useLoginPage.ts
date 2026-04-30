@@ -11,7 +11,7 @@ export function useLoginPage() {
   const errorMessage = ref('')
   const form = ref({
     username: 'admin',
-    password: 'admin123456',
+    password: '12345678',
   })
 
   async function loadStatus() {

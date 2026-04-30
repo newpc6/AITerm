@@ -14,7 +14,8 @@ const router = createRouter({
     { path: '/terminal', component: () => import('@/views/terminal') },
     { path: '/nodes', component: () => import('@/views/nodes'), meta: { adminOnly: true } },
     { path: '/users', component: () => import('@/views/users'), meta: { adminOnly: true } },
-    { path: '/settings', component: () => import('@/views/settings'), meta: { adminOnly: true } },
+    { path: '/models', component: () => import('@/views/models'), meta: { adminOnly: true } },
+    { path: '/global-settings', component: () => import('@/views/global-settings'), meta: { adminOnly: true } },
   ],
 })
 

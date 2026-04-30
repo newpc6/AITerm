@@ -11,17 +11,15 @@
     <div class="history-header">
       <div>
         <p class="label">会话列表</p>
-        <div class="value">{{ items.length }} 个会话</div>
+        <div class="value">{{ total }} 个会话</div>
       </div>
       <el-button :loading="loading" @click="loadConversations">刷新</el-button>
     </div>
 
-    <ConversationHistoryTable
-      :items="items"
-      :loading="loading"
-      :deleting-conversation-id="deletingConversationId"
-      @open="openConversation"
-      @delete="removeConversation"
-    />
+    <ConversationHistoryTable :items="items" :loading="loading" :deleting-conversation-id="deletingConversationId"
+      @open="openConversation" @delete="removeConversation" />
+
+    <Pagination :page="page" :page-size="pageSize" :total="total" @update:page="handlePageChange"
+      @update:page-size="handlePageSizeChange" />
   </div>
 </section>

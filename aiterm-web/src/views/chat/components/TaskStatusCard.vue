@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
+import { VideoPause, RefreshRight } from '@element-plus/icons-vue'
 
 import MarkdownContent from '@/components/MarkdownContent.vue'
 import type { TaskDetail, TaskDetailStep } from '@/types/api'
@@ -15,16 +16,29 @@ const props = defineProps<{
 const emit = defineEmits<{
   restart: []
   stop: []
+  submitInput: [value: string]
 }>()
 
 const detailDrawerVisible = ref(false)
+const userInputValue = ref('')
+const selectedOptions = ref<string[]>([])
 
 watch(
   () => props.task?.id,
   () => {
     detailDrawerVisible.value = false
+    userInputValue.value = props.task?.input_placeholder || ''
+    selectedOptions.value = []
   },
   { immediate: true },
+)
+
+watch(
+  () => props.task?.input_question,
+  () => {
+    userInputValue.value = props.task?.input_placeholder || props.task?.input_options?.[0] || ''
+    selectedOptions.value = []
+  },
 )
 
 function resolveTagType(step: TaskDetailStep) {
@@ -68,6 +82,96 @@ const summaryText = computed(() => {
 
   return toSummaryText(props.task.summary) || '暂无任务摘要。'
 })
+
+const isWaitingInput = computed(() => props.task?.status === 'waiting_input')
+
+const inputTypeLabel = computed(() => {
+  switch (props.task?.input_type) {
+    case 'text':
+      return '请输入'
+    case 'select':
+      return '请选择'
+    case 'multiselect':
+      return '请多选'
+    default:
+      return '请输入'
+  }
+})
+
+function handleSubmitInput() {
+  let value = ''
+  if (props.task?.input_type === 'multiselect') {
+    value = selectedOptions.value.join(', ')
+  } else if (props.task?.input_type === 'select') {
+    value = userInputValue.value
+  } else {
+    value = userInputValue.value
+  }
+
+  if (!value.trim()) {
+    return
+  }
+
+  emit('submitInput', value)
+}
+
+function handleSelectOption(option: string) {
+  userInputValue.value = option
+}
+
+function toggleMultiOption(option: string) {
+  const index = selectedOptions.value.indexOf(option)
+  if (index >= 0) {
+    selectedOptions.value.splice(index, 1)
+  } else {
+    selectedOptions.value.push(option)
+  }
+}
+
+function isOptionSelected(option: string) {
+  return selectedOptions.value.includes(option)
+}
+
+function getStatusLabel(status?: string) {
+  switch (status) {
+    case 'pending':
+      return '等待中'
+    case 'analyzing':
+      return '分析中'
+    case 'executing':
+      return '执行中'
+    case 'waiting_confirm':
+      return '待确认'
+    case 'waiting_input':
+      return '等待输入'
+    case 'completed':
+      return '已完成'
+    case 'failed':
+      return '失败'
+    case 'cancelled':
+      return '已取消'
+    default:
+      return status || '空闲'
+  }
+}
+
+function getStatusTagType(status?: string) {
+  switch (status) {
+    case 'completed':
+      return 'success'
+    case 'failed':
+    case 'cancelled':
+      return 'danger'
+    case 'executing':
+    case 'analyzing':
+      return 'primary'
+    case 'waiting_confirm':
+    case 'waiting_input':
+      return 'warning'
+    default:
+      return 'info'
+  }
+}
 </script>
 
 <template>
@@ -78,15 +182,26 @@ const summaryText = computed(() => {
         <strong class="task-status-card__title">{{ task?.title ?? '暂无活动任务' }}</strong>
       </div>
       <div class="task-status-card__badges">
-        <el-tag size="small" effect="dark" :type="streaming ? 'primary' : 'warning'">{{ streaming ? '执行中' : task?.status
-          ?? '空闲' }}</el-tag>
+        <el-tag size="small" effect="dark" :type="getStatusTagType(streaming ? 'executing' : task?.status)">
+          {{ getStatusLabel(streaming ? 'executing' : task?.status) }}
+        </el-tag>
         <el-tag v-if="task" size="small" effect="plain" type="info">进度 {{ task.progress }}%</el-tag>
       </div>
     </div>
 
     <div v-if="task" class="task-status-card__summary-row">
       <div class="task-status-card__summary-text" :title="summaryText">{{ summaryText }}</div>
-      <el-button type="primary" plain @click="detailDrawerVisible = true">查看详情</el-button>
+      <div class="task-status-card__summary-actions">
+        <el-button v-if="canStop && !streaming" type="danger" plain size="small" :icon="VideoPause"
+          @click="emit('stop')">
+          停止
+        </el-button>
+        <el-button v-if="canRestart && !streaming" type="primary" plain size="small" :icon="RefreshRight"
+          @click="emit('restart')">
+          重试
+        </el-button>
+        <el-button type="primary" plain size="small" @click="detailDrawerVisible = true">详情</el-button>
+      </div>
     </div>
 
     <el-drawer v-model="detailDrawerVisible" :teleported="false" class="task-status-drawer" title="任务详情" size="720px">
@@ -96,7 +211,7 @@ const summaryText = computed(() => {
             <div>
               <div class="task-status-card__detail-title">{{ task.title }}</div>
               <div class="task-status-card__meta">
-                <span>状态 {{ task.status }}</span>
+                <span>状态 {{ getStatusLabel(task.status) }}</span>
                 <span>进度 {{ task.progress }}%</span>
                 <span>节点 {{ task.node_id }}</span>
                 <span>任务 {{ task.id }}</span>
@@ -235,6 +350,12 @@ const summaryText = computed(() => {
   align-items: center;
 }
 
+.task-status-card__summary-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
 .task-status-card__summary-text {
   flex: 1;
   min-width: 0;
@@ -243,6 +364,126 @@ const summaryText = computed(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.task-status-card__input-request {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(251, 191, 36, 0.08);
+  border: 1px solid rgba(251, 191, 36, 0.25);
+}
+
+.task-status-card__input-question {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.task-status-card__input-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #fbbf24;
+}
+
+.task-status-card__input-text {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.task-status-card__input-row {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.task-status-card__input-row--options {
+  margin-top: 8px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.task-status-card__input-field {
+  flex: 1;
+}
+
+.task-status-card__options {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.task-status-card__option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.task-status-card__option:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(96, 165, 250, 0.3);
+}
+
+.task-status-card__option.is-selected {
+  background: rgba(96, 165, 250, 0.12);
+  border-color: rgba(96, 165, 250, 0.5);
+}
+
+.task-status-card__option-radio {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.task-status-card__option.is-selected .task-status-card__option-radio {
+  border-color: #60a5fa;
+}
+
+.task-status-card__option-radio-inner {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #60a5fa;
+}
+
+.task-status-card__option-checkbox {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-size: 10px;
+}
+
+.task-status-card__option.is-selected .task-status-card__option-checkbox {
+  border-color: #60a5fa;
+  background: #60a5fa;
+}
+
+.task-status-card__option-checkbox-inner {
+  color: #fff;
+  font-weight: bold;
+}
+
+.task-status-card__option-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.88);
 }
 
 .task-status-card__detail-title {

@@ -17,7 +17,8 @@ const links = [
   { to: '/terminal', label: '终端' },
   { to: '/nodes', label: '节点' },
   { to: '/users', label: '用户', adminOnly: true },
-  { to: '/settings', label: '设置', adminOnly: true },
+  { to: '/models', label: '模型配置', adminOnly: true },
+  { to: '/global-settings', label: '全局配置', adminOnly: true },
 ]
 
 const showShell = computed(() => route.path !== '/login')

@@ -20,9 +20,12 @@
       </div>
     </div>
     <NodeTable :nodes="nodes" :loading="loading" @edit="startEditNode" @delete="removeNode" />
+    <Pagination :page="page" :page-size="pageSize" :total="total" @update:page="handlePageChange"
+      @update:page-size="handlePageSizeChange" />
   </div>
 
   <el-dialog v-model="dialogVisible" :title="dialogTitle" width="480px" :close-on-click-modal="false">
-    <NodeForm :form="form" :editing="isEditing" :loading="loading" :saving="saving" @cancel="closeDialog" @save="saveNode" />
+    <NodeForm :form="form" :editing="isEditing" :loading="loading" :saving="saving" @cancel="closeDialog"
+      @save="saveNode" />
   </el-dialog>
 </section>

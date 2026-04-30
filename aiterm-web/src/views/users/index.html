@@ -19,10 +19,14 @@
         <el-button type="primary" @click="startCreateUser">新建用户</el-button>
       </div>
     </div>
-    <UserTable :items="users" :loading="loading" @edit="startEditUser" @reset-password="resetPassword" @delete="removeUser" />
+    <UserTable :items="users" :loading="loading" @edit="startEditUser" @reset-password="resetPassword"
+      @delete="removeUser" />
+    <Pagination :page="page" :page-size="pageSize" :total="total" @update:page="handlePageChange"
+      @update:page-size="handlePageSizeChange" />
   </div>
 
   <el-dialog v-model="dialogVisible" :title="dialogTitle" width="480px" :close-on-click-modal="false">
-    <UserForm :form="form" :editing="isEditing" :loading="loading" :saving="saving" @cancel="closeDialog" @save="saveUser" />
+    <UserForm :form="form" :editing="isEditing" :loading="loading" :saving="saving" @cancel="closeDialog"
+      @save="saveUser" />
   </el-dialog>
 </section>

@@ -4,16 +4,18 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { getAuthToken } from '@/auth'
 import {
+  buildTaskContinueUrl,
   confirmTask,
   deleteConversation,
   deleteTask,
   getAuthStatus,
   getConversationMessages,
   getConversations,
-  getLLMPublicInfo,
+  getModels,
   getNodes,
   getTaskDetail,
   getTasks,
+  provideTaskInput,
   restartTask,
   stopTask,
   streamConversation,
@@ -21,7 +23,7 @@ import {
 } from '@/api/aiterm'
 import { getApiBaseUrl } from '@/config'
 import { formatDateTime } from '@/utils/datetime'
-import type { ConversationListItem, ConversationMode, NodeItem, TaskDetail, TaskItem, TaskStreamOutputData, TaskStreamStatusData } from '@/types/api'
+import type { ConversationListItem, ConversationMode, ModelConfigItem, NodeItem, TaskDetail, TaskItem, TaskStreamOutputData, TaskStreamStatusData } from '@/types/api'
 import type { ChatMessage } from '@/types/chat'
 
 const LAST_CONVERSATION_ID_KEY = 'aiterm:last-conversation-id'
@@ -33,16 +35,7 @@ type SidebarGroup<T> = {
   items: T[]
 }
 
-type TaskOutputKind =
-  | 'plan'
-  | 'plan.info'
-  | 'approval'
-  | 'step.start'
-  | 'step.result'
-  | 'repair.analysis'
-  | 'repair.retry'
-  | 'repair.stop'
-  | 'summary'
+type TaskOutputKind = 'stdout' | 'stderr' | 'plan' | 'plan.info' | 'approval' | 'step.start' | 'step.result' | 'repair.analysis' | 'repair.retry' | 'repair.stop' | 'summary' | 'input.request'
 
 let localMessageCounter = 0
 
@@ -67,7 +60,7 @@ function createMessageFromApi(item: { id: string; role: ChatMessage['role']; con
 
 function buildEventSourceUrl(taskId: string) {
   const baseUrl = getApiBaseUrl().trim()
-  const eventPath = `/api/tasks/${taskId}/events`
+  const eventPath = `/api/v1/tasks/${taskId}/events`
   const url = baseUrl ? new URL(eventPath, baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`) : new URL(eventPath, window.location.origin)
   const token = getAuthToken()
   if (token) {
@@ -165,13 +158,20 @@ export function useChatPage() {
   const sidebarTab = ref<SidebarTab>('conversations')
   const taskStatusFilter = ref<TaskStatusFilter>('executing')
   const selectedNodeId = ref('')
+  const selectedModelId = ref('')
   const availableNodes = ref<NodeItem[]>([])
+  const availableModels = ref<ModelConfigItem[]>([])
   const currentUserName = ref('用户')
-  const currentModelName = ref('模型')
   const conversations = ref<ConversationListItem[]>([])
   const tasks = ref<TaskItem[]>([])
   const taskDetail = ref<TaskDetail | null>(null)
   const messages = ref<ChatMessage[]>(createInitialMessages('chat'))
+  const conversationPage = ref(1)
+  const conversationPageSize = ref(10)
+  const conversationTotal = ref(0)
+  const taskPage = ref(1)
+  const taskPageSize = ref(10)
+  const taskTotal = ref(0)
 
   let taskEventSource: EventSource | null = null
   let chatStreamController: AbortController | null = null
@@ -203,12 +203,18 @@ export function useChatPage() {
     }
 
     switch (stream as TaskOutputKind) {
+      case 'stdout':
+        return normalized
+      case 'stderr':
+        return `[错误] ${normalized}`
       case 'plan.info':
         return normalized
       case 'plan':
         return `任务计划如下：\n${normalized}`
       case 'approval':
         return normalized
+      case 'input.request':
+        return '等待用户输入...'
       case 'step.start':
       case 'step.result':
       case 'repair.analysis':
@@ -217,7 +223,7 @@ export function useChatPage() {
       case 'summary':
         return normalized
       default:
-        return ''
+        return normalized
     }
   }
 
@@ -280,33 +286,78 @@ export function useChatPage() {
     }
   }
 
-  async function loadViewerMeta() {
+  async function loadModels() {
     try {
-      const [status, llmInfo] = await Promise.all([getAuthStatus(), getLLMPublicInfo()])
-      currentUserName.value = status.user?.display_name || status.user?.username || '用户'
-      currentModelName.value = llmInfo.model || '模型'
+      const data = await getModels()
+      availableModels.value = data.items || []
+      const defaultModel = availableModels.value.find((m) => m.is_default)
+      if (!selectedModelId.value && defaultModel) {
+        selectedModelId.value = defaultModel.id
+      } else if (!selectedModelId.value && availableModels.value.length > 0) {
+        selectedModelId.value = availableModels.value[0].id
+      }
     } catch {
-      currentUserName.value = '用户'
-      currentModelName.value = '模型'
+      // Ignore model loading errors
     }
   }
 
-  async function loadConversations() {
+  async function loadViewerMeta() {
     try {
-      const data = await getConversations()
-      conversations.value = data.items
+      const status = await getAuthStatus()
+      currentUserName.value = status.user?.display_name || status.user?.username || '用户'
+    } catch {
+      currentUserName.value = '用户'
+    }
+  }
+
+  async function loadConversations(reset = true) {
+    try {
+      if (reset) {
+        conversationPage.value = 1
+      }
+      const data = await getConversations({ page: conversationPage.value, page_size: conversationPageSize.value })
+      if (reset) {
+        conversations.value = data.items
+      } else {
+        conversations.value = [...conversations.value, ...data.items]
+      }
+      conversationTotal.value = data.total
     } catch {
       errorMessage.value = '历史会话接口不可用。'
     }
   }
 
-  async function loadTasks() {
+  async function loadMoreConversations() {
+    if (conversations.value.length >= conversationTotal.value) {
+      return
+    }
+    conversationPage.value += 1
+    await loadConversations(false)
+  }
+
+  async function loadTasks(reset = true) {
     try {
-      const data = await getTasks()
-      tasks.value = data.items
+      if (reset) {
+        taskPage.value = 1
+      }
+      const data = await getTasks({ page: taskPage.value, page_size: taskPageSize.value })
+      if (reset) {
+        tasks.value = data.items
+      } else {
+        tasks.value = [...tasks.value, ...data.items]
+      }
+      taskTotal.value = data.total
     } catch {
       errorMessage.value = '任务接口不可用。'
     }
+  }
+
+  async function loadMoreTasks() {
+    if (tasks.value.length >= taskTotal.value) {
+      return
+    }
+    taskPage.value += 1
+    await loadTasks(false)
   }
 
   async function reloadSidebarData() {
@@ -320,6 +371,10 @@ export function useChatPage() {
 
   function setSelectedNodeId(value: string) {
     selectedNodeId.value = value
+  }
+
+  function setSelectedModelId(value: string) {
+    selectedModelId.value = value
   }
 
   function setSidebarTab(value: SidebarTab) {
@@ -475,6 +530,42 @@ export function useChatPage() {
       }
     })
 
+    taskEventSource.addEventListener('task.input', (event) => {
+      const payload = JSON.parse((event as MessageEvent).data) as { task_id: string; question: string; input_type: string; options?: string[]; placeholder?: string }
+      const taskId = payload.task_id
+      if (taskDetail.value?.id === taskId || activeTaskId.value === taskId) {
+        const existing = taskDetail.value || {
+          id: taskId,
+          title: '',
+          status: 'waiting_input' as const,
+          progress: 40,
+          conversation_id: '',
+          node_id: '',
+          summary: '',
+          steps: [],
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        }
+        taskDetail.value = {
+          ...existing,
+          id: taskId,
+          status: 'waiting_input',
+          progress: 40,
+          input_question: payload.question,
+          input_type: payload.input_type as 'text' | 'select' | 'multiselect',
+          input_options: payload.options || [],
+          input_placeholder: payload.placeholder,
+        }
+        updateTaskSnapshot(taskDetail.value)
+
+        const lastMessage = messages.value[messages.value.length - 1]
+        if (lastMessage?.role === 'assistant' && lastMessage.content === '等待用户输入...') {
+          const optionsStr = payload.options?.length ? payload.options.join('|||') : ''
+          lastMessage.content = `[INPUT_REQUEST]\n问题: ${payload.question}\n类型: ${payload.input_type}\n选项: ${optionsStr}\n占位符: ${payload.placeholder || ''}\n[/INPUT_REQUEST]`
+        }
+      }
+    })
+
     taskEventSource.onerror = async () => {
       closeTaskStream()
       await loadTaskDetail(taskId)
@@ -503,7 +594,7 @@ export function useChatPage() {
     placeholder.content = reply
   }
 
-  async function submitChatMessage(value: string, targetNodeId: string) {
+  async function submitChatMessage(value: string, targetNodeId: string, targetModelId: string) {
     abortChatStream()
     chatStreaming.value = true
     const controller = new AbortController()
@@ -514,6 +605,7 @@ export function useChatPage() {
         {
           conversation_id: conversationId.value,
           node_id: targetNodeId,
+          model_id: targetModelId || undefined,
           message: value,
           mode: 'chat',
         },
@@ -558,10 +650,11 @@ export function useChatPage() {
     }
   }
 
-  async function submitTaskMessage(value: string, targetNodeId: string) {
+  async function submitTaskMessage(value: string, targetNodeId: string, targetModelId: string) {
     const data = await submitConversation({
       conversation_id: conversationId.value,
       node_id: targetNodeId,
+      model_id: targetModelId || undefined,
       message: value,
       mode: 'task',
     })
@@ -602,10 +695,11 @@ export function useChatPage() {
 
     try {
       const targetNodeId = selectedNodeId.value || availableNodes.value[0]?.id || ''
+      const targetModelId = selectedModelId.value || availableModels.value.find((m) => m.is_default)?.id || ''
       if (activeMode.value === 'chat') {
-        await submitChatMessage(trimmed, targetNodeId)
+        await submitChatMessage(trimmed, targetNodeId, targetModelId)
       } else {
-        await submitTaskMessage(trimmed, targetNodeId)
+        await submitTaskMessage(trimmed, targetNodeId, targetModelId)
       }
     } catch {
       errorMessage.value = '请求失败，请检查后端服务或大模型配置。'
@@ -710,6 +804,110 @@ export function useChatPage() {
     }
   }
 
+  async function submitTaskInput(userInput: string) {
+    if (!taskDetail.value || !userInput.trim()) {
+      return
+    }
+
+    const taskId = taskDetail.value.id
+    closeTaskStream()
+    errorMessage.value = ''
+    loading.value = true
+
+    try {
+      const updatedTask = await provideTaskInput(taskId, { user_input: userInput.trim() })
+      taskDetail.value = updatedTask
+      updateTaskSnapshot(updatedTask)
+
+      const lastMessage = messages.value[messages.value.length - 1]
+      if (lastMessage?.role === 'assistant' && lastMessage.content.startsWith('[INPUT_REQUEST]')) {
+        const questionMatch = lastMessage.content.match(/问题: (.+)/)
+        const typeMatch = lastMessage.content.match(/类型: (.+)/)
+        const optionsMatch = lastMessage.content.match(/选项: (.+)/)
+        const question = questionMatch?.[1] || ''
+        const inputType = typeMatch?.[1] || 'text'
+        const optionsStr = optionsMatch?.[1] || ''
+        lastMessage.content = `[INPUT_RESPONSE]\n问题: ${question}\n类型: ${inputType}\n选项: ${optionsStr}\n回答: ${userInput.trim()}\n[/INPUT_RESPONSE]`
+      }
+
+      await reloadSidebarData()
+
+      const continueUrl = buildTaskContinueUrl(taskId)
+      taskStreaming.value = true
+      const eventSource = new EventSource(continueUrl)
+
+      eventSource.addEventListener('task.status', (event) => {
+        const payload = JSON.parse((event as MessageEvent).data) as TaskStreamStatusData
+        if (taskDetail.value && taskDetail.value.id === payload.task_id) {
+          taskDetail.value = {
+            ...taskDetail.value,
+            status: payload.status,
+            progress: payload.progress,
+          }
+          updateTaskSnapshot(taskDetail.value)
+        }
+      })
+
+      eventSource.addEventListener('task.output', (event) => {
+        const payload = JSON.parse((event as MessageEvent).data) as TaskStreamOutputData
+        const message = formatTaskOutputMessage(payload.stream, payload.content)
+        if (message) {
+          appendAssistantMessage(message)
+        }
+      })
+
+      eventSource.addEventListener('task.input', (event) => {
+        const payload = JSON.parse((event as MessageEvent).data) as { task_id: string; question: string; input_type: string; options?: string[]; placeholder?: string }
+        const inputTaskId = payload.task_id
+        if (taskDetail.value?.id === inputTaskId || taskId === inputTaskId) {
+          const existing = taskDetail.value || {
+            id: inputTaskId,
+            title: '',
+            status: 'waiting_input' as const,
+            progress: 40,
+            conversation_id: '',
+            node_id: '',
+            summary: '',
+            steps: [],
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }
+          taskDetail.value = {
+            ...existing,
+            id: inputTaskId,
+            status: 'waiting_input',
+            progress: 40,
+            input_question: payload.question,
+            input_type: payload.input_type as 'text' | 'select' | 'multiselect',
+            input_options: payload.options || [],
+            input_placeholder: payload.placeholder,
+          }
+          updateTaskSnapshot(taskDetail.value)
+
+          const lastMessage = messages.value[messages.value.length - 1]
+          if (lastMessage?.role === 'assistant' && lastMessage.content === '等待用户输入...') {
+            const optionsStr = payload.options?.length ? payload.options.join('|||') : ''
+            lastMessage.content = `[INPUT_REQUEST]\n问题: ${payload.question}\n类型: ${payload.input_type}\n选项: ${optionsStr}\n占位符: ${payload.placeholder || ''}\n[/INPUT_REQUEST]`
+          }
+        }
+      })
+
+      eventSource.onerror = async () => {
+        eventSource.close()
+        taskStreaming.value = false
+        await loadTaskDetail(taskId)
+        await reloadSidebarData()
+      }
+
+      taskEventSource = eventSource
+    } catch {
+      errorMessage.value = '提交用户输入失败。'
+      appendAssistantMessage('提交用户输入失败，请重试。')
+    } finally {
+      loading.value = false
+    }
+  }
+
   async function removeConversationItem(targetConversationId: string) {
     if (!targetConversationId) {
       return
@@ -790,6 +988,7 @@ export function useChatPage() {
     }
     void reloadSidebarData()
     void loadNodes()
+    void loadModels()
     void loadViewerMeta()
   })
 
@@ -804,12 +1003,28 @@ export function useChatPage() {
   )
 
   const conversationLabel = computed(() => conversationId.value || 'new')
-  const assistantTitle = computed(() => (activeMode.value === 'task' ? 'AITerm' : currentModelName.value || '模型'))
+  const selectedModel = computed(() => availableModels.value.find((item) => item.id === selectedModelId.value) ?? null)
+  const assistantTitle = computed(() => {
+    if (activeMode.value === 'task') {
+      return 'AITerm'
+    }
+    return selectedModel.value?.name || '模型'
+  })
   const assistantLabel = computed(() => shortenLabel(assistantTitle.value, activeMode.value === 'task' ? 10 : 8) || '模型')
   const userTitle = computed(() => currentUserName.value || '用户')
   const userLabel = computed(() => shortenLabel(userTitle.value, 8) || '用户')
   const selectedNode = computed(() => availableNodes.value.find((item) => item.id === selectedNodeId.value) ?? null)
   const streaming = computed(() => chatStreaming.value || taskStreaming.value)
+  const streamingMessageId = computed(() => {
+    if (!streaming.value) {
+      return undefined
+    }
+    const lastMessage = messages.value[messages.value.length - 1]
+    if (lastMessage?.role === 'assistant') {
+      return lastMessage.id
+    }
+    return undefined
+  })
   const activeConversationTitle = computed(() => conversations.value.find((item) => item.id === conversationId.value)?.title || '新对话')
   const filteredConversations = computed(() => {
     const chatOnlyItems = conversations.value.filter((item) => !item.latest_task_id)
@@ -830,6 +1045,8 @@ export function useChatPage() {
   const visibleTaskCount = computed(() => filteredTaskItems.value.length)
   const hasConversationResults = computed(() => conversationGroups.value.some((group) => group.items.length > 0))
   const hasTaskResults = computed(() => filteredTaskItems.value.length > 0)
+  const hasMoreConversations = computed(() => conversations.value.length < conversationTotal.value)
+  const hasMoreTasks = computed(() => tasks.value.length < taskTotal.value)
   const latestAssistantMessage = computed(() => {
     for (let index = messages.value.length - 1; index >= 0; index -= 1) {
       const item = messages.value[index]
@@ -877,6 +1094,24 @@ export function useChatPage() {
     }
     return ''
   })
+  const taskInputRequest = computed(() => {
+    if (activeMode.value !== 'task' || !taskDetail.value?.input_question) {
+      return undefined
+    }
+    return {
+      question: taskDetail.value.input_question,
+      input_type: taskDetail.value.input_type || 'text',
+      options: taskDetail.value.input_options,
+      placeholder: taskDetail.value.input_placeholder,
+    }
+  })
+
+  const taskUserInput = computed(() => {
+    if (activeMode.value !== 'task' || taskDetail.value?.status === 'waiting_input') {
+      return undefined
+    }
+    return taskDetail.value?.user_input
+  })
 
   return {
     activeTaskId,
@@ -884,6 +1119,7 @@ export function useChatPage() {
     activeMode,
     actionableAssistantMessageIds,
     availableNodes,
+    availableModels,
     assistantLabel,
     assistantTitle,
     canRestartTask,
@@ -894,11 +1130,16 @@ export function useChatPage() {
     conversations,
     conversationGroups,
     conversationLabel,
+    conversationTotal,
     errorMessage,
     filteredTaskItems,
     hasConversationResults,
+    hasMoreConversations,
+    hasMoreTasks,
     hasTaskResults,
     input,
+    loadMoreConversations,
+    loadMoreTasks,
     loading,
     messages,
     openTaskFromSidebar,
@@ -910,8 +1151,11 @@ export function useChatPage() {
     retryableAssistantMessageIds,
     selectedNode,
     selectedNodeId,
+    selectedModel,
+    selectedModelId,
     setActiveMode,
     setSelectedNodeId,
+    setSelectedModelId,
     setSidebarTab,
     sidebarSearch,
     sidebarLoading,
@@ -921,10 +1165,15 @@ export function useChatPage() {
     stopActiveTask,
     stopChatResponse,
     streaming,
+    streamingMessageId,
     submitMessage,
+    submitTaskInput,
     taskApprovalMessageId,
     taskDetail,
+    taskInputRequest,
+    taskUserInput,
     taskStatusFilter,
+    taskTotal,
     switchConversation,
     confirmActiveTask,
     tasks,

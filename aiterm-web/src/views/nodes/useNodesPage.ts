@@ -22,21 +22,36 @@ export function useNodesPage() {
   const form = ref<NodePayload>(createDefaultForm())
   const editingNode = ref<NodeItem | null>(null)
   const dialogVisible = ref(false)
+  const page = ref(1)
+  const pageSize = ref(10)
+  const total = ref(0)
 
   async function loadNodes() {
     loading.value = true
     errorMessage.value = ''
 
     try {
-      const [health, data] = await Promise.all([getHealth(), getNodes()])
+      const [health, data] = await Promise.all([getHealth(), getNodes({ page: page.value, page_size: pageSize.value })])
       status.value = health.status
       nodes.value = data.items
+      total.value = data.total
     } catch {
       status.value = 'offline'
       errorMessage.value = '节点接口不可用。'
     } finally {
       loading.value = false
     }
+  }
+
+  function handlePageChange(newPage: number) {
+    page.value = newPage
+    void loadNodes()
+  }
+
+  function handlePageSizeChange(newSize: number) {
+    pageSize.value = newSize
+    page.value = 1
+    void loadNodes()
   }
 
   function syncFormFromNode(node: NodeItem) {
@@ -111,6 +126,10 @@ export function useNodesPage() {
     try {
       await deleteNode(node.id)
       successMessage.value = '节点删除成功。'
+      total.value = Math.max(0, total.value - 1)
+      if (nodes.value.length === 0 && page.value > 1) {
+        page.value -= 1
+      }
       await loadNodes()
     } catch {
       errorMessage.value = '删除节点失败。'
@@ -119,7 +138,7 @@ export function useNodesPage() {
     }
   }
 
-  const nodeCount = computed(() => nodes.value.length)
+  const nodeCount = computed(() => total.value)
   const isEditing = computed(() => !!editingNode.value)
   const dialogTitle = computed(() => (editingNode.value ? '编辑节点' : '添加节点'))
 
@@ -146,5 +165,10 @@ export function useNodesPage() {
     saveNode,
     status,
     successMessage,
+    page,
+    pageSize,
+    total,
+    handlePageChange,
+    handlePageSizeChange,
   }
 }

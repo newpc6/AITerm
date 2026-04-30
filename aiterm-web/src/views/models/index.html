@@ -1,0 +1,88 @@
+<section class="page">
+  <div class="hero">
+    <p class="label">配置</p>
+    <h1>模型配置</h1>
+    <p>管理大模型 API 配置，支持 OpenAI、DeepSeek、Claude 等。</p>
+  </div>
+
+  <div class="card">
+    <div class="models-header">
+      <div>
+        <p class="label">模型列表</p>
+        <div class="value">{{ total }} 个模型</div>
+      </div>
+      <el-button type="primary" @click="openCreateDialog">新建模型</el-button>
+    </div>
+
+    <div class="data-table">
+      <el-table :data="models" v-loading="loading" empty-text="暂无模型配置">
+        <el-table-column prop="name" label="名称" min-width="120" />
+        <el-table-column prop="model" label="模型标识" min-width="150" />
+        <el-table-column prop="api_url" label="API地址" min-width="200" show-overflow-tooltip />
+        <el-table-column prop="temperature" label="温度" width="80" />
+        <el-table-column label="默认" width="80">
+          <template #default="{ row }">
+            <span v-if="row.is_default" class="data-table__tag data-table__tag--success">默认</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="200" fixed="right">
+          <template #default="{ row }">
+            <div class="data-table__actions">
+              <el-button link type="primary" @click="openEditDialog(row)">编辑</el-button>
+              <el-button v-if="!row.is_default" link type="warning" @click="handleSetDefault(row)">设为默认</el-button>
+              <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            </div>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
+    <Pagination :page="page" :page-size="pageSize" :total="total" @update:page="handlePageChange"
+      @update:page-size="handlePageSizeChange" />
+  </div>
+
+  <el-dialog v-model="dialogVisible" :title="dialogTitle" width="600px">
+    <el-form label-position="top">
+      <el-form-item label="模型名称" required>
+        <el-input v-model="form.name" placeholder="例如：GPT-4o、Claude 3.5、DeepSeek" :disabled="saving" />
+      </el-form-item>
+
+      <el-form-item label="API地址" required>
+        <el-input v-model="form.api_url" placeholder="https://api.openai.com/v1" :disabled="saving" />
+      </el-form-item>
+
+      <el-form-item label="API Key">
+        <el-input v-model="form.api_key" type="password" show-password placeholder="可选，用于认证" :disabled="saving" />
+      </el-form-item>
+
+      <el-form-item label="模型标识" required>
+        <el-input v-model="form.model" placeholder="gpt-4o-mini" :disabled="saving" />
+      </el-form-item>
+
+      <el-form-item label="温度参数">
+        <el-input-number v-model="form.temperature" :min="0" :max="2" :step="0.1" :precision="1" :disabled="saving" />
+      </el-form-item>
+
+      <el-form-item label="额外请求体 (JSON)">
+        <el-input v-model="extraBodyText" type="textarea" :rows="4"
+          placeholder='{"thinking": {"type": "enabled"}, "reasoning_effort": "high"}' :disabled="saving" />
+        <div class="form-hint">例如 DeepSeek 可配置 thinking、reasoning_effort 等参数</div>
+      </el-form-item>
+
+      <el-form-item label="额外请求头 (JSON)">
+        <el-input v-model="extraHeadersText" type="textarea" :rows="3" placeholder='{"X-Custom-Header": "value"}'
+          :disabled="saving" />
+        <div class="form-hint">自定义 HTTP 请求头</div>
+      </el-form-item>
+
+      <el-form-item>
+        <el-checkbox v-model="form.is_default" :disabled="saving">设为默认模型</el-checkbox>
+      </el-form-item>
+    </el-form>
+
+    <template #footer>
+      <el-button :disabled="saving" @click="dialogVisible = false">取消</el-button>
+      <el-button type="primary" :loading="saving" @click="saveModel">保存</el-button>
+    </template>
+  </el-dialog>
+</section>
