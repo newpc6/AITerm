@@ -267,7 +267,8 @@ class TaskService:
             for i, step in enumerate(plan.steps)
         ]
 
-        pending_preview = "\n".join(f"{i+1}. {s.title}: {s.command}" for i, s in enumerate(plan.steps))
+        pending_preview = "\n".join(
+            f"{i+1}. {s.title}: {s.command}" for i, s in enumerate(plan.steps))
 
         now = datetime.utcnow().isoformat()
         task.title = plan.title or task.title
@@ -332,7 +333,10 @@ class TaskService:
             result = await execute_command(step.command, task_id=task_id)
             step_outputs = []
             for stream, content in result.lines:
-                line_text = f"[{stream}] {content}"
+                if stream == 'stderr':
+                    line_text = f"错误: {content}"
+                else:
+                    line_text = content
                 execution_outputs.append(line_text)
                 step_outputs.append(line_text)
                 await self.conversation_repo.append_message(ConversationMessage(
@@ -406,7 +410,10 @@ class TaskService:
                             result = await execute_command(step.command, task_id=task_id)
                             step_outputs = []
                             for stream, content in result.lines:
-                                line_text = f"[{stream}] {content}"
+                                if stream == 'stderr':
+                                    line_text = f"错误: {content}"
+                                else:
+                                    line_text = content
                                 execution_outputs.append(line_text)
                                 step_outputs.append(line_text)
                                 await self.conversation_repo.append_message(ConversationMessage(
@@ -425,7 +432,8 @@ class TaskService:
                                 ))
                                 step.status = TaskStepStatus.COMPLETED
                                 task.steps[index] = step
-                                task.progress = 55 + int(((index + 1) / len(task.steps)) * 35)
+                                task.progress = 55 + \
+                                    int(((index + 1) / len(task.steps)) * 35)
                                 task.updated_at = datetime.utcnow().isoformat()
                                 await self.task_repo.update_task(task_id, task)
                                 continue
@@ -532,126 +540,141 @@ class TaskService:
         node = await self.node_repo.get_node(task.node_id)
         node_label = describe_node(node) if node else f"节点 {task.node_id}"
 
-        now = datetime.utcnow().isoformat()
-        task.status = TaskStatus.ANALYZING
-        task.progress = 20
-        task.summary = "正在分析任务并生成执行计划。"
-        task.updated_at = now
-        await self.task_repo.update_task(task_id, task)
+        has_pending_steps = (
+            task.status == TaskStatus.PENDING and
+            len(task.steps) > 0 and
+            any(step.status == TaskStepStatus.PENDING for step in task.steps)
+        )
 
-        yield {
-            "event": "task.status",
-            "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}
-        }
-
-        if self._is_cancelled(task_id):
-            return
-
-        history = await self.conversation_repo.get_conversation_messages(task.conversation_id)
-
-        planning_msg = f"正在结合节点 {node_label} 分析任务并生成执行计划..."
-        await self.conversation_repo.append_message(ConversationMessage(
-            id="0", conversation_id=task.conversation_id, role="assistant",
-            content=planning_msg, created_at=datetime.utcnow().isoformat()
-        ))
-        yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stdout", "content": planning_msg}}
-
-        try:
-            planner = TaskPlanner(llm_settings)
-            plan = await planner.generate_plan(node, task.request, history)
-        except Exception as e:
-            logger.error(f"Task planning failed: {e}")
+        if has_pending_steps:
             now = datetime.utcnow().isoformat()
-            task.status = TaskStatus.FAILED
-            task.progress = 100
-            task.summary = f"节点 {node_label} 的任务规划失败：{str(e)}"
+            task.status = TaskStatus.EXECUTING
+            task.summary = "命令已确认，开始执行。"
+            task.updated_at = now
+            await self.task_repo.update_task(task_id, task)
+            yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
+        else:
+            now = datetime.utcnow().isoformat()
+            task.status = TaskStatus.ANALYZING
+            task.progress = 20
+            task.summary = "正在分析任务并生成执行计划。"
             task.updated_at = now
             await self.task_repo.update_task(task_id, task)
 
-            yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
-            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stderr", "content": f"任务规划失败: {str(e)}"}}
-            return
+            yield {
+                "event": "task.status",
+                "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}
+            }
 
-        if self._is_cancelled(task_id):
-            return
+            if self._is_cancelled(task_id):
+                return
 
-        if plan.needs_user_input and plan.input_request:
-            now = datetime.utcnow().isoformat()
-            task.title = plan.title or task.title
-            task.summary = plan.summary
-            task.status = TaskStatus.WAITING_INPUT
-            task.progress = 40
-            task.input_question = plan.input_request.question
-            task.input_type = plan.input_request.input_type
-            task.input_options = plan.input_request.options
-            task.input_placeholder = plan.input_request.placeholder
-            task.updated_at = now
-            await self.task_repo.update_task(task_id, task)
+            history = await self.conversation_repo.get_conversation_messages(task.conversation_id)
 
-            yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
-
-            input_msg = f"需要您的输入：{plan.input_request.question}"
-            if plan.input_request.options:
-                input_msg += f"\n选项：{', '.join(plan.input_request.options)}"
+            planning_msg = f"正在结合节点 {node_label} 分析任务并生成执行计划..."
             await self.conversation_repo.append_message(ConversationMessage(
                 id="0", conversation_id=task.conversation_id, role="assistant",
-                content=input_msg, created_at=datetime.utcnow().isoformat()
+                content=planning_msg, created_at=datetime.utcnow().isoformat()
             ))
-            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "input.request", "content": input_msg}}
-            yield {"event": "task.input", "data": {
-                "task_id": task_id,
-                "question": plan.input_request.question,
-                "input_type": plan.input_request.input_type,
-                "options": plan.input_request.options,
-                "placeholder": plan.input_request.placeholder,
-                "default_value": plan.input_request.default_value
-            }}
-            return
+            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stdout", "content": planning_msg}}
 
-        steps = [
-            TaskStep(
-                index=i,
-                title=step.title,
-                status=TaskStepStatus.PENDING,
-                command=step.command
-            )
-            for i, step in enumerate(plan.steps)
-        ]
+            try:
+                planner = TaskPlanner(llm_settings)
+                plan = await planner.generate_plan(node, task.request, history)
+            except Exception as e:
+                logger.error(f"Task planning failed: {e}")
+                now = datetime.utcnow().isoformat()
+                task.status = TaskStatus.FAILED
+                task.progress = 100
+                task.summary = f"节点 {node_label} 的任务规划失败：{str(e)}"
+                task.updated_at = now
+                await self.task_repo.update_task(task_id, task)
 
-        pending_preview = "\n".join(f"{i+1}. {s.title}: {s.command}" for i, s in enumerate(plan.steps))
+                yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
+                yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stderr", "content": f"任务规划失败: {str(e)}"}}
+                return
 
-        now = datetime.utcnow().isoformat()
-        task.title = plan.title or task.title
-        task.pending_command = pending_preview
-        task.risk_reason = plan.risk_reason
-        task.summary = plan.summary
-        task.steps = steps
-        task.progress = 45
-        task.updated_at = now
+            if self._is_cancelled(task_id):
+                return
 
-        if plan.risk_reason or plan.requires_confirmation:
-            task.status = TaskStatus.WAITING_CONFIRM
-            task.summary = f"{task.summary} 该计划需要人工确认后才会执行。"
-            for step in task.steps:
-                step.status = TaskStepStatus.WAITING_CONFIRM
-        else:
-            task.status = TaskStatus.EXECUTING
+            if plan.needs_user_input and plan.input_request:
+                now = datetime.utcnow().isoformat()
+                task.title = plan.title or task.title
+                task.summary = plan.summary
+                task.status = TaskStatus.WAITING_INPUT
+                task.progress = 40
+                task.input_question = plan.input_request.question
+                task.input_type = plan.input_request.input_type
+                task.input_options = plan.input_request.options
+                task.input_placeholder = plan.input_request.placeholder
+                task.updated_at = now
+                await self.task_repo.update_task(task_id, task)
 
-        await self.task_repo.update_task(task_id, task)
+                yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
 
-        yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
+                input_msg = f"需要您的输入：{plan.input_request.question}"
+                if plan.input_request.options:
+                    input_msg += f"\n选项：{', '.join(plan.input_request.options)}"
+                await self.conversation_repo.append_message(ConversationMessage(
+                    id="0", conversation_id=task.conversation_id, role="assistant",
+                    content=input_msg, created_at=datetime.utcnow().isoformat()
+                ))
+                yield {"event": "task.output", "data": {"task_id": task_id, "stream": "input.request", "content": input_msg}}
+                yield {"event": "task.input", "data": {
+                    "task_id": task_id,
+                    "question": plan.input_request.question,
+                    "input_type": plan.input_request.input_type,
+                    "options": plan.input_request.options,
+                    "placeholder": plan.input_request.placeholder,
+                    "default_value": plan.input_request.default_value
+                }}
+                return
 
-        planned_msg = f"已生成 {len(task.steps)} 个执行步骤。"
-        await self.conversation_repo.append_message(ConversationMessage(
-            id="0", conversation_id=task.conversation_id, role="assistant",
-            content=planned_msg, created_at=datetime.utcnow().isoformat()
-        ))
-        yield {"event": "task.output", "data": {"task_id": task_id, "stream": "plan.info", "content": planned_msg}}
+            steps = [
+                TaskStep(
+                    index=i,
+                    title=step.title,
+                    status=TaskStepStatus.PENDING,
+                    command=step.command
+                )
+                for i, step in enumerate(plan.steps)
+            ]
 
-        if task.status == TaskStatus.WAITING_CONFIRM:
-            confirm_msg = f"该任务需要人工确认后执行。\n{pending_preview}"
-            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "approval", "content": confirm_msg}}
-            return
+            pending_preview = "\n".join(
+                f"{i+1}. {s.title}: {s.command}" for i, s in enumerate(plan.steps))
+
+            now = datetime.utcnow().isoformat()
+            task.title = plan.title or task.title
+            task.pending_command = pending_preview
+            task.risk_reason = plan.risk_reason
+            task.summary = plan.summary
+            task.steps = steps
+            task.progress = 45
+            task.updated_at = now
+
+            if plan.risk_reason or plan.requires_confirmation:
+                task.status = TaskStatus.WAITING_CONFIRM
+                task.summary = f"{task.summary} 该计划需要人工确认后才会执行。"
+                for step in task.steps:
+                    step.status = TaskStepStatus.WAITING_CONFIRM
+            else:
+                task.status = TaskStatus.EXECUTING
+
+            await self.task_repo.update_task(task_id, task)
+
+            yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
+
+            planned_msg = f"已生成 {len(task.steps)} 个执行步骤。"
+            await self.conversation_repo.append_message(ConversationMessage(
+                id="0", conversation_id=task.conversation_id, role="assistant",
+                content=planned_msg, created_at=datetime.utcnow().isoformat()
+            ))
+            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "plan.info", "content": planned_msg}}
+
+            if task.status == TaskStatus.WAITING_CONFIRM:
+                confirm_msg = f"该任务需要人工确认后执行。\n{pending_preview}"
+                yield {"event": "task.output", "data": {"task_id": task_id, "stream": "approval", "content": confirm_msg}}
+                return
 
         execution_outputs = []
 
@@ -683,7 +706,10 @@ class TaskService:
             result = await execute_command(step.command, task_id=task_id)
             step_outputs = []
             for stream, content in result.lines:
-                line_text = f"[{stream}] {content}"
+                if stream == 'stderr':
+                    line_text = f"错误: {content}"
+                else:
+                    line_text = content
                 execution_outputs.append(line_text)
                 step_outputs.append(line_text)
                 await self.conversation_repo.append_message(ConversationMessage(
@@ -757,7 +783,10 @@ class TaskService:
                             result = await execute_command(step.command, task_id=task_id)
                             step_outputs = []
                             for stream, content in result.lines:
-                                line_text = f"[{stream}] {content}"
+                                if stream == 'stderr':
+                                    line_text = f"错误: {content}"
+                                else:
+                                    line_text = content
                                 execution_outputs.append(line_text)
                                 step_outputs.append(line_text)
                                 await self.conversation_repo.append_message(ConversationMessage(
@@ -776,7 +805,8 @@ class TaskService:
                                 ))
                                 step.status = TaskStepStatus.COMPLETED
                                 task.steps[index] = step
-                                task.progress = 55 + int(((index + 1) / len(task.steps)) * 35)
+                                task.progress = 55 + \
+                                    int(((index + 1) / len(task.steps)) * 35)
                                 task.updated_at = datetime.utcnow().isoformat()
                                 await self.task_repo.update_task(task_id, task)
                                 continue

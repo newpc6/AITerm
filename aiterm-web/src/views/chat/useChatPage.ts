@@ -740,6 +740,9 @@ export function useChatPage() {
 
     confirming.value = true
     errorMessage.value = ''
+    
+    const pendingCommand = taskDetail.value.pending_command || ''
+    const riskReason = taskDetail.value.risk_reason || ''
 
     try {
       const updatedTask = await confirmTask(taskDetail.value.id, { approved })
@@ -747,11 +750,11 @@ export function useChatPage() {
       updateTaskSnapshot(updatedTask)
 
       if (approved) {
-        appendAssistantMessage(`任务 ${updatedTask.id} 命令已批准。`)
+        appendAssistantMessage(`[TASK_CONFIRM]\n状态: 已批准\n命令: ${pendingCommand}\n原因: ${riskReason}\n[/TASK_CONFIRM]`)
         connectTaskStream(updatedTask.id)
       } else {
         closeTaskStream()
-        appendAssistantMessage(`任务 ${updatedTask.id} 命令已拒绝。`)
+        appendAssistantMessage(`[TASK_CONFIRM]\n状态: 已拒绝\n命令: ${pendingCommand}\n原因: ${riskReason}\n[/TASK_CONFIRM]`)
         await reloadSidebarData()
       }
     } catch {

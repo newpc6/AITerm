@@ -323,6 +323,12 @@ type StructuredInputResponse = {
   answer: string
 }
 
+type TaskConfirmMessage = {
+  status: 'approved' | 'rejected'
+  command: string
+  reason: string
+}
+
 function parseStructuredInputRequest(content: string): StructuredInputRequest | null {
   if (content.startsWith('[INPUT_REQUEST]') && content.includes('[/INPUT_REQUEST]')) {
     const questionMatch = content.match(/问题: (.+)/)
@@ -341,7 +347,10 @@ function parseStructuredInputRequest(content: string): StructuredInputRequest | 
     }
   }
 
-  if (content.includes('需要您的输入') || content.includes('需要人工确认')) {
+  if (content.includes('需要您的输入') || content.includes('需要输入')) {
+    if (content.includes('需要人工确认') || content.includes('需要确认')) {
+      return null
+    }
     const lines = content.split('\n')
     let question = ''
     let options: string[] = []
@@ -388,6 +397,48 @@ function parseStructuredInputResponse(content: string): StructuredInputResponse 
     options,
     answer: answerMatch?.[1] || '',
   }
+}
+
+function parseTaskConfirmMessage(content: string): TaskConfirmMessage | null {
+  if (content.startsWith('[TASK_CONFIRM]') && content.includes('[/TASK_CONFIRM]')) {
+    const statusMatch = content.match(/状态: (.+)/)
+    const commandMatch = content.match(/命令: (.+)/)
+    const reasonMatch = content.match(/原因: (.+)/)
+    
+    const statusText = statusMatch?.[1]?.trim() || ''
+    const status = statusText === '已批准' ? 'approved' : 'rejected'
+    
+    return {
+      status,
+      command: commandMatch?.[1]?.trim() || '',
+      reason: reasonMatch?.[1]?.trim() || '',
+    }
+  }
+  
+  if (content.includes('需要人工确认') || content.includes('需要确认')) {
+    const lines = content.split('\n')
+    let command = ''
+    
+    for (const line of lines) {
+      if (line.includes('Remove-Item') || line.includes('rm ') || line.includes('del ') || line.includes('delete')) {
+        command = line.trim()
+        break
+      }
+      const stepMatch = line.match(/^\d+\.\s*(.+)$/)
+      if (stepMatch) {
+        command = stepMatch[1].trim()
+        break
+      }
+    }
+    
+    return {
+      status: 'approved',
+      command,
+      reason: '',
+    }
+  }
+  
+  return null
 }
 
 watch(
@@ -553,6 +604,26 @@ onMounted(async () => {
             <div class="message__input-answer">
               <span class="message__input-answer-label">您的回答：</span>
               <span class="message__input-answer-value">{{ taskUserInput }}</span>
+            </div>
+          </div>
+          <div v-else-if="parseTaskConfirmMessage(message.content)"
+            class="message__task-card"
+            :class="parseTaskConfirmMessage(message.content)?.status === 'approved' ? 'message__task-card--approved' : 'message__task-card--rejected'">
+            <div class="message__task-card-header">
+              <div class="message__task-card-title">
+                {{ parseTaskConfirmMessage(message.content)?.status === 'approved' ? '已批准' : '已拒绝' }}
+              </div>
+              <span class="message__task-confirm-status">
+                {{ parseTaskConfirmMessage(message.content)?.status === 'approved' ? '✓' : '✗' }}
+              </span>
+            </div>
+            <div v-if="parseTaskConfirmMessage(message.content)?.command" class="message__task-confirm-command">
+              <div class="message__task-confirm-label">命令：</div>
+              <pre class="message__code"><code>{{ parseTaskConfirmMessage(message.content)?.command }}</code></pre>
+            </div>
+            <div v-if="parseTaskConfirmMessage(message.content)?.reason" class="message__task-confirm-reason">
+              <div class="message__task-confirm-label">风险说明：</div>
+              <div class="message__task-confirm-reason-text">{{ parseTaskConfirmMessage(message.content)?.reason }}</div>
             </div>
           </div>
           <div v-else-if="parseStructuredInputRequest(message.content)"
@@ -872,6 +943,16 @@ onMounted(async () => {
   background: rgba(120, 53, 15, 0.24);
 }
 
+.message__task-card--approved {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+.message__task-card--rejected {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
 .message__task-card--info {
   background: rgba(55, 65, 81, 0.26);
 }
@@ -1128,6 +1209,39 @@ onMounted(async () => {
   background: rgba(96, 165, 250, 0.12);
   border-color: rgba(96, 165, 250, 0.3);
   opacity: 1;
+}
+
+.message__task-confirm-status {
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.message__task-card--approved .message__task-confirm-status {
+  color: #22c55e;
+}
+
+.message__task-card--rejected .message__task-confirm-status {
+  color: #ef4444;
+}
+
+.message__task-confirm-command {
+  margin-top: 10px;
+}
+
+.message__task-confirm-label {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 6px;
+}
+
+.message__task-confirm-reason {
+  margin-top: 10px;
+}
+
+.message__task-confirm-reason-text {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.5;
 }
 
 @media (max-width: 720px) {
