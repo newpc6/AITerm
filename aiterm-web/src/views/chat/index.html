@@ -38,7 +38,7 @@
         <div v-for="group in chatGroups" :key="group.key" class="chat-sidebar__group">
           <div class="chat-sidebar__group-title">{{ group.label }}</div>
           <div v-for="item in group.items" :key="item.id" class="chat-sidebar__item"
-            :class="{ 'is-active': item.id === conversationId }" @click="switchChat(item.id)">
+            :class="{ 'is-active': item.id === chatId }" @click="switchChat(item.id)">
             <div class="chat-sidebar__item-header">
               <div class="chat-sidebar__item-title">{{ item.title || '新对话' }}</div>
               <el-button text @click.stop="removeChatItem(item.id)">删除</el-button>
@@ -69,20 +69,21 @@
         <div class="chat-main__meta">
           <span>{{ selectedNode?.name || '未选择节点' }}</span>
           <span>{{ selectedModel?.name || '未选择模型' }}</span>
-          <span>会话 {{ conversationId || 'new' }}</span>
-          <span v-if="activeTaskId">任务 {{ activeTaskId }}</span>
+          <span>会话 {{ chatId || 'new' }}</span>
         </div>
       </div>
 
       <div class="chat-main__messages">
         <MessageList :messages="messages" :actionable-message-ids="actionableAssistantMessageIds"
           :assistant-label="assistantLabel" :assistant-title="assistantTitle"
-          :retryable-message-ids="retryableAssistantMessageIds" :task-approval-hint="taskRiskReason"
-          :task-approval-loading="confirming" :task-approval-message-id="taskApprovalMessageId" :user-label="userLabel"
-          :user-title="userTitle" :streaming-message-id="streamingMessageId" :can-stop-task="canStopTask"
-          :task-input-request="taskInputRequest" :task-input-loading="loading" :task-user-input="taskUserInput"
-          @copy="copyMessage" @retry="retryAssistantMessage" @task-confirm="confirmActiveTask"
-          @stop-task="stopActiveTask" @submit-task-input="submitTaskInput" />
+          :retryable-message-ids="retryableAssistantMessageIds" :execute-approval-hint="executeRiskReason"
+          :execute-approval-loading="confirming" :execute-approval-message-id="executeApprovalMessageId"
+          :user-label="userLabel" :user-title="userTitle" :streaming-message-id="streamingMessageId"
+          :is-reasoning-active="isReasoningActive"
+          :can-stop-execute="canStopExecute" :execute-input-request="executeInputRequest"
+          :execute-input-loading="loading" :execute-user-input="executeUserInput" @copy="copyMessage"
+          @retry="retryAssistantMessage" @execute-confirm="confirmActiveExecute" @stop-execute="stopActiveExecute"
+          @submit-execute-input="submitExecuteInput" />
       </div>
 
       <ChatComposer v-model="input" :chat-streaming="chatStreaming" :loading="loading" @submit="submitMessage"

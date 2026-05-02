@@ -26,6 +26,13 @@ class MessageModel(Base):
             except:
                 extra_dict = {}
 
+        created_at_str = None
+        if self.created_at:
+            dt = self.created_at
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            created_at_str = dt.isoformat()
+
         return {
             "id": str(self.id),
             "chat_id": str(self.chat_id),
@@ -33,7 +40,7 @@ class MessageModel(Base):
             "type": self.type,
             "content": self.content,
             "metadata": extra_dict,
-            "created_at": self.created_at.isoformat() if self.created_at else None
+            "created_at": created_at_str
         }
 
     def set_extra(self, extra_dict: dict):

@@ -1,8 +1,26 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { CopyDocument, RefreshRight, Loading, VideoPause, SuccessFilled } from '@element-plus/icons-vue'
 
-import MarkdownContent from '@/components/MarkdownContent.vue'
+import {
+  MessageItem,
+  MessageContent,
+  MessageLoading,
+  ExecutePlanCard,
+  ExecuteStepCard,
+  ExecuteInputCard,
+  ExecuteApprovalCard,
+  ExecuteApprovedCard,
+  ExecuteInfoCard,
+} from './messages'
+import {
+  getMessageKind,
+  parseUserInputResponse,
+  parseStructuredInputResponse,
+  isExecutePlanMessage,
+  getExecutePlanIntro,
+  getExecutePlanCode,
+  isInputRequestMessage,
+} from './useMessageParser'
 import type { ChatMessage } from '@/types/chat'
 
 const props = defineProps<{
@@ -11,40 +29,37 @@ const props = defineProps<{
   assistantTitle?: string
   messages: ChatMessage[]
   retryableMessageIds?: string[]
-  taskApprovalHint?: string
-  taskApprovalLoading?: boolean
-  taskApprovalMessageId?: string
+  executeApprovalHint?: string
+  executeApprovalLoading?: boolean
+  executeApprovalMessageId?: string
   userLabel?: string
   userTitle?: string
   streamingMessageId?: string
+  isReasoningActive?: boolean
   analyzing?: boolean
-  canStopTask?: boolean
-  taskInputRequest?: {
+  canStopExecute?: boolean
+  executeInputRequest?: {
     question: string
     input_type: 'text' | 'select' | 'multiselect'
     options?: string[]
     placeholder?: string
   }
-  taskInputMessageId?: string
-  taskInputLoading?: boolean
-  taskUserInput?: string
+  executeInputMessageId?: string
+  executeInputLoading?: boolean
+  executeUserInput?: string
 }>()
 
 const emit = defineEmits<{
   copy: [messageId: string]
   retry: [messageId: string]
-  taskConfirm: [approved: boolean]
-  stopTask: []
-  submitTaskInput: [value: string]
+  executeConfirm: [approved: boolean]
+  stopExecute: []
+  submitExecuteInput: [value: string]
 }>()
 
 const containerRef = ref<HTMLDivElement | null>(null)
 const autoScrollEnabled = ref(true)
 const scrollThreshold = 32
-const userInputValue = ref('')
-const selectedOptions = ref<string[]>([])
-const otherInputValue = ref('')
-const OTHER_OPTION = '__other__'
 
 const actionableMessageIdSet = computed(() => new Set(props.actionableMessageIds ?? []))
 const retryableMessageIdSet = computed(() => new Set(props.retryableMessageIds ?? []))
@@ -54,228 +69,20 @@ const messageSignature = computed(() =>
     Array.from(actionableMessageIdSet.value).join(','),
     Array.from(retryableMessageIdSet.value).join(','),
     props.streamingMessageId,
-    props.taskInputRequest?.question,
+    props.executeInputRequest?.question,
   ].join('\n<aiterm-state>\n'),
 )
 
-watch(
-  () => props.taskInputRequest,
-  (newVal) => {
-    if (newVal) {
-      userInputValue.value = ''
-      selectedOptions.value = []
-      otherInputValue.value = ''
-    }
-  },
-  { immediate: true },
-)
-
-function formatMessageTime(value: string) {
-  const parsed = new Date(value)
-  if (Number.isNaN(parsed.getTime())) {
-    return '--:--'
-  }
-
-  const year = parsed.getFullYear()
-  const month = `${parsed.getMonth() + 1}`.padStart(2, '0')
-  const day = `${parsed.getDate()}`.padStart(2, '0')
-  const hours = `${parsed.getHours()}`.padStart(2, '0')
-  const minutes = `${parsed.getMinutes()}`.padStart(2, '0')
-  return `${year}-${month}-${day} ${hours}:${minutes}`
-}
-
-function canRetry(message: ChatMessage) {
-  return message.role === 'assistant' && retryableMessageIdSet.value.has(message.id)
-}
-
-function canShowActions(message: ChatMessage) {
-  return message.role === 'assistant' && actionableMessageIdSet.value.has(message.id) && !!message.content
-}
-
-function canShowTaskApproval(message: ChatMessage) {
-  return message.role === 'assistant' && !!message.content && props.taskApprovalMessageId === message.id
+function canShowExecuteApproval(message: ChatMessage) {
+  return message.role === 'assistant' && !!message.content && props.executeApprovalMessageId === message.id
 }
 
 function isStreaming(message: ChatMessage) {
   return props.streamingMessageId === message.id
 }
 
-function isTaskPlanMessage(message: ChatMessage) {
-  return message.role === 'assistant' && message.content.includes('任务计划如下') && message.content.includes('\n')
-}
-
-type TaskStructuredMessage = {
-  kind: 'plan' | 'step-start' | 'step-result' | 'summary' | 'repair' | 'info' | 'analyzing' | 'input-request' | 'approved' | 'output' | 'error' | 'analysis' | 'retry'
-  title?: string
-  stepLabel?: string
-  body?: string
-  command?: string
-  question?: string
-  options?: string[]
-}
-
-type UserInputResponse = {
-  question: string
-  answer: string
-}
-
-function getMessageKind(message: ChatMessage): TaskStructuredMessage | null {
-  if (message.type) {
-    switch (message.type) {
-      case 'plan':
-        return { kind: 'plan', title: '步骤规划', body: message.content.replace(/^步骤规划\n?/, '') }
-      case 'step':
-        const stepMatch = message.content.match(/^开始执行第\s*(\d+)\s*步[:：]\s*(.+?)\n命令[:：]\s*([\s\S]+)$/)
-        if (stepMatch) {
-          return {
-            kind: 'step-start',
-            stepLabel: `第 ${stepMatch[1]} 步`,
-            title: stepMatch[2].trim(),
-            command: stepMatch[3].trim(),
-          }
-        }
-        return { kind: 'step-start', title: '执行中', body: message.content }
-      case 'step_result':
-        return { kind: 'step-result', body: message.content }
-      case 'output':
-        return { kind: 'output', body: message.content }
-      case 'error':
-        return { kind: 'error', title: '错误', body: message.content }
-      case 'summary':
-        return { kind: 'summary', title: '总结', body: message.content }
-      case 'analysis':
-        return { kind: 'analysis', title: '分析', body: message.content }
-      case 'retry':
-        return { kind: 'retry', title: '重试', body: message.content }
-      case 'approval':
-        return { kind: 'info', title: '需要确认', body: message.content }
-      case 'approved':
-        return { kind: 'approved', title: '已批准', body: message.content.replace(/^已批准\n?/, '') }
-      case 'rejected':
-        return { kind: 'info', title: '已拒绝', body: message.content }
-      case 'input':
-        return { kind: 'input-request', question: message.content.replace(/^需要您的输入[:：]\s*/, '') }
-      case 'input_response':
-        return { kind: 'input-request', question: message.content }
-      default:
-        break
-    }
-  }
-  return parseTaskStructuredMessage(message.content)
-}
-
-function parseUserInputResponse(content: string): UserInputResponse | null {
-  const normalized = content.trim()
-  if (!normalized) {
-    return null
-  }
-
-  const match = normalized.match(/^用户输入[:：]\s*(.+)$/)
-  if (match) {
-    return {
-      question: '',
-      answer: match[1].trim(),
-    }
-  }
-
-  return null
-}
-
-function parseTaskStructuredMessage(content: string): TaskStructuredMessage | null {
-  const normalized = content.trim()
-  if (!normalized) {
-    return null
-  }
-
-  if (normalized.startsWith('步骤规划')) {
-    const body = normalized.replace(/^步骤规划\n?/, '')
-    return {
-      kind: 'plan',
-      title: '步骤规划',
-      body: body,
-    }
-  }
-
-  if (normalized.includes('正在') && normalized.includes('执行')) {
-    return {
-      kind: 'step-start',
-      title: '执行中',
-      body: normalized,
-    }
-  }
-
-  if (normalized.startsWith('任务计划如下：')) {
-    return {
-      kind: 'plan',
-      title: '执行计划',
-      body: normalized.replace(/^任务计划如下：\s*/, ''),
-    }
-  }
-
-  const stepStartMatch = normalized.match(/^开始执行第\s*(\d+)\s*步[:：]\s*(.+?)\n命令[:：]\s*([\s\S]+)$/)
-  if (stepStartMatch) {
-    return {
-      kind: 'step-start',
-      stepLabel: `第 ${stepStartMatch[1]} 步`,
-      title: stepStartMatch[2].trim(),
-      command: stepStartMatch[3].trim(),
-    }
-  }
-
-  const stepResultMatch = normalized.match(/^第\s*(\d+)\s*步执行结果[:：]\s*\n?([\s\S]+)$/)
-  if (stepResultMatch) {
-    return {
-      kind: 'step-result',
-      stepLabel: `第 ${stepResultMatch[1]} 步结果`,
-      body: stepResultMatch[2].trim(),
-    }
-  }
-
-  if (normalized.startsWith('任务最终结果：')) {
-    return {
-      kind: 'summary',
-      title: '最终结论',
-      body: normalized.replace(/^任务最终结果：\s*/, ''),
-    }
-  }
-
-  if (normalized.startsWith('失败复盘：') || normalized.includes('自动复盘')) {
-    return {
-      kind: 'repair',
-      title: '自动复盘',
-      body: normalized,
-    }
-  }
-
-  if (normalized.includes('需要人工确认')) {
-    return {
-      kind: 'info',
-      title: '操作确认',
-      body: normalized,
-    }
-  }
-
-  if (normalized.startsWith('已批准')) {
-    const bodyMatch = normalized.match(/^已批准\n命令[:：]\s*([\s\S]+)$/)
-    return {
-      kind: 'approved',
-      title: '已批准',
-      body: bodyMatch ? bodyMatch[1].trim() : normalized.replace(/^已批准\n?/, ''),
-    }
-  }
-
-  return null
-}
-
-function getTaskPlanIntro(content: string) {
-  const parts = content.split('\n')
-  return parts.shift()?.trim() ?? content.trim()
-}
-
-function getTaskPlanCode(content: string) {
-  const parts = content.split('\n')
-  parts.shift()
-  return parts.join('\n').trim()
+function checkInputRequestMessage(message: ChatMessage) {
+  return isInputRequestMessage(message, props.executeInputRequest, props.executeUserInput)
 }
 
 function isNearBottom(element: HTMLDivElement) {
@@ -296,204 +103,16 @@ function scrollToBottom() {
   containerRef.value.scrollTop = containerRef.value.scrollHeight
 }
 
-function handleStopTask() {
-  emit('stopTask')
+function handleStopExecute() {
+  emit('stopExecute')
 }
 
-function handleSubmitInput() {
-  let value = ''
-  if (props.taskInputRequest?.input_type === 'multiselect') {
-    const actualOptions = selectedOptions.value.filter(opt => opt !== OTHER_OPTION)
-    if (selectedOptions.value.includes(OTHER_OPTION) && otherInputValue.value.trim()) {
-      actualOptions.push(otherInputValue.value.trim())
-    }
-    value = actualOptions.join(', ')
-  } else if (props.taskInputRequest?.input_type === 'select') {
-    if (userInputValue.value === OTHER_OPTION) {
-      value = otherInputValue.value.trim()
-    } else {
-      value = userInputValue.value
-    }
-  } else {
-    value = userInputValue.value
-  }
-
-  if (!value.trim()) {
-    return
-  }
-
-  emit('submitTaskInput', value)
+function handleSubmitInput(value: string) {
+  emit('submitExecuteInput', value)
 }
 
-function handleSelectOption(option: string) {
-  userInputValue.value = option
-}
-
-function toggleMultiOption(option: string) {
-  const index = selectedOptions.value.indexOf(option)
-  if (index >= 0) {
-    selectedOptions.value.splice(index, 1)
-  } else {
-    selectedOptions.value.push(option)
-  }
-}
-
-function isOptionSelected(option: string) {
-  return selectedOptions.value.includes(option)
-}
-
-function isOtherSelected() {
-  return userInputValue.value === OTHER_OPTION
-}
-
-function isOtherSelectedInMulti() {
-  return selectedOptions.value.includes(OTHER_OPTION)
-}
-
-function getDisplayOptions(options?: string[]) {
-  if (!options) return []
-  return [...options, OTHER_OPTION]
-}
-
-function isOptionInAnswer(option: string, answer: string, inputType?: string) {
-  if (!answer) return false
-  if (inputType === 'select') {
-    return answer.trim() === option.trim()
-  }
-  const selectedItems = answer.split(',').map(s => s.trim()).filter(Boolean)
-  return selectedItems.includes(option.trim())
-}
-
-type StructuredInputRequest = {
-  question: string
-  inputType: string
-  options: string[]
-  placeholder: string
-}
-
-type StructuredInputResponse = {
-  question: string
-  inputType: string
-  options: string[]
-  answer: string
-}
-
-type TaskConfirmMessage = {
-  status: 'approved' | 'rejected'
-  command: string
-  reason: string
-}
-
-function parseStructuredInputRequest(content: string): StructuredInputRequest | null {
-  if (content.startsWith('[INPUT_REQUEST]') && content.includes('[/INPUT_REQUEST]')) {
-    const questionMatch = content.match(/问题: (.+)/)
-    const typeMatch = content.match(/类型: (.+)/)
-    const optionsMatch = content.match(/选项: (.+)/)
-    const placeholderMatch = content.match(/占位符: (.+)/)
-
-    const optionsStr = optionsMatch?.[1] || ''
-    const options = optionsStr ? optionsStr.split('|||').filter(Boolean) : []
-
-    return {
-      question: questionMatch?.[1] || '',
-      inputType: typeMatch?.[1] || 'text',
-      options,
-      placeholder: placeholderMatch?.[1] || '',
-    }
-  }
-
-  if (content.includes('需要您的输入') || content.includes('需要输入')) {
-    if (content.includes('需要人工确认') || content.includes('需要确认')) {
-      return null
-    }
-    const lines = content.split('\n')
-    let question = ''
-    let options: string[] = []
-
-    for (const line of lines) {
-      const questionMatch = line.match(/[:：]\s*(.+)$/)
-      if (questionMatch && !line.includes('选项')) {
-        question = questionMatch[1].trim()
-      }
-      const optionsMatch = line.match(/选项[:：]\s*(.+)$/)
-      if (optionsMatch) {
-        const optionsText = optionsMatch[1].trim()
-        options = optionsText.split(/,\s+/).map(s => s.trim()).filter(Boolean)
-      }
-    }
-
-    return {
-      question: question || content,
-      inputType: options.length > 0 ? 'select' : 'text',
-      options,
-      placeholder: '',
-    }
-  }
-
-  return null
-}
-
-function parseStructuredInputResponse(content: string): StructuredInputResponse | null {
-  if (!content.startsWith('[INPUT_RESPONSE]') || !content.includes('[/INPUT_RESPONSE]')) {
-    return null
-  }
-
-  const questionMatch = content.match(/问题: (.+)/)
-  const typeMatch = content.match(/类型: (.+)/)
-  const optionsMatch = content.match(/选项: (.+)/)
-  const answerMatch = content.match(/回答: (.+)/)
-
-  const optionsStr = optionsMatch?.[1] || ''
-  const options = optionsStr ? optionsStr.split('|||').filter(Boolean) : []
-
-  return {
-    question: questionMatch?.[1] || '',
-    inputType: typeMatch?.[1] || 'text',
-    options,
-    answer: answerMatch?.[1] || '',
-  }
-}
-
-function parseTaskConfirmMessage(content: string): TaskConfirmMessage | null {
-  if (content.startsWith('[TASK_CONFIRM]') && content.includes('[/TASK_CONFIRM]')) {
-    const statusMatch = content.match(/状态: (.+)/)
-    const commandMatch = content.match(/命令: (.+)/)
-    const reasonMatch = content.match(/原因: (.+)/)
-
-    const statusText = statusMatch?.[1]?.trim() || ''
-    const status = statusText === '已批准' ? 'approved' : 'rejected'
-
-    return {
-      status,
-      command: commandMatch?.[1]?.trim() || '',
-      reason: reasonMatch?.[1]?.trim() || '',
-    }
-  }
-
-  if (content.includes('需要人工确认') || content.includes('需要确认')) {
-    const lines = content.split('\n')
-    let command = ''
-
-    for (const line of lines) {
-      if (line.includes('Remove-Item') || line.includes('rm ') || line.includes('del ') || line.includes('delete')) {
-        command = line.trim()
-        break
-      }
-      const stepMatch = line.match(/^\d+\.\s*(.+)$/)
-      if (stepMatch) {
-        command = stepMatch[1].trim()
-        break
-      }
-    }
-
-    return {
-      status: 'approved',
-      command,
-      reason: '',
-    }
-  }
-
-  return null
+function handleExecuteConfirm(approved: boolean) {
+  emit('executeConfirm', approved)
 }
 
 watch(
@@ -516,332 +135,56 @@ onMounted(async () => {
 
 <template>
   <div ref="containerRef" class="chat-log" @scroll="handleScroll">
-    <div v-for="message in messages" :key="message.id" class="message-row" :class="`message-row--${message.role}`">
-      <div class="message" :class="`message--${message.role}`">
-        <div class="message__header">
-          <div class="message__role"
-            :title="message.role === 'user' ? (userTitle || userLabel || '用户') : (assistantTitle || assistantLabel)">
-            {{ message.role === 'user' ? (userLabel || '用户') : assistantLabel }}
-          </div>
-          <div class="message__time">{{ formatMessageTime(message.createdAt) }}</div>
-        </div>
-        <div v-if="isStreaming(message) && !message.content.trim()" class="message__loading">
-          <el-icon class="message__loading-icon is-loading">
-            <Loading />
-          </el-icon>
-          <!-- <span class="message__loading-text">思考中...</span> -->
-        </div>
+    <MessageItem v-for="message in messages" :key="message.id" :message="message" :user-label="userLabel"
+      :user-title="userTitle" :assistant-label="assistantLabel" :assistant-title="assistantTitle"
+      :actionable-message-ids="actionableMessageIds" :retryable-message-ids="retryableMessageIds"
+      :streaming-message-id="streamingMessageId" @copy="emit('copy', $event)" @retry="emit('retry', $event)">
+      <template #default="{ isStreaming: isMsgStreaming }">
+        <MessageLoading v-if="isMsgStreaming && !message.content.trim()" />
         <template v-else>
-          <div
-            v-if="taskInputRequest && (message.content.includes('需要您的输入') || message.content === '等待用户输入...' || message.content.startsWith('[INPUT_REQUEST]')) && !taskUserInput"
-            class="message__task-card message__task-card--input">
-            <div class="message__task-card-header">
-              <div class="message__task-card-title">需要输入</div>
-              <el-icon v-if="isStreaming(message)" class="message__task-card-loading is-loading">
-                <Loading />
-              </el-icon>
-            </div>
-            <div v-if="taskInputRequest.question" class="message__input-question">{{ taskInputRequest.question }}</div>
-            <div v-if="taskInputRequest.input_type === 'text'" class="message__input-form-inline">
-              <div class="message__input-row">
-                <el-input v-model="userInputValue" :placeholder="taskInputRequest.placeholder || '请输入...'"
-                  :disabled="taskInputLoading" class="message__input-field" @keyup.enter="handleSubmitInput" />
-                <el-button type="primary" :loading="taskInputLoading" :disabled="!userInputValue.trim()"
-                  @click="handleSubmitInput">提交</el-button>
-              </div>
-            </div>
-            <div v-else-if="taskInputRequest.input_type === 'select'" class="message__input-form-inline">
-              <div class="message__input-options-form">
-                <div v-for="option in getDisplayOptions(taskInputRequest.options)" :key="option"
-                  class="message__input-option-item" :class="{ 'is-selected': userInputValue === option }"
-                  @click="handleSelectOption(option)">
-                  <span class="message__input-option-radio">
-                    <span v-if="userInputValue === option" class="message__input-option-radio-inner"></span>
-                  </span>
-                  <span class="message__input-option-text">{{ option === OTHER_OPTION ? '其他' : option }}</span>
-                </div>
-              </div>
-              <div v-if="isOtherSelected()" class="message__input-row message__input-row--options">
-                <el-input v-model="otherInputValue" placeholder="请输入自定义内容" :disabled="taskInputLoading"
-                  class="message__input-field" @keyup.enter="handleSubmitInput" />
-                <el-button type="primary" :loading="taskInputLoading" :disabled="!otherInputValue.trim()"
-                  @click="handleSubmitInput">提交</el-button>
-              </div>
-              <div v-else class="message__input-row message__input-row--options">
-                <el-button type="primary" :loading="taskInputLoading" :disabled="!userInputValue"
-                  @click="handleSubmitInput">提交</el-button>
-              </div>
-            </div>
-            <div v-else-if="taskInputRequest.input_type === 'multiselect'" class="message__input-form-inline">
-              <div class="message__input-options-form">
-                <div v-for="option in getDisplayOptions(taskInputRequest.options)" :key="option"
-                  class="message__input-option-item" :class="{ 'is-selected': isOptionSelected(option) }"
-                  @click="toggleMultiOption(option)">
-                  <span class="message__input-option-checkbox">
-                    <span v-if="isOptionSelected(option)" class="message__input-option-checkbox-inner">✓</span>
-                  </span>
-                  <span class="message__input-option-text">{{ option === OTHER_OPTION ? '其他' : option }}</span>
-                </div>
-              </div>
-              <div v-if="isOtherSelectedInMulti()" class="message__input-row message__input-row--options">
-                <el-input v-model="otherInputValue" placeholder="请输入自定义内容" :disabled="taskInputLoading"
-                  class="message__input-field" @keyup.enter="handleSubmitInput" />
-              </div>
-              <div class="message__input-row message__input-row--options">
-                <el-button type="primary" :loading="taskInputLoading"
-                  :disabled="selectedOptions.length === 0 || (isOtherSelectedInMulti() && !otherInputValue.trim())"
-                  @click="handleSubmitInput">提交选择</el-button>
-              </div>
-            </div>
+          <ExecuteInputCard v-if="checkInputRequestMessage(message)" :question="executeInputRequest?.question"
+            :input-type="executeInputRequest?.input_type" :options="executeInputRequest?.options"
+            :placeholder="executeInputRequest?.placeholder" :loading="executeInputLoading"
+            @submit="handleSubmitInput" />
+          <ExecuteInputCard v-else-if="parseStructuredInputResponse(message.content)" answered
+            :question="parseStructuredInputResponse(message.content)?.question"
+            :input-type="parseStructuredInputResponse(message.content)?.inputType"
+            :options="parseStructuredInputResponse(message.content)?.options"
+            :answer="parseStructuredInputResponse(message.content)?.answer" />
+          <ExecuteInputCard v-else-if="parseUserInputResponse(message.content)" answered
+            :answer="parseUserInputResponse(message.content)?.answer" />
+          <ExecuteInfoCard v-else-if="getMessageKind(message)?.kind === 'analyzing'" kind="info"
+            :title="getMessageKind(message)?.title" :body="getMessageKind(message)?.body"
+            :is-streaming="isMsgStreaming" />
+          <ExecutePlanCard v-else-if="getMessageKind(message)?.kind === 'plan'" :title="getMessageKind(message)?.title"
+            :body="getMessageKind(message)?.body" />
+          <ExecuteStepCard v-else-if="getMessageKind(message)?.kind === 'step-start'"
+            :step-label="getMessageKind(message)?.stepLabel" :title="getMessageKind(message)?.title"
+            :command="getMessageKind(message)?.command" :body="getMessageKind(message)?.body"
+            :is-streaming="isMsgStreaming" :can-stop-execute="canStopExecute" @stop-execute="handleStopExecute" />
+          <ExecuteInfoCard v-else-if="getMessageKind(message)?.kind === 'step-result'" kind="result"
+            :title="getMessageKind(message)?.stepLabel" :body="getMessageKind(message)?.body" />
+          <ExecuteInfoCard v-else-if="getMessageKind(message)?.kind === 'summary'" kind="summary"
+            :title="getMessageKind(message)?.title" :body="getMessageKind(message)?.body" />
+          <ExecuteInfoCard v-else-if="getMessageKind(message)?.kind === 'repair'" kind="repair"
+            :title="getMessageKind(message)?.title" :body="getMessageKind(message)?.body" />
+          <ExecuteInfoCard v-else-if="getMessageKind(message)?.kind === 'info'" kind="info"
+            :title="getMessageKind(message)?.title" :body="getMessageKind(message)?.body" />
+          <ExecuteApprovedCard v-else-if="getMessageKind(message)?.kind === 'approved'"
+            :title="getMessageKind(message)?.title" :body="getMessageKind(message)?.body" />
+          <div v-else-if="isExecutePlanMessage(message)" class="message__content">
+            <span>{{ getExecutePlanIntro(message.content) }}</span>
+            <pre v-if="getExecutePlanCode(message.content)"
+              class="message__code"><code>{{ getExecutePlanCode(message.content) }}</code></pre>
           </div>
-          <div v-else-if="taskUserInput && message.content.startsWith('[INPUT_RESPONSE]')"
-            class="message__task-card message__task-card--input message__task-card--answered">
-            <div class="message__task-card-header">
-              <div class="message__task-card-title">已输入</div>
-            </div>
-            <div class="message__input-question">{{ parseStructuredInputResponse(message.content)?.question }}</div>
-            <div v-if="parseStructuredInputResponse(message.content)?.options?.length"
-              class="message__input-options-readonly">
-              <div class="message__input-options-label">选项：</div>
-              <div class="message__input-options-readonly-list">
-                <div v-for="option in parseStructuredInputResponse(message.content)?.options" :key="option"
-                  class="message__input-option-readonly-item"
-                  :class="{ 'is-selected': isOptionInAnswer(option, parseStructuredInputResponse(message.content)?.answer || '', parseStructuredInputResponse(message.content)?.inputType) }">
-                  <span v-if="parseStructuredInputResponse(message.content)?.inputType === 'select'"
-                    class="message__input-option-radio">
-                    <span
-                      v-if="isOptionInAnswer(option, parseStructuredInputResponse(message.content)?.answer || '', parseStructuredInputResponse(message.content)?.inputType)"
-                      class="message__input-option-radio-inner"></span>
-                  </span>
-                  <span v-else class="message__input-option-checkbox">
-                    <span
-                      v-if="isOptionInAnswer(option, parseStructuredInputResponse(message.content)?.answer || '', parseStructuredInputResponse(message.content)?.inputType)"
-                      class="message__input-option-checkbox-inner">✓</span>
-                  </span>
-                  <span class="message__input-option-text">{{ option }}</span>
-                </div>
-              </div>
-            </div>
-            <div class="message__input-answer">
-              <span class="message__input-answer-label">您的回答：</span>
-              <span class="message__input-answer-value">{{ parseStructuredInputResponse(message.content)?.answer
-              }}</span>
-            </div>
-          </div>
-          <div v-else-if="parseStructuredInputRequest(message.content) && taskUserInput"
-            class="message__task-card message__task-card--input message__task-card--answered">
-            <div class="message__task-card-header">
-              <div class="message__task-card-title">已输入</div>
-            </div>
-            <div class="message__input-question">{{ parseStructuredInputRequest(message.content)?.question }}</div>
-            <div v-if="parseStructuredInputRequest(message.content)?.options?.length"
-              class="message__input-options-readonly">
-              <div class="message__input-options-label">选项：</div>
-              <div class="message__input-options-readonly-list">
-                <div v-for="option in parseStructuredInputRequest(message.content)?.options" :key="option"
-                  class="message__input-option-readonly-item"
-                  :class="{ 'is-selected': isOptionInAnswer(option, taskUserInput, parseStructuredInputRequest(message.content)?.inputType) }">
-                  <span v-if="parseStructuredInputRequest(message.content)?.inputType === 'select'"
-                    class="message__input-option-radio">
-                    <span
-                      v-if="isOptionInAnswer(option, taskUserInput, parseStructuredInputRequest(message.content)?.inputType)"
-                      class="message__input-option-radio-inner"></span>
-                  </span>
-                  <span v-else class="message__input-option-checkbox">
-                    <span
-                      v-if="isOptionInAnswer(option, taskUserInput, parseStructuredInputRequest(message.content)?.inputType)"
-                      class="message__input-option-checkbox-inner">✓</span>
-                  </span>
-                  <span class="message__input-option-text">{{ option }}</span>
-                </div>
-              </div>
-            </div>
-            <div class="message__input-answer">
-              <span class="message__input-answer-label">您的回答：</span>
-              <span class="message__input-answer-value">{{ taskUserInput }}</span>
-            </div>
-          </div>
-          <div v-else-if="parseTaskConfirmMessage(message.content)" class="message__task-card"
-            :class="parseTaskConfirmMessage(message.content)?.status === 'approved' ? 'message__task-card--approved' : 'message__task-card--rejected'">
-            <div class="message__task-card-header">
-              <div class="message__task-card-title">
-                {{ parseTaskConfirmMessage(message.content)?.status === 'approved' ? '已批准' : '已拒绝' }}
-              </div>
-              <span class="message__task-confirm-status">
-                {{ parseTaskConfirmMessage(message.content)?.status === 'approved' ? '✓' : '✗' }}
-              </span>
-            </div>
-            <div v-if="parseTaskConfirmMessage(message.content)?.command" class="message__task-confirm-command">
-              <div class="message__task-confirm-label">命令：</div>
-              <pre class="message__code"><code>{{ parseTaskConfirmMessage(message.content)?.command }}</code></pre>
-            </div>
-            <div v-if="parseTaskConfirmMessage(message.content)?.reason" class="message__task-confirm-reason">
-              <div class="message__task-confirm-label">风险说明：</div>
-              <div class="message__task-confirm-reason-text">{{ parseTaskConfirmMessage(message.content)?.reason }}
-              </div>
-            </div>
-          </div>
-          <div v-else-if="parseStructuredInputRequest(message.content)"
-            class="message__task-card message__task-card--input">
-            <div class="message__task-card-header">
-              <div class="message__task-card-title">需要输入</div>
-            </div>
-            <div class="message__input-question">{{ parseStructuredInputRequest(message.content)?.question }}</div>
-            <div v-if="parseStructuredInputRequest(message.content)?.options?.length"
-              class="message__input-options-readonly">
-              <div class="message__input-options-label">选项：</div>
-              <div class="message__input-options-readonly-list">
-                <div v-for="option in parseStructuredInputRequest(message.content)?.options" :key="option"
-                  class="message__input-option-readonly-item">
-                  <span v-if="parseStructuredInputRequest(message.content)?.inputType === 'select'"
-                    class="message__input-option-radio">
-                  </span>
-                  <span v-else class="message__input-option-checkbox">
-                  </span>
-                  <span class="message__input-option-text">{{ option }}</span>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div v-else-if="parseStructuredInputResponse(message.content)"
-            class="message__task-card message__task-card--input message__task-card--answered">
-            <div class="message__task-card-header">
-              <div class="message__task-card-title">已输入</div>
-            </div>
-            <div class="message__input-question">{{ parseStructuredInputResponse(message.content)?.question }}</div>
-            <div v-if="parseStructuredInputResponse(message.content)?.options?.length"
-              class="message__input-options-readonly">
-              <div class="message__input-options-label">选项：</div>
-              <div class="message__input-options-readonly-list">
-                <div v-for="option in parseStructuredInputResponse(message.content)?.options" :key="option"
-                  class="message__input-option-readonly-item"
-                  :class="{ 'is-selected': isOptionInAnswer(option, parseStructuredInputResponse(message.content)?.answer || '', parseStructuredInputResponse(message.content)?.inputType) }">
-                  <span v-if="parseStructuredInputResponse(message.content)?.inputType === 'select'"
-                    class="message__input-option-radio">
-                    <span
-                      v-if="isOptionInAnswer(option, parseStructuredInputResponse(message.content)?.answer || '', parseStructuredInputResponse(message.content)?.inputType)"
-                      class="message__input-option-radio-inner"></span>
-                  </span>
-                  <span v-else class="message__input-option-checkbox">
-                    <span
-                      v-if="isOptionInAnswer(option, parseStructuredInputResponse(message.content)?.answer || '', parseStructuredInputResponse(message.content)?.inputType)"
-                      class="message__input-option-checkbox-inner">✓</span>
-                  </span>
-                  <span class="message__input-option-text">{{ option }}</span>
-                </div>
-              </div>
-            </div>
-            <div class="message__input-answer">
-              <span class="message__input-answer-label">您的回答：</span>
-              <span class="message__input-answer-value">{{ parseStructuredInputResponse(message.content)?.answer
-                }}</span>
-            </div>
-          </div>
-          <div v-else-if="parseUserInputResponse(message.content)"
-            class="message__task-card message__task-card--input message__task-card--answered">
-            <div class="message__task-card-header">
-              <div class="message__task-card-title">已输入</div>
-            </div>
-            <div class="message__input-question">{{ parseUserInputResponse(message.content)?.question }}</div>
-            <div class="message__input-answer">
-              <span class="message__input-answer-label">您的回答：</span>
-              <span class="message__input-answer-value">{{ parseUserInputResponse(message.content)?.answer }}</span>
-            </div>
-          </div>
-          <div v-else-if="getMessageKind(message)?.kind === 'analyzing'"
-            class="message__task-card message__task-card--analyzing">
-            <div class="message__task-card-header">
-              <div class="message__task-card-title">{{ getMessageKind(message)?.title }}</div>
-              <el-icon v-if="isStreaming(message)" class="message__task-card-loading is-loading">
-                <Loading />
-              </el-icon>
-            </div>
-            <MarkdownContent class="message__content" mode="markdown" :content="getMessageKind(message)?.body || ''" />
-          </div>
-          <div v-else-if="getMessageKind(message)?.kind === 'plan'" class="message__task-card message__task-card--plan">
-            <div class="message__task-card-title">{{ getMessageKind(message)?.title }}</div>
-            <pre class="message__code"><code>{{ getMessageKind(message)?.body }}</code></pre>
-          </div>
-          <div v-else-if="getMessageKind(message)?.kind === 'step-start'"
-            class="message__task-card message__task-card--step">
-            <div class="message__task-card-header">
-              <div class="message__task-card-title">{{ getMessageKind(message)?.stepLabel ||
-                getMessageKind(message)?.title }}</div>
-              <div class="message__task-card-actions">
-                <el-icon v-if="isStreaming(message)" class="message__task-card-loading is-loading">
-                  <Loading />
-                </el-icon>
-                <el-button v-if="isStreaming(message) && canStopTask" type="danger" size="small" :icon="VideoPause"
-                  @click="handleStopTask">
-                  停止
-                </el-button>
-              </div>
-            </div>
-            <div v-if="getMessageKind(message)?.title && getMessageKind(message)?.stepLabel"
-              class="message__task-card-subtitle">{{ getMessageKind(message)?.title }}</div>
-            <pre v-if="getMessageKind(message)?.command" class="message__code"><code>{{
-              getMessageKind(message)?.command }}</code></pre>
-            <MarkdownContent v-else class="message__content" mode="markdown"
-              :content="getMessageKind(message)?.body || ''" />
-          </div>
-          <div v-else-if="getMessageKind(message)?.kind === 'step-result'"
-            class="message__task-card message__task-card--result">
-            <div class="message__task-card-title">{{ getMessageKind(message)?.stepLabel }}</div>
-            <MarkdownContent class="message__content" mode="markdown" :content="getMessageKind(message)?.body || ''" />
-          </div>
-          <div v-else-if="getMessageKind(message)?.kind === 'summary'"
-            class="message__task-card message__task-card--summary">
-            <div class="message__task-card-title">{{ getMessageKind(message)?.title }}</div>
-            <MarkdownContent class="message__content" mode="markdown" :content="getMessageKind(message)?.body || ''" />
-          </div>
-          <div v-else-if="getMessageKind(message)?.kind === 'repair'"
-            class="message__task-card message__task-card--repair">
-            <div class="message__task-card-title">{{ getMessageKind(message)?.title }}</div>
-            <MarkdownContent class="message__content" mode="markdown" :content="getMessageKind(message)?.body || ''" />
-          </div>
-          <div v-else-if="getMessageKind(message)?.kind === 'info'" class="message__task-card message__task-card--info">
-            <div class="message__task-card-title">{{ getMessageKind(message)?.title }}</div>
-            <MarkdownContent class="message__content" mode="markdown" :content="getMessageKind(message)?.body || ''" />
-          </div>
-          <div v-else-if="getMessageKind(message)?.kind === 'approved'"
-            class="message__task-card message__task-card--approved">
-            <div class="message__task-card-header">
-              <div class="message__task-card-title">
-                <el-icon class="message__task-card-icon--success">
-                  <SuccessFilled />
-                </el-icon>
-                {{ getMessageKind(message)?.title }}
-              </div>
-            </div>
-            <pre class="message__code"><code>{{ getMessageKind(message)?.body }}</code></pre>
-          </div>
-          <div v-else-if="isTaskPlanMessage(message)" class="message__content">
-            <MarkdownContent :content="getTaskPlanIntro(message.content)" />
-            <pre v-if="getTaskPlanCode(message.content)" class="message__code"><code>{{ getTaskPlanCode(message.content) }}</code>
-  </pre>
-          </div>
-          <div v-else class="message__content-wrapper">
-            <MarkdownContent class="message__content" :mode="message.role === 'assistant' ? 'markdown' : 'auto'"
-              :content="message.content" />
-            <el-icon v-if="isStreaming(message)" class="message__inline-loading is-loading">
-              <Loading />
-            </el-icon>
-          </div>
+          <MessageContent v-else :content="message.content" :role="message.role" :is-streaming="isMsgStreaming"
+            :is-reasoning-active="isMsgStreaming && isReasoningActive" />
         </template>
-        <div v-if="canShowTaskApproval(message)" class="message__task-approval">
-          <p class="message__task-approval-hint">{{ taskApprovalHint || '该任务需要人工确认后才会继续执行。' }}</p>
-          <div class="message__task-approval-actions">
-            <el-button type="primary" :loading="taskApprovalLoading" @click="emit('taskConfirm', true)">批准执行</el-button>
-            <el-button :disabled="taskApprovalLoading" @click="emit('taskConfirm', false)">拒绝</el-button>
-          </div>
-        </div>
-        <div v-if="canShowActions(message)" class="message__actions">
-          <el-button text circle :icon="CopyDocument" title="复制" @click="emit('copy', message.id)" />
-          <el-button v-if="canRetry(message)" text circle :icon="RefreshRight" title="重答"
-            @click="emit('retry', message.id)" />
-        </div>
-      </div>
-    </div>
+
+        <ExecuteApprovalCard v-if="canShowExecuteApproval(message)" :hint="executeApprovalHint"
+          :loading="executeApprovalLoading" @confirm="handleExecuteConfirm" />
+      </template>
+    </MessageItem>
   </div>
 </template>
 
@@ -856,207 +199,9 @@ onMounted(async () => {
   padding-right: 6px;
 }
 
-.message-row {
-  display: flex;
-  align-items: flex-start;
-}
-
-.message-row--user {
-  justify-content: flex-end;
-}
-
-.message-row--user .message {
-  max-width: min(84%, 920px);
-}
-
-.message-row--assistant .message {
-  max-width: min(92%, 1040px);
-}
-
-.message {
-  width: fit-content;
-  padding: 18px 20px;
-  border-radius: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(12px);
-}
-
-.message__header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.message--user {
-  background: linear-gradient(135deg, rgba(0, 113, 227, 0.3), rgba(88, 86, 214, 0.24));
-}
-
-.message--assistant {
-  background: rgba(255, 255, 255, 0.04);
-}
-
-.message--input-form {
-  background: rgba(251, 191, 36, 0.08);
-  border-color: rgba(251, 191, 36, 0.25);
-}
-
-.message__role {
-  margin-bottom: 8px;
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  color: rgba(255, 255, 255, 0.65);
-  max-width: 180px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.message__time {
-  margin-bottom: 8px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.42);
-  white-space: nowrap;
-}
-
 .message__content {
   line-height: 1.6;
   overflow-wrap: anywhere;
-}
-
-.message__content-wrapper {
-  display: flex;
-  align-items: flex-end;
-  gap: 8px;
-}
-
-.message__inline-loading {
-  font-size: 14px;
-  color: #60a5fa;
-  animation: spin 1s linear infinite;
-}
-
-.message__loading {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-}
-
-.message__loading-icon {
-  font-size: 18px;
-  color: #60a5fa;
-  animation: spin 1s linear infinite;
-}
-
-.message__loading-text {
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.65);
-}
-
-@keyframes spin {
-  from {
-    transform: rotate(0deg);
-  }
-
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.message__task-card {
-  display: grid;
-  gap: 10px;
-  padding: 14px 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.message__task-card--input {
-  background: rgba(251, 191, 36, 0.08);
-  border-color: rgba(251, 191, 36, 0.25);
-}
-
-.message__task-card--analyzing {
-  background: rgba(30, 64, 175, 0.18);
-}
-
-.message__task-card--plan {
-  background: rgba(30, 64, 175, 0.18);
-}
-
-.message__task-card--step {
-  background: rgba(8, 47, 73, 0.28);
-}
-
-.message__task-card--result {
-  background: rgba(6, 78, 59, 0.22);
-}
-
-.message__task-card--summary {
-  background: rgba(88, 28, 135, 0.22);
-}
-
-.message__task-card--repair {
-  background: rgba(120, 53, 15, 0.24);
-}
-
-.message__task-card--approved {
-  background: rgba(34, 197, 94, 0.12);
-  border-color: rgba(34, 197, 94, 0.3);
-}
-
-.message__task-card--rejected {
-  background: var(--color-danger-bg);
-  border-color: var(--color-danger-border);
-}
-
-.message__task-card--info {
-  background: var(--color-info);
-}
-
-.message__task-card--approved {
-  background: var(--color-success-bg);
-  border-color: var(--color-success-border);
-}
-
-.message__task-card-icon--success {
-  color: var(--color-success);
-  margin-right: 6px;
-  vertical-align: middle;
-}
-
-.message__task-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.message__task-card-title {
-  font-size: var(--font-size-sm);
-  font-weight: 700;
-  letter-spacing: 0.06em;
-  color: rgba(191, 219, 254, 0.88);
-  text-transform: uppercase;
-}
-
-.message__task-card-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-sm);
-}
-
-.message__task-card-loading {
-  font-size: var(--font-size-md);
-  color: var(--color-accent-secondary);
-  animation: spin 1s linear infinite;
-}
-
-.message__task-card-subtitle {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--color-text-primary);
 }
 
 .message__code {
@@ -1070,267 +215,5 @@ onMounted(async () => {
   font-family: Consolas, 'Courier New', monospace;
   font-size: 13px;
   line-height: 1.6;
-}
-
-.message__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-}
-
-.message__task-approval {
-  display: grid;
-  gap: 10px;
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-border-primary);
-}
-
-.message__task-approval-hint {
-  margin: 0;
-  color: var(--color-warning);
-}
-
-.message__task-approval-actions {
-  display: flex;
-  gap: 12px;
-}
-
-.message__input-question {
-  font-size: 14px;
-  color: var(--color-text-secondary);
-  line-height: 1.6;
-}
-
-.message__input-form-inline {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--color-border-primary);
-}
-
-.message__input-options {
-  margin-top: 10px;
-}
-
-.message__input-options-label {
-  font-size: 12px;
-  color: var(--color-text-muted);
-  margin-bottom: 6px;
-}
-
-.message__task-card--answered {
-  background: var(--color-success-bg);
-  border-color: var(--color-success-border);
-}
-
-.message__input-answer {
-  margin-top: 10px;
-  padding: 10px 14px;
-  background: rgba(34, 197, 94, 0.15);
-  border-radius: var(--border-radius-md);
-  border: 1px solid rgba(34, 197, 94, 0.25);
-}
-
-.message__input-answer-label {
-  font-size: var(--font-size-sm);
-  color: rgba(34, 197, 94, 0.9);
-  margin-right: var(--spacing-sm);
-}
-
-.message__input-answer-value {
-  font-size: var(--font-size-md);
-  color: var(--color-text-primary);
-  font-weight: 500;
-}
-
-.message__input-option {
-  padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--color-bg-input);
-  border-radius: var(--spacing-sm);
-  margin-bottom: 6px;
-  font-size: 13px;
-  color: var(--color-text-secondary);
-}
-
-.message__input-form-content {
-  display: flex;
-  flex-direction: column;
-  gap: var(--spacing-md);
-}
-
-.message__input-row {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-}
-
-.message__input-row--options {
-  margin-top: 8px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.message__input-field {
-  flex: 1;
-}
-
-.message__input-options-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.message__input-option-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.message__input-option-item:hover {
-  background: rgba(255, 255, 255, 0.08);
-  border-color: rgba(96, 165, 250, 0.3);
-}
-
-.message__input-option-item.is-selected {
-  background: rgba(96, 165, 250, 0.12);
-  border-color: rgba(96, 165, 250, 0.5);
-}
-
-.message__input-option-radio {
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.message__input-option-item.is-selected .message__input-option-radio {
-  border-color: #60a5fa;
-}
-
-.message__input-option-radio-inner {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #60a5fa;
-}
-
-.message__input-option-checkbox {
-  width: 16px;
-  height: 16px;
-  border-radius: 4px;
-  border: 2px solid rgba(255, 255, 255, 0.3);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  font-size: 10px;
-}
-
-.message__input-option-item.is-selected .message__input-option-checkbox {
-  border-color: #60a5fa;
-  background: #60a5fa;
-}
-
-.message__input-option-checkbox-inner {
-  color: #fff;
-  font-weight: bold;
-}
-
-.message__input-option-text {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.88);
-}
-
-.message__input-options-readonly {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.message__input-options-readonly-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 8px;
-}
-
-.message__input-option-readonly-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  opacity: 0.7;
-}
-
-.message__input-option-readonly-item.is-selected {
-  background: rgba(96, 165, 250, 0.12);
-  border-color: rgba(96, 165, 250, 0.3);
-  opacity: 1;
-}
-
-.message__task-confirm-status {
-  font-size: 18px;
-  font-weight: bold;
-}
-
-.message__task-card--approved .message__task-confirm-status {
-  color: #22c55e;
-}
-
-.message__task-card--rejected .message__task-confirm-status {
-  color: #ef4444;
-}
-
-.message__task-confirm-command {
-  margin-top: 10px;
-}
-
-.message__task-confirm-label {
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
-  margin-bottom: 6px;
-}
-
-.message__task-confirm-reason {
-  margin-top: 10px;
-}
-
-.message__task-confirm-reason-text {
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.8);
-  line-height: 1.5;
-}
-
-@media (max-width: 720px) {
-
-  .message-row--user .message,
-  .message-row--assistant .message {
-    max-width: 100%;
-    width: 100%;
-  }
-
-  .message__header {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  .message__task-approval-actions {
-    flex-direction: column;
-    align-items: stretch;
-  }
 }
 </style>

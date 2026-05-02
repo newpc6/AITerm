@@ -16,7 +16,7 @@
       <el-button :loading="loading" @click="loadConversations">刷新</el-button>
     </div>
 
-    <ConversationHistoryTable :items="items" :loading="loading" :deleting-conversation-id="deletingConversationId"
+    <ConversationHistoryTable :items="items" :loading="loading" :deleting-chat-id="deletingChatId"
       @open="openConversation" @delete="removeConversation" />
 
     <Pagination :page="page" :page-size="pageSize" :total="total" @update:page="handlePageChange"

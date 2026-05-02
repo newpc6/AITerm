@@ -4,8 +4,7 @@ from datetime import datetime
 
 from app.models import (
     Node, NodeCreate, NodeUpdate,
-    Task, TaskCreate, TaskUpdate, TaskStep,
-    Conversation, ConversationMessage,
+    # Task, TaskCreate, TaskUpdate, TaskStep,
     User, UserCreate, UserUpdate,
     Session,
     ModelConfig, ModelConfigCreate, ModelConfigUpdate,
@@ -33,54 +32,6 @@ class INodeRepository(ABC):
 
     @abstractmethod
     async def delete_node(self, node_id: str) -> bool:
-        pass
-
-
-class ITaskRepository(ABC):
-    @abstractmethod
-    async def list_tasks(self) -> List[Task]:
-        pass
-
-    @abstractmethod
-    async def get_task(self, task_id: str) -> Optional[Task]:
-        pass
-
-    @abstractmethod
-    async def create_task(self, task: Task) -> Task:
-        pass
-
-    @abstractmethod
-    async def update_task(self, task_id: str, task: Task) -> Optional[Task]:
-        pass
-
-    @abstractmethod
-    async def delete_task(self, task_id: str) -> bool:
-        pass
-
-    @abstractmethod
-    async def get_latest_task_by_conversation(self, conversation_id: str) -> Optional[Task]:
-        pass
-
-
-class IConversationRepository(ABC):
-    @abstractmethod
-    async def list_conversations(self) -> List[Conversation]:
-        pass
-
-    @abstractmethod
-    async def get_conversation_messages(self, conversation_id: str) -> List[ConversationMessage]:
-        pass
-
-    @abstractmethod
-    async def append_message(self, message: ConversationMessage) -> ConversationMessage:
-        pass
-
-    @abstractmethod
-    async def delete_conversation(self, conversation_id: str) -> bool:
-        pass
-
-    @abstractmethod
-    async def get_next_conversation_id(self) -> int:
         pass
 
 

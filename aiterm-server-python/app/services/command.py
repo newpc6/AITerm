@@ -11,7 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 from app.models import Node, NodeCreate, NodeStatus
 
-logger = logging.getLogger("aiterm.command")
+logger = logging.getLogger("aiterm")
 
 _executor = ThreadPoolExecutor(max_workers=4)
 

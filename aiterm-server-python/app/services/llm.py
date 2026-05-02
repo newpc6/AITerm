@@ -1,18 +1,75 @@
 import json
 import re
-from typing import List, Optional, Dict, Any, AsyncGenerator, Union
+from typing import List, Optional, Dict, Any, AsyncGenerator, Union, TypedDict
 from datetime import datetime
 import httpx
 
 from app.config import LLMSettings
 from app.models import (
-    Node, TaskPlanStep, TaskPlanResult, UserInputRequest,
-    TaskFailureRepairResult, TaskStep, ModelConfig
+    Node,
+    ModelConfig
 )
+from app.models.chat import Message
 from app.services.command import detect_platform, describe_node
 import logging
 
 logger = logging.getLogger("aiterm")
+
+
+class StreamChunk(TypedDict):
+    type: str
+    content: str
+
+
+class ExecuteStep:
+    def __init__(self, index: int = 0, title: str = "", status: str = "pending", command: str = "", result_output: str = None, repair_count: int = 0, original_command: str = None, first_failure_output: str = None, repaired_output: str = None, last_error: str = None, repair_reason: str = None, repair_suggestion: str = None, repaired_command: str = None):
+        self.index = index
+        self.title = title
+        self.status = status
+        self.command = command
+        self.result_output = result_output
+        self.repair_count = repair_count
+        self.original_command = original_command
+        self.first_failure_output = first_failure_output
+        self.repaired_output = repaired_output
+        self.last_error = last_error
+        self.repair_reason = repair_reason
+        self.repair_suggestion = repair_suggestion
+        self.repaired_command = repaired_command
+
+
+class ExecutePlanStep:
+    def __init__(self, title: str = "", command: str = ""):
+        self.title = title
+        self.command = command
+
+
+class UserInputRequest:
+    def __init__(self, question: str = "", input_type: str = "text", options: List[str] = None, placeholder: str = "", default_value: str = ""):
+        self.question = question
+        self.input_type = input_type
+        self.options = options or []
+        self.placeholder = placeholder
+        self.default_value = default_value
+
+
+class ExecutePlanResult:
+    def __init__(self, title: str = "", summary: str = "", requires_confirmation: bool = False, risk_reason: str = "", needs_user_input: bool = False, input_request: Optional[UserInputRequest] = None, steps: List[ExecutePlanStep] = None):
+        self.title = title
+        self.summary = summary
+        self.requires_confirmation = requires_confirmation
+        self.risk_reason = risk_reason
+        self.needs_user_input = needs_user_input
+        self.input_request = input_request
+        self.steps = steps or []
+
+
+class ExecuteFailureRepairResult:
+    def __init__(self, reason: str = "", suggestion: str = "", corrected_title: str = "", corrected_command: str = ""):
+        self.reason = reason
+        self.suggestion = suggestion
+        self.corrected_title = corrected_title
+        self.corrected_command = corrected_command
 
 
 class LLMClient:
@@ -93,6 +150,8 @@ class LLMClient:
         if self.extra_body:
             payload.update(self.extra_body)
 
+        logger.info(
+            f"LLMClient.chat: calling model={self.model}, url={self._build_chat_url()}")
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             response = await client.post(
                 self._build_chat_url(),
@@ -127,7 +186,7 @@ class LLMClient:
         self,
         messages: List[Dict[str, str]],
         temperature: Optional[float] = None
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[StreamChunk, None]:
         if not self.api_url or not self.model:
             raise ValueError("LLM 设置未完成，请先在设置页填写 API 地址和模型")
 
@@ -186,6 +245,12 @@ class LLMClient:
 
                         if "choices" in data and len(data["choices"]) > 0:
                             delta = data["choices"][0].get("delta", {})
+
+                            reasoning_content = delta.get(
+                                "reasoning_content", "")
+                            if reasoning_content:
+                                yield {"type": "reasoning", "content": reasoning_content, "reasoning_done": False}
+
                             content = delta.get("content", "")
                             if isinstance(content, list):
                                 content = "\n".join(
@@ -193,9 +258,7 @@ class LLMClient:
                                     if isinstance(item, dict) and "text" in item
                                 )
                             if content:
-                                logger.info(
-                                    f"chat_stream: Yielding content: {content[:50]}...")
-                                yield content
+                                yield {"type": "content", "content": content, "reasoning_done": True}
                     except json.JSONDecodeError:
                         continue
 
@@ -203,7 +266,7 @@ class LLMClient:
                     f"chat_stream: Finished, total lines: {line_count}")
 
 
-class TaskPlanner:
+class ExecutePlanner:
     def __init__(self, settings: LLMSettings):
         self.settings = settings
         self.llm_client = LLMClient(settings)
@@ -255,15 +318,19 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
 
         return prompt
 
-    def _build_history_text(self, history: List[Dict[str, Any]]) -> str:
+    def _build_history_text(self, history: List[Union[Dict[str, Any], Message]]) -> str:
         if not history:
             return ""
 
         recent = history[-6:] if len(history) > 6 else history
         lines = ["\n\n最近对话上下文："]
         for msg in recent:
-            role = msg.get("role", "")
-            content = msg.get("content", "")
+            if isinstance(msg, Message):
+                role = msg.role
+                content = msg.content
+            else:
+                role = msg.get("role", "")
+                content = msg.get("content", "")
             if role in ["user", "assistant"]:
                 lines.append(f"- {role}: {content.strip()}")
 
@@ -300,7 +367,7 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
         node: Node,
         request: str,
         history: List[Dict[str, Any]]
-    ) -> TaskPlanResult:
+    ) -> ExecutePlanResult:
         messages = [
             {"role": "system", "content": self._build_system_prompt(
                 node, request)},
@@ -311,7 +378,7 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
         response = await self.llm_client.chat(messages, temperature=0.2)
         return self._parse_plan(response)
 
-    def _parse_plan(self, raw: str) -> TaskPlanResult:
+    def _parse_plan(self, raw: str) -> ExecutePlanResult:
         logger.info(f"Parsing plan from response: {raw[:200]}...")
         cleaned = raw.strip()
         cleaned = re.sub(r"^```json\s*", "", cleaned)
@@ -334,7 +401,7 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
         for step in data.get("steps", []):
             command = step.get("command", "").strip()
             if command:
-                steps.append(TaskPlanStep(
+                steps.append(ExecutePlanStep(
                     title=step.get("title", "").strip(),
                     command=command
                 ))
@@ -350,7 +417,7 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
                 default_value=ir.get("default_value", "").strip()
             )
 
-        result = TaskPlanResult(
+        result = ExecutePlanResult(
             title=data.get("title", "").strip() or "模型生成任务",
             summary=data.get("summary", "").strip() or "模型已生成执行计划。",
             requires_confirmation=data.get("requires_confirmation", False),
@@ -394,7 +461,7 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
         return ''.join(result)
 
 
-class TaskRepairer:
+class ExecuteRepairer:
     def __init__(self, settings: LLMSettings):
         self.settings = settings
         self.llm_client = LLMClient(settings)
@@ -403,10 +470,10 @@ class TaskRepairer:
         self,
         node: Node,
         request: str,
-        step: TaskStep,
+        step: ExecuteStep,
         outputs: List[str],
         failure_text: str
-    ) -> TaskFailureRepairResult:
+    ) -> ExecuteFailureRepairResult:
         prompt = self._build_prompt(node, request, step, outputs, failure_text)
         response = await self.llm_client.chat(
             [{"role": "user", "content": prompt}],
@@ -418,7 +485,7 @@ class TaskRepairer:
         self,
         node: Node,
         request: str,
-        step: TaskStep,
+        step: ExecuteStep,
         outputs: List[str],
         failure_text: str
     ) -> str:
@@ -435,7 +502,7 @@ class TaskRepairer:
 
         return prompt
 
-    def _parse_result(self, raw: str, step: TaskStep) -> TaskFailureRepairResult:
+    def _parse_result(self, raw: str, step: ExecuteStep) -> ExecuteFailureRepairResult:
         cleaned = raw.strip()
         cleaned = re.sub(r"^```json\s*", "", cleaned)
         cleaned = re.sub(r"^```\s*", "", cleaned)
@@ -449,9 +516,9 @@ class TaskRepairer:
         try:
             data = json.loads(cleaned)
         except json.JSONDecodeError:
-            return TaskFailureRepairResult()
+            return ExecuteFailureRepairResult()
 
-        result = TaskFailureRepairResult(
+        result = ExecuteFailureRepairResult(
             reason=data.get("reason", "").strip(),
             suggestion=data.get("suggestion", "").strip(),
             corrected_title=data.get("corrected_title", "").strip(),
@@ -463,7 +530,7 @@ class TaskRepairer:
 
         return result
 
-    def _infer_command(self, text: str, step: TaskStep) -> str:
+    def _infer_command(self, text: str, step: ExecuteStep) -> str:
         pattern = r"`([^`\r\n]+)`"
         matches = re.findall(pattern, text)
 
@@ -513,7 +580,7 @@ class ChatService:
         node: Node,
         history: List[Dict[str, Any]],
         message: str
-    ) -> AsyncGenerator[str, None]:
+    ) -> AsyncGenerator[StreamChunk, None]:
         messages = [
             {"role": "system", "content": self._build_system_prompt(node)}]
 
@@ -537,15 +604,13 @@ class ChatService:
         chunk_count = 0
         async for chunk in self.llm_client.chat_stream(messages):
             chunk_count += 1
-            logger.info(
-                f"ChatService.chat_stream: Received chunk #{chunk_count}: {chunk[:50] if len(chunk) > 50 else chunk}...")
             yield chunk
 
         logger.info(
             f"ChatService.chat_stream: Finished with {chunk_count} chunks")
 
 
-class TaskSummarizer:
+class ExecuteSummarizer:
     def __init__(self, settings: LLMSettings):
         self.settings = settings
         self.llm_client = LLMClient(settings)
@@ -554,7 +619,7 @@ class TaskSummarizer:
         self,
         node: Node,
         request: str,
-        steps: List[TaskStep],
+        steps: List[ExecuteStep],
         outputs: List[str]
     ) -> str:
         prompt = self._build_prompt(node, request, steps, outputs)
@@ -570,7 +635,7 @@ class TaskSummarizer:
         self,
         node: Node,
         request: str,
-        steps: List[TaskStep],
+        steps: List[ExecuteStep],
         outputs: List[str]
     ) -> str:
         lines = [

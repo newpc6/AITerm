@@ -3,6 +3,7 @@ from datetime import datetime
 
 from app.models import ModelConfig, ModelConfigCreate, ModelConfigUpdate
 from app.repositories import IModelConfigRepository
+from app.utils import now_iso
 
 
 class ModelConfigService:
@@ -19,7 +20,7 @@ class ModelConfigService:
         return await self.repo.get_default_model()
 
     async def create_model(self, data: ModelConfigCreate) -> ModelConfig:
-        now = datetime.utcnow().isoformat()
+        now = now_iso()
         model = ModelConfig(
             id="0",
             name=data.name,
@@ -49,7 +50,7 @@ class ModelConfigService:
             if value is not None:
                 setattr(model, key, value)
 
-        model.updated_at = datetime.utcnow().isoformat()
+        model.updated_at = now_iso()
         updated = await self.repo.update_model(model_id, model)
 
         if data.is_default:

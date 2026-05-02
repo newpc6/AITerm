@@ -1,6 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime
 from datetime import datetime, timezone
-import json
 
 from app.db.base import Base
 
@@ -15,10 +14,26 @@ class ChatModel(Base):
     model_name = Column(String(255), nullable=True)
     status = Column(String(50), nullable=False, default="idle")
     summary = Column(Text, nullable=False, default="")
-    created_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
-    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
+    created_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime, nullable=False, default=lambda: datetime.now(
+        timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
+        created_at_str = None
+        if self.created_at:
+            dt = self.created_at
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            created_at_str = dt.isoformat()
+
+        updated_at_str = None
+        if self.updated_at:
+            dt = self.updated_at
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            updated_at_str = dt.isoformat()
+
         return {
             "id": str(self.id),
             "title": self.title,
@@ -27,6 +42,6 @@ class ChatModel(Base):
             "model_name": self.model_name,
             "status": self.status,
             "summary": self.summary,
-            "created_at": self.created_at.isoformat() if self.created_at else None,
-            "updated_at": self.updated_at.isoformat() if self.updated_at else None
+            "created_at": created_at_str,
+            "updated_at": updated_at_str
         }

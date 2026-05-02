@@ -4,6 +4,7 @@ from passlib.context import CryptContext
 
 from app.models import User, UserCreate, UserUpdate, UserRole, UserStatus
 from app.repositories import IUserRepository
+from app.utils import now_iso
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -27,7 +28,7 @@ class UserService:
             raise ValueError("用户名已存在")
 
         password_hash = pwd_context.hash(data.password)
-        now = datetime.utcnow().isoformat()
+        now = now_iso()
 
         user = User(
             id="0",
@@ -52,7 +53,7 @@ class UserService:
             if value is not None:
                 setattr(user, key, value)
 
-        user.updated_at = datetime.utcnow().isoformat()
+        user.updated_at = now_iso()
         return await self.repo.update_user(user_id, user)
 
     async def delete_user(self, user_id: str) -> bool:

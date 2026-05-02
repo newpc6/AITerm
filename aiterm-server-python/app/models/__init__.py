@@ -1,23 +1,8 @@
 from .enums import (
-    TaskStatus,
-    TaskStepStatus,
     NodeStatus,
     UserRole,
     UserStatus,
     ConversationMode,
-)
-
-from .task import (
-    TaskStep,
-    Task,
-    TaskCreate,
-    TaskUpdate,
-    TaskConfirmRequest,
-    TaskInputRequest,
-    TaskPlanStep,
-    TaskPlanResult,
-    TaskFailureRepairResult,
-    UserInputRequest,
 )
 
 from .node import (
@@ -26,10 +11,26 @@ from .node import (
     NodeUpdate,
 )
 
-from .conversation import (
-    ConversationMessage,
-    Conversation,
+from .chat import (
+    ChatStatus,
+    MessageType,
+    Chat,
+    ChatCreate,
+    ChatUpdate,
     ConversationCreate,
+    Message,
+    MessageCreate,
+    PlanStepData,
+    PlanMetadata,
+    StepMetadata,
+    StepResultMetadata,
+    ApprovalMetadata,
+    ApprovedMetadata,
+    RejectedMetadata,
+    InputMetadata,
+    InputResponseMetadata,
+    OutputMetadata,
+    ErrorMetadata,
 )
 
 from .user import (
@@ -69,28 +70,32 @@ from .common import (
 )
 
 __all__ = [
-    "TaskStatus",
-    "TaskStepStatus",
     "NodeStatus",
     "UserRole",
     "UserStatus",
     "ConversationMode",
-    "TaskStep",
-    "Task",
-    "TaskCreate",
-    "TaskUpdate",
-    "TaskConfirmRequest",
-    "TaskInputRequest",
-    "TaskPlanStep",
-    "TaskPlanResult",
-    "TaskFailureRepairResult",
-    "UserInputRequest",
     "Node",
     "NodeCreate",
     "NodeUpdate",
-    "ConversationMessage",
-    "Conversation",
+    "ChatStatus",
+    "MessageType",
+    "Chat",
+    "ChatCreate",
+    "ChatUpdate",
     "ConversationCreate",
+    "Message",
+    "MessageCreate",
+    "PlanStepData",
+    "PlanMetadata",
+    "StepMetadata",
+    "StepResultMetadata",
+    "ApprovalMetadata",
+    "ApprovedMetadata",
+    "RejectedMetadata",
+    "InputMetadata",
+    "InputResponseMetadata",
+    "OutputMetadata",
+    "ErrorMetadata",
     "User",
     "UserCreate",
     "UserUpdate",

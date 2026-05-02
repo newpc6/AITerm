@@ -1,16 +1,16 @@
 <script setup lang="ts">
-import type { ConversationListItem } from '@/types/api'
+import type { ChatItem } from '@/types/api'
 import { formatDateTime } from '@/utils/datetime'
 
 defineProps<{
-  deletingConversationId: string
-  items: ConversationListItem[]
+  deletingChatId: string
+  items: ChatItem[]
   loading: boolean
 }>()
 
 const emit = defineEmits<{
-  delete: [conversationId: string]
-  open: [conversationId: string]
+  delete: [chatId: string]
+  open: [chatId: string]
 }>()
 
 function getStatusLabel(status: string) {
@@ -44,12 +44,11 @@ function getStatusClass(status: string) {
   <div class="data-table">
     <el-table :data="items" :loading="loading" empty-text="暂无历史会话">
       <el-table-column prop="title" label="会话标题" min-width="180" />
-      <el-table-column prop="last_message" label="最后一条消息" min-width="200" />
-      <el-table-column prop="message_count" label="消息数" width="80" />
-      <el-table-column label="最近任务状态" width="120">
+      <el-table-column prop="summary" label="摘要" min-width="200" />
+      <el-table-column label="状态" width="100">
         <template #default="{ row }">
-          <span v-if="row.latest_status" class="data-table__tag" :class="getStatusClass(row.latest_status)">
-            {{ getStatusLabel(row.latest_status) }}
+          <span v-if="row.status" class="data-table__tag" :class="getStatusClass(row.status)">
+            {{ getStatusLabel(row.status) }}
           </span>
           <span v-else class="data-table__tag">-</span>
         </template>
@@ -63,7 +62,7 @@ function getStatusClass(status: string) {
         <template #default="{ row }">
           <div class="data-table__actions">
             <el-button link type="primary" @click="emit('open', row.id)">打开</el-button>
-            <el-button link type="danger" :loading="deletingConversationId === row.id" @click="emit('delete', row.id)">
+            <el-button link type="danger" :loading="deletingChatId === row.id" @click="emit('delete', row.id)">
               删除
             </el-button>
           </div>

@@ -11,7 +11,7 @@ class ModelConfig(BaseModel):
     temperature: float = 0.7
     extra_params: Dict[str, Any] = {}
     extra_body: Dict[str, Any] = {}
-    extra_headers: Dict[str, str] = {}
+    extra_headers: Dict[str, Any] = {}
     is_default: bool = False
     created_at: str
     updated_at: str
@@ -25,7 +25,7 @@ class ModelConfigCreate(BaseModel):
     temperature: float = 0.7
     extra_params: Dict[str, Any] = {}
     extra_body: Dict[str, Any] = {}
-    extra_headers: Dict[str, str] = {}
+    extra_headers: Dict[str, Any] = {}
     is_default: bool = False
 
 
@@ -37,7 +37,7 @@ class ModelConfigUpdate(BaseModel):
     temperature: Optional[float] = None
     extra_params: Optional[Dict[str, Any]] = None
     extra_body: Optional[Dict[str, Any]] = None
-    extra_headers: Optional[Dict[str, str]] = None
+    extra_headers: Optional[Dict[str, Any]] = None
     is_default: Optional[bool] = None
 
 

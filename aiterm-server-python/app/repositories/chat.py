@@ -1,12 +1,10 @@
-import json
 from typing import List, Optional, Tuple
-from datetime import datetime, timezone
 from sqlalchemy import select, delete, desc, func
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import async_session_maker
 from app.db.chat import ChatModel
 from app.models.chat import Chat, ChatStatus
+from app.utils import ensure_timezone
 
 
 class ChatRepository:
@@ -58,11 +56,11 @@ class ChatRepository:
             model = result.scalar_one_or_none()
             if not model:
                 return None
-            
+
             for key, value in kwargs.items():
                 if hasattr(model, key):
                     setattr(model, key, value)
-            
+
             await session.commit()
             return self._to_domain(model)
 
@@ -75,6 +73,8 @@ class ChatRepository:
             return result.rowcount > 0
 
     def _to_domain(self, model: ChatModel) -> Chat:
+        created_at = ensure_timezone(model.created_at)
+        updated_at = ensure_timezone(model.updated_at)
         return Chat(
             id=str(model.id),
             title=model.title,
@@ -83,6 +83,6 @@ class ChatRepository:
             model_name=model.model_name,
             status=model.status,
             summary=model.summary,
-            created_at=model.created_at.isoformat() if model.created_at else None,
-            updated_at=model.updated_at.isoformat() if model.updated_at else None
+            created_at=created_at.isoformat() if created_at else None,
+            updated_at=updated_at.isoformat() if updated_at else None
         )

@@ -7,6 +7,7 @@ from app.repositories.base import IUserRepository
 from app.models import User, UserRole, UserStatus
 from app.db import async_session_maker
 from app.db.user import UserModel
+from app.utils import now_iso
 
 
 class UserRepository(IUserRepository):
@@ -44,7 +45,7 @@ class UserRepository(IUserRepository):
 
     async def create_user(self, user: User, password_hash: str) -> User:
         async with async_session_maker() as session:
-            now = datetime.utcnow().isoformat()
+            now = now_iso()
             model = UserModel(
                 username=user.username,
                 display_name=user.display_name,
@@ -72,7 +73,7 @@ class UserRepository(IUserRepository):
             model.display_name = user.display_name
             model.role = user.role.value if isinstance(user.role, UserRole) else user.role
             model.status = user.status.value if isinstance(user.status, UserStatus) else user.status
-            model.updated_at = datetime.utcnow().isoformat()
+            model.updated_at = now_iso()
             
             await session.commit()
             return self._to_domain(model)
@@ -95,7 +96,7 @@ class UserRepository(IUserRepository):
                 return False
             
             model.password_hash = password_hash
-            model.updated_at = datetime.utcnow().isoformat()
+            model.updated_at = now_iso()
             await session.commit()
             return True
 
@@ -108,7 +109,7 @@ class UserRepository(IUserRepository):
             if not model:
                 return False
             
-            model.last_login_at = datetime.utcnow().isoformat()
+            model.last_login_at = now_iso()
             await session.commit()
             return True
 

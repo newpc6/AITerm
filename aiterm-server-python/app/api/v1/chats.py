@@ -9,11 +9,11 @@ from app.models.chat import ChatCreate, ChatUpdate, MessageCreate
 from app.models.common import PaginatedResponse
 from app.repositories.chat import ChatRepository
 from app.repositories.message import MessageRepository
-from app.services import ChatOrchestrator
-from app.api.deps import get_chat_orchestrator
+from app.services import ChatOrchestrator, ExecuteService
+from app.api.deps import get_chat_orchestrator, get_execute_service
 
 router = APIRouter(prefix="/chats", tags=["chats"])
-logger = logging.getLogger("aiterm.chats")
+logger = logging.getLogger("aiterm")
 
 chat_repo = ChatRepository()
 message_repo = MessageRepository()
@@ -60,14 +60,19 @@ async def stream_chat(
         return Response(code=1001, message="message is required")
 
     async def event_generator():
-        async for event in orchestrator.stream_chat(
-            None,
-            request.node_id,
-            request.message,
-            request.model_id
-        ):
-            yield f"event: {event['event']}\n"
-            yield f"data: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
+        try:
+            async for event in orchestrator.stream_chat(
+                request.chat_id,
+                request.node_id,
+                request.message,
+                request.model_id
+            ):
+                yield f"event: {event['event']}\n"
+                yield f"data: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
+        except Exception as e:
+            logger.error(f"Stream chat error: {e}", exc_info=True)
+            yield f"event: conversation.error\n"
+            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         event_generator(),
@@ -92,10 +97,11 @@ async def update_chat(
     chat_id: str,
     request: ChatUpdate
 ):
-    update_data = {k: v for k, v in request.model_dump().items() if v is not None}
+    update_data = {k: v for k, v in request.model_dump().items()
+                   if v is not None}
     if not update_data:
         return Response(code=1002, message="no data to update")
-    
+
     chat = await chat_repo.update_chat(chat_id, **update_data)
     if not chat:
         return Response(code=4040, message="chat not found")
@@ -120,10 +126,10 @@ async def get_chat_messages(
     chat = await chat_repo.get_chat(chat_id)
     if not chat:
         return Response(code=4040, message="chat not found")
-    
+
     messages = await message_repo.list_messages(chat_id, page, page_size)
     total = await message_repo.count_messages(chat_id)
-    
+
     return Response(
         data={
             "chat_id": chat_id,
@@ -143,7 +149,7 @@ async def create_message(
     chat = await chat_repo.get_chat(chat_id)
     if not chat:
         return Response(code=4040, message="chat not found")
-    
+
     message = await message_repo.create_message(
         chat_id=chat_id,
         role=request.role,
@@ -171,6 +177,91 @@ async def continue_stream_chat(
         ):
             yield f"event: {event['event']}\n"
             yield f"data: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream; charset=utf-8",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive"
+        }
+    )
+
+
+@router.post("/{chat_id}/confirm")
+async def confirm_execution(
+    chat_id: str,
+    request: dict,
+    service: ExecuteService = Depends(get_execute_service)
+):
+    approved = request.get("approved", False)
+    logger.info(f"[confirm] 请求: chat_id={chat_id}, approved={approved}")
+    updated_chat = await service.confirm_execution(chat_id, approved)
+    if not updated_chat:
+        logger.warning(
+            f"[confirm] 失败: chat_id={chat_id}, 原因: chat not found or does not require confirmation")
+        return Response(code=4040, message="chat not found or does not require confirmation")
+    logger.info(
+        f"[confirm] 成功: chat_id={chat_id}, status={updated_chat.status}")
+    return Response(data=updated_chat.model_dump())
+
+
+@router.post("/{chat_id}/input")
+async def provide_input(
+    chat_id: str,
+    request: dict,
+    service: ExecuteService = Depends(get_execute_service)
+):
+    user_input = request.get("user_input", "")
+    logger.info(
+        f"[input] 请求: chat_id={chat_id}, user_input={user_input[:200] if user_input else 'None'}")
+    updated_chat = await service.provide_input(chat_id, user_input)
+    if not updated_chat:
+        logger.warning(
+            f"[input] 失败: chat_id={chat_id}, 原因: chat not found or does not require input")
+        return Response(code=4040, message="chat not found or does not require input")
+    logger.info(f"[input] 成功: chat_id={chat_id}, status={updated_chat.status}")
+    return Response(data=updated_chat.model_dump())
+
+
+@router.post("/{chat_id}/stop")
+async def stop_execution(
+    chat_id: str,
+    service: ExecuteService = Depends(get_execute_service)
+):
+    logger.info(f"[stop] 请求: chat_id={chat_id}")
+    updated_chat = await service.stop_execution(chat_id)
+    if not updated_chat:
+        logger.warning(
+            f"[stop] 失败: chat_id={chat_id}, 原因: chat not found or cannot be stopped")
+        return Response(code=4040, message="chat not found or cannot be stopped")
+    logger.info(f"[stop] 成功: chat_id={chat_id}, status={updated_chat.status}")
+    return Response(data=updated_chat.model_dump())
+
+
+@router.get("/{chat_id}/continue")
+async def continue_execution(
+    chat_id: str,
+    service: ExecuteService = Depends(get_execute_service)
+):
+    logger.info(f"[continue] 请求: chat_id={chat_id}")
+
+    async def event_generator():
+        try:
+            event_count = 0
+            async for event in service.continue_with_input(chat_id):
+                event_count += 1
+                logger.info(
+                    f"[continue] 输出事件 #{event_count}: {event.get('event')}, data={json.dumps(event.get('data', {}), ensure_ascii=False)[:200]}")
+                yield f"event: {event['event']}\n"
+                yield f"data: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
+            logger.info(
+                f"[continue] 完成: chat_id={chat_id}, 共 {event_count} 个事件")
+        except Exception as e:
+            logger.error(
+                f"[continue] 错误: chat_id={chat_id}, error={e}", exc_info=True)
+            yield f"event: conversation.error\n"
+            yield f"data: {json.dumps({'error': str(e)}, ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         event_generator(),

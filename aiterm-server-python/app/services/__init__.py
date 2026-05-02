@@ -1,9 +1,8 @@
 from .command import execute_command, detect_platform, describe_node, CommandResult
-from .llm import LLMClient, TaskPlanner, TaskRepairer, ChatService, TaskSummarizer
+from .llm import LLMClient, ExecutePlanner, ExecuteRepairer, ChatService, ExecuteSummarizer
 from .settings_service import ModelConfigService, GlobalSettingsService
 from .node_service import NodeService
-from .conversation_service import ConversationService
-from .task_service import TaskService
+from .execute_service import ExecuteService
 from .user_service import UserService
 from .auth_service import AuthService
 from .chat_orchestrator import ChatOrchestrator
@@ -15,15 +14,14 @@ __all__ = [
     "describe_node",
     "CommandResult",
     "LLMClient",
-    "TaskPlanner",
-    "TaskRepairer",
+    "ExecutePlanner",
+    "ExecuteRepairer",
     "ChatService",
-    "TaskSummarizer",
+    "ExecuteSummarizer",
     "ModelConfigService",
     "GlobalSettingsService",
     "NodeService",
-    "ConversationService",
-    "TaskService",
+    "ExecuteService",
     "UserService",
     "AuthService",
     "ChatOrchestrator",

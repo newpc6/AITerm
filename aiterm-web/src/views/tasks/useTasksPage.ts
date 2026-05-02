@@ -2,13 +2,13 @@ import { onMounted, ref } from 'vue'
 import { ElMessageBox } from 'element-plus'
 
 import { deleteTask, getTasks } from '@/api/aiterm'
-import type { TaskItem } from '@/types/api'
+import type { ExecuteItem } from '@/types/api'
 
 export function useTasksPage() {
   const loading = ref(false)
   const errorMessage = ref('')
   const successMessage = ref('')
-  const tasks = ref<TaskItem[]>([])
+  const tasks = ref<ExecuteItem[]>([])
   const deletingTaskId = ref('')
   const page = ref(1)
   const pageSize = ref(10)

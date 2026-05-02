@@ -1,12 +1,11 @@
 import json
 from typing import List, Optional, Dict, Any
-from datetime import datetime, timezone
 from sqlalchemy import select, delete, desc, func
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import async_session_maker
 from app.db.message import MessageModel
 from app.models.chat import Message, MessageType
+from app.utils import ensure_timezone
 
 
 class MessageRepository:
@@ -33,7 +32,9 @@ class MessageRepository:
             model = result.scalar_one_or_none()
             return self._to_domain(model) if model else None
 
-    async def create_message(self, chat_id: str, role: str, content: str, type: str = MessageType.TEXT.value, metadata: Dict[str, Any] = None) -> Message:
+    async def create_message(self, chat_id: str, role: str, content: str, type: str = MessageType.TEXT.value, metadata: Dict[str, Any] = None) -> Optional[Message]:
+        if not content or not content.strip():
+            return None
         async with async_session_maker() as session:
             model = MessageModel(
                 chat_id=int(chat_id),
@@ -109,6 +110,7 @@ class MessageRepository:
         except:
             pass
 
+        created_at = ensure_timezone(model.created_at)
         return Message(
             id=str(model.id),
             chat_id=str(model.chat_id),
@@ -116,5 +118,5 @@ class MessageRepository:
             type=model.type,
             content=model.content,
             metadata=metadata,
-            created_at=model.created_at.isoformat() if model.created_at else None
+            created_at=created_at.isoformat() if created_at else None
         )

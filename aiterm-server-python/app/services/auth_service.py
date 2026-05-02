@@ -6,6 +6,7 @@ from app.models import AuthSettings, AuthStatus, AuthLoginData, User, UserRole, 
 from app.repositories import IUserRepository, ISessionRepository, IAuthSettingsRepository
 from app.db import async_session_maker
 from app.db.user import UserModel
+from app.utils import now_iso
 from sqlalchemy import select
 from passlib.context import CryptContext
 
@@ -66,7 +67,7 @@ class AuthService:
             if not pwd_context.verify(password, user_model.password_hash):
                 raise ValueError("用户名或密码错误")
 
-            user_model.last_login_at = datetime.utcnow().isoformat()
+            user_model.last_login_at = now_iso()
             await session.commit()
 
         token = secrets.token_urlsafe(32)
@@ -119,7 +120,7 @@ class AuthService:
                 raise ValueError("当前密码错误")
 
             user_model.password_hash = pwd_context.hash(new_password)
-            user_model.updated_at = datetime.utcnow().isoformat()
+            user_model.updated_at = now_iso()
             await session.commit()
             
         return True

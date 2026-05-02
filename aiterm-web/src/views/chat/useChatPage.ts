@@ -3,20 +3,34 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { getAuthToken } from '@/auth'
-import { buildTaskContinueUrl, confirmTask, deleteChat, getAuthStatus, getChatMessages, getChats, getModels, getNodes, provideTaskInput, restartTask, stopTask, streamChat } from '@/api/aiterm'
+import {
+  buildConversationContinueUrl,
+  confirmConversationExecute,
+  deleteChat,
+  getAuthStatus,
+  getChat,
+  getChatMessages,
+  getChats,
+  getModels,
+  getNodes,
+  provideConversationInput,
+  restartConversationExecute,
+  stopConversationExecute,
+  streamChat,
+} from '@/api/aiterm'
 import { getApiBaseUrl } from '@/config'
 import { formatDateTime } from '@/utils/datetime'
-import type { ChatItem, ModelConfigItem, NodeItem, TaskItem, TaskStreamOutputData, TaskStreamStatusData } from '@/types/api'
+import type { ChatItem, ModelConfigItem, NodeItem } from '@/types/api'
 import type { ChatMessage } from '@/types/chat'
 
-const LAST_CONVERSATION_ID_KEY = 'aiterm:last-conversation-id'
+const LAST_CHAT_ID_KEY = 'aiterm:last-chat-id'
 type SidebarGroup<T> = {
   key: string
   label: string
   items: T[]
 }
 
-type TaskOutputKind = 'stdout' | 'stderr' | 'plan' | 'plan.info' | 'approval' | 'step.start' | 'step.result' | 'repair.analysis' | 'repair.retry' | 'repair.stop' | 'summary' | 'input.request'
+type ExecuteOutputKind = 'stdout' | 'stderr' | 'plan' | 'plan.info' | 'approval' | 'step.start' | 'step.result' | 'repair.analysis' | 'repair.retry' | 'repair.stop' | 'summary' | 'input.request'
 
 let localMessageCounter = 0
 
@@ -30,30 +44,19 @@ function createLocalMessage(role: ChatMessage['role'], content: string, createdA
   }
 }
 
-function createMessageFromApi(item: { id: string; role: ChatMessage['role']; content: string; type?: string; metadata?: Record<string, unknown>; created_at: string }): ChatMessage {
+function createMessageFromApi(item: { id: string; role: string; content: string; type?: string; metadata?: Record<string, unknown>; created_at: string | null }): ChatMessage {
   return {
     id: item.id,
-    role: item.role,
+    role: item.role as ChatMessage['role'],
     content: item.content,
     type: item.type as ChatMessage['type'],
     metadata: item.metadata,
-    createdAt: item.created_at,
+    createdAt: item.created_at || new Date().toISOString(),
   }
-}
-
-function buildEventSourceUrl(taskId: string) {
-  const baseUrl = getApiBaseUrl().trim()
-  const eventPath = `/api/v1/tasks/${taskId}/events`
-  const url = baseUrl ? new URL(eventPath, baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`) : new URL(eventPath, window.location.origin)
-  const token = getAuthToken()
-  if (token) {
-    url.searchParams.set('access_token', token)
-  }
-  return url.toString()
 }
 
 function createInitialMessages(): ChatMessage[] {
-  return [createLocalMessage('assistant', '已进入对话模式，你可以直接向模型提问，我会按一问一答的方式继续这个会话。')]
+  return [createLocalMessage('assistant', '你好！有什么可以帮助你的吗？')]
 }
 
 function shortenLabel(value: string, maxLength: number) {
@@ -89,7 +92,7 @@ function buildChatGroups(items: ChatItem[], search: string): SidebarGroup<ChatIt
   const groups = new Map<string, SidebarGroup<ChatItem>>()
 
   for (const item of items) {
-    if (!includesKeyword([item.title, item.summary, item.id], keyword)) {
+    if (!includesKeyword([item.title ?? undefined, item.summary, item.id], keyword)) {
       continue
     }
 
@@ -112,12 +115,11 @@ export function useChatPage() {
   const loading = ref(false)
   const confirming = ref(false)
   const chatStreaming = ref(false)
-  const taskStreaming = ref(false)
+  const executeStreaming = ref(false)
   const errorMessage = ref('')
   const sidebarLoading = ref(false)
   const sidebarSearch = ref('')
-  const conversationId = ref('')
-  const activeTaskId = ref('')
+  const chatId = ref('')
   const selectedNodeId = ref('')
   const selectedModelId = ref('')
   const availableNodes = ref<NodeItem[]>([])
@@ -129,24 +131,28 @@ export function useChatPage() {
   const chatPageSize = ref(20)
   const chatTotal = ref(0)
 
-  const taskStatus = ref('')
-  const taskRiskReason = ref('')
+  const executeStatus = ref('')
+  const executeRiskReason = ref('')
   const inputQuestion = ref('')
   const inputType = ref<'text' | 'select' | 'multiselect'>('text')
   const inputOptions = ref<string[]>([])
   const inputPlaceholder = ref('')
   const waitingForInput = ref(false)
   const waitingForConfirm = ref(false)
+  const reasoningBuffer = ref('')
+  const reasoningStartTime = ref<number | null>(null)
+  const isReasoningActive = ref(false)
+  const reasoningDuration = ref<number | null>(null)
+  const answerBuffer = ref('')
 
-  let taskEventSource: EventSource | null = null
+  let executeEventSource: EventSource | null = null
   let chatStreamController: AbortController | null = null
 
   function resetConversationState() {
     closeStreams()
-    conversationId.value = ''
-    activeTaskId.value = ''
+    chatId.value = ''
     messages.value = createInitialMessages()
-    localStorage.removeItem(LAST_CONVERSATION_ID_KEY)
+    localStorage.removeItem(LAST_CHAT_ID_KEY)
   }
 
   function startNewConversation() {
@@ -156,16 +162,24 @@ export function useChatPage() {
   }
 
   function appendAssistantMessage(content: string) {
-    messages.value.push(createLocalMessage('assistant', content))
+    if (!content || !content.trim()) {
+      return
+    }
+    const lastMessage = messages.value[messages.value.length - 1]
+    if (lastMessage?.role === 'assistant' && !lastMessage.content.trim()) {
+      lastMessage.content = content
+    } else {
+      messages.value.push(createLocalMessage('assistant', content))
+    }
   }
 
-  function formatTaskOutputMessage(stream: string, content: string) {
+  function formatExecuteOutputMessage(stream: string, content: string) {
     const normalized = content.trim()
     if (!normalized) {
       return ''
     }
 
-    switch (stream as TaskOutputKind) {
+    switch (stream as ExecuteOutputKind) {
       case 'stdout':
         return normalized
       case 'stderr':
@@ -224,11 +238,34 @@ export function useChatPage() {
 
   async function loadChatMessages(targetChatId: string) {
     try {
-      const data = await getChatMessages(targetChatId)
-      messages.value = data.items.map((item) => createMessageFromApi(item))
+      const [messagesData, chatData] = await Promise.all([getChatMessages(targetChatId), getChat(targetChatId)])
+      messages.value = messagesData.items.map((item) => createMessageFromApi(item)).filter((msg) => msg.content && msg.content.trim())
 
       if (messages.value.length === 0) {
         messages.value = createInitialMessages()
+      }
+
+      if (chatData.status === 'waiting_confirm') {
+        waitingForConfirm.value = true
+        for (let index = messages.value.length - 1; index >= 0; index -= 1) {
+          const item = messages.value[index]
+          if (item.role === 'assistant' && item.type === 'approval') {
+            executeRiskReason.value = item.content
+            break
+          }
+        }
+      } else if (chatData.status === 'waiting_input') {
+        waitingForInput.value = true
+        for (let index = messages.value.length - 1; index >= 0; index -= 1) {
+          const item = messages.value[index]
+          if (item.role === 'assistant' && item.type === 'input' && item.metadata) {
+            inputQuestion.value = item.metadata.question || ''
+            inputType.value = (item.metadata.input_type as 'text' | 'select' | 'multiselect') || 'text'
+            inputOptions.value = item.metadata.options || []
+            inputPlaceholder.value = item.metadata.placeholder || ''
+            break
+          }
+        }
       }
     } catch {
       resetConversationState()
@@ -243,12 +280,12 @@ export function useChatPage() {
     }
 
     closeStreams()
-    conversationId.value = targetChatId
-    localStorage.setItem(LAST_CONVERSATION_ID_KEY, targetChatId)
+    chatId.value = targetChatId
+    localStorage.setItem(LAST_CHAT_ID_KEY, targetChatId)
     void router.replace({
       path: '/chat',
       query: {
-        conversation_id: targetChatId,
+        chat_id: targetChatId,
       },
     })
     await loadChatMessages(targetChatId)
@@ -332,12 +369,12 @@ export function useChatPage() {
     selectedModelId.value = value
   }
 
-  function closeTaskStream() {
-    if (taskEventSource) {
-      taskEventSource.close()
-      taskEventSource = null
+  function closeExecuteStream() {
+    if (executeEventSource) {
+      executeEventSource.close()
+      executeEventSource = null
     }
-    taskStreaming.value = false
+    executeStreaming.value = false
   }
 
   function abortChatStream() {
@@ -349,7 +386,7 @@ export function useChatPage() {
   }
 
   function closeStreams() {
-    closeTaskStream()
+    closeExecuteStream()
     abortChatStream()
   }
 
@@ -412,44 +449,6 @@ export function useChatPage() {
     }
   }
 
-  function connectTaskStream(taskId: string) {
-    closeTaskStream()
-    activeTaskId.value = taskId
-    taskStreaming.value = true
-    taskEventSource = new EventSource(buildEventSourceUrl(taskId))
-
-    taskEventSource.addEventListener('conversation.message', (event) => {
-      const payload = JSON.parse((event as MessageEvent).data) as { conversation_id: string; type: string; content: string }
-      if (payload.type === 'approval') {
-        waitingForConfirm.value = true
-        taskRiskReason.value = payload.content
-      }
-      const message = formatConversationMessage(payload.type, payload.content)
-      if (message) {
-        appendAssistantMessage(message)
-      }
-    })
-
-    taskEventSource.addEventListener('conversation.input', (event) => {
-      const payload = JSON.parse((event as MessageEvent).data) as { conversation_id: string; question: string; input_type: string; options?: string[]; placeholder?: string }
-      inputQuestion.value = payload.question
-      inputType.value = payload.input_type as 'text' | 'select' | 'multiselect'
-      inputOptions.value = payload.options || []
-      inputPlaceholder.value = payload.placeholder || ''
-      waitingForInput.value = true
-    })
-
-    taskEventSource.addEventListener('conversation.done', () => {
-      closeTaskStream()
-      void reloadSidebarData()
-    })
-
-    taskEventSource.onerror = () => {
-      closeTaskStream()
-      void reloadSidebarData()
-    }
-  }
-
   function ensureAssistantPlaceholder() {
     const lastMessage = messages.value[messages.value.length - 1]
     if (lastMessage?.role === 'assistant') {
@@ -463,59 +462,101 @@ export function useChatPage() {
 
   function appendAssistantDelta(delta: string) {
     const placeholder = ensureAssistantPlaceholder()
-    placeholder.content += delta
+    answerBuffer.value += delta
+    if (reasoningBuffer.value) {
+      placeholder.content = `<thinking>\n${reasoningBuffer.value}\n</thinking>\n\n${answerBuffer.value}`
+    } else {
+      placeholder.content = answerBuffer.value
+    }
+  }
+
+  function appendReasoningDelta(delta: string) {
+    if (!reasoningStartTime.value) {
+      reasoningStartTime.value = Date.now()
+    }
+    isReasoningActive.value = true
+    reasoningBuffer.value += delta
+    const placeholder = ensureAssistantPlaceholder()
+    placeholder.content = `<thinking>\n${reasoningBuffer.value}\n</thinking>\n\n${answerBuffer.value}`
   }
 
   function finalizeAssistantStream(reply: string) {
     const placeholder = ensureAssistantPlaceholder()
-    placeholder.content = reply
+    if (reasoningBuffer.value) {
+      placeholder.content = JSON.stringify({
+        answer: reply,
+        thinking: reasoningBuffer.value,
+        reasoning_duration: reasoningDuration.value,
+      })
+    } else {
+      placeholder.content = JSON.stringify({
+        answer: reply,
+      })
+    }
+    reasoningBuffer.value = ''
+    reasoningStartTime.value = null
+    reasoningDuration.value = null
+    answerBuffer.value = ''
+    isReasoningActive.value = false
   }
 
   async function submitChatMessage(value: string, targetNodeId: string, targetModelId: string) {
     abortChatStream()
     chatStreaming.value = true
-    taskStreaming.value = false
+    executeStreaming.value = false
     const controller = new AbortController()
     chatStreamController = controller
 
     try {
       await streamChat(
         {
+          chat_id: chatId.value || undefined,
           node_id: targetNodeId,
           model_id: targetModelId || undefined,
           message: value,
         },
         {
           onMeta: (data) => {
-            conversationId.value = data.conversation_id
-            if ((data as { mode?: string }).mode === 'task') {
-              taskStreaming.value = true
+            chatId.value = data.conversation_id
+            if ((data as { mode?: string }).mode === 'execute') {
+              executeStreaming.value = true
             }
-            localStorage.setItem(LAST_CONVERSATION_ID_KEY, data.conversation_id)
+            localStorage.setItem(LAST_CHAT_ID_KEY, data.conversation_id)
             void router.replace({
               path: '/chat',
               query: {
-                conversation_id: data.conversation_id,
+                chat_id: data.conversation_id,
               },
             })
           },
           onDelta: (data) => {
-            if (!conversationId.value) {
-              conversationId.value = data.conversation_id
+            if (!chatId.value) {
+              chatId.value = data.conversation_id
             }
             appendAssistantDelta(data.delta)
           },
+          onReasoning: (data) => {
+            if (!chatId.value) {
+              chatId.value = data.conversation_id
+            }
+            appendReasoningDelta(data.delta)
+          },
+          onReasoningDone: (data) => {
+            isReasoningActive.value = false
+            reasoningDuration.value = data.duration
+          },
           onDone: (data) => {
-            conversationId.value = data.conversation_id
+            chatId.value = data.conversation_id
             finalizeAssistantStream(data.reply)
           },
-          onTaskCreated: (data) => {
-            activeTaskId.value = data.task_id
+          onError: (data) => {
+            errorMessage.value = data.error
+            finalizeAssistantStream(`请求失败：${data.error}`)
           },
           onConversationMessage: (data) => {
             if (data.type === 'approval') {
               waitingForConfirm.value = true
-              taskRiskReason.value = data.content
+              executeRiskReason.value = data.content
             }
             const message = formatConversationMessage(data.type, data.content)
             if (message) {
@@ -543,14 +584,14 @@ export function useChatPage() {
       finalizeAssistantStream('请求失败，请检查后端服务或设置页中的大模型配置。')
     } finally {
       chatStreaming.value = false
-      taskStreaming.value = false
+      executeStreaming.value = false
       chatStreamController = null
     }
   }
 
   async function sendMessageValue(value: string) {
     const trimmed = value.trim()
-    if (!trimmed || loading.value || chatStreaming.value || taskStreaming.value) {
+    if (!trimmed || loading.value || chatStreaming.value || executeStreaming.value) {
       return
     }
 
@@ -591,8 +632,8 @@ export function useChatPage() {
     await sendMessageValue(source.content)
   }
 
-  async function confirmActiveTask(approved: boolean) {
-    if (!activeTaskId.value || confirming.value) {
+  async function confirmActiveExecute(approved: boolean) {
+    if (!chatId.value || confirming.value) {
       return
     }
 
@@ -600,15 +641,61 @@ export function useChatPage() {
     errorMessage.value = ''
     waitingForConfirm.value = false
 
-    const riskReason = taskRiskReason.value
+    const riskReason = executeRiskReason.value
+    const currentChatId = chatId.value
 
     try {
-      const updatedTask = await confirmTask(activeTaskId.value, { approved })
+      await confirmConversationExecute(currentChatId, { approved })
 
       if (approved) {
-        connectTaskStream(updatedTask.id)
+        const continueUrl = buildConversationContinueUrl(currentChatId)
+        executeStreaming.value = true
+        const eventSource = new EventSource(continueUrl)
+
+        eventSource.addEventListener('conversation.message', (event) => {
+          const payload = JSON.parse((event as MessageEvent).data) as { conversation_id: string; type: string; content: string }
+          if (payload.type === 'approval') {
+            waitingForConfirm.value = true
+            executeRiskReason.value = payload.content
+          }
+          const message = formatConversationMessage(payload.type, payload.content)
+          if (message) {
+            appendAssistantMessage(message)
+          }
+        })
+
+        eventSource.addEventListener('conversation.error', (event) => {
+          const payload = JSON.parse((event as MessageEvent).data) as { error: string }
+          appendAssistantMessage(`[错误] ${payload.error}`)
+          eventSource.close()
+          executeStreaming.value = false
+          void reloadSidebarData()
+        })
+
+        eventSource.addEventListener('conversation.input', (event) => {
+          const payload = JSON.parse((event as MessageEvent).data) as { conversation_id: string; question: string; input_type: string; options?: string[]; placeholder?: string }
+          inputQuestion.value = payload.question
+          inputType.value = payload.input_type as 'text' | 'select' | 'multiselect'
+          inputOptions.value = payload.options || []
+          inputPlaceholder.value = payload.placeholder || ''
+          waitingForInput.value = true
+        })
+
+        eventSource.addEventListener('conversation.done', () => {
+          eventSource.close()
+          executeStreaming.value = false
+          void reloadSidebarData()
+        })
+
+        eventSource.onerror = () => {
+          eventSource.close()
+          executeStreaming.value = false
+          void reloadSidebarData()
+        }
+
+        executeEventSource = eventSource
       } else {
-        closeTaskStream()
+        closeExecuteStream()
         appendAssistantMessage(`已拒绝\n原因：${riskReason}`)
         await reloadSidebarData()
       }
@@ -619,58 +706,53 @@ export function useChatPage() {
     }
   }
 
-  async function stopActiveTask() {
-    if (!activeTaskId.value || confirming.value) {
+  async function stopActiveExecute() {
+    if (!chatId.value || confirming.value) {
       return
     }
 
-    closeTaskStream()
+    closeExecuteStream()
     errorMessage.value = ''
     try {
-      await stopTask(activeTaskId.value)
-      if (conversationId.value) {
-        await loadChatMessages(conversationId.value)
-      }
+      await stopConversationExecute(chatId.value)
+      await loadChatMessages(chatId.value)
       await reloadSidebarData()
-      ElMessage.success('任务已停止')
+      ElMessage.success('执行已停止')
     } catch {
-      errorMessage.value = '停止任务失败。'
+      errorMessage.value = '停止执行失败。'
     }
   }
 
-  async function restartActiveTask() {
-    if (!activeTaskId.value || confirming.value) {
+  async function restartActiveExecute() {
+    if (!chatId.value || confirming.value) {
       return
     }
 
-    closeTaskStream()
+    closeExecuteStream()
     errorMessage.value = ''
     try {
-      await restartTask(activeTaskId.value)
-      if (conversationId.value) {
-        await loadChatMessages(conversationId.value)
-      }
+      await restartConversationExecute(chatId.value)
+      await loadChatMessages(chatId.value)
       await reloadSidebarData()
-      connectTaskStream(activeTaskId.value)
-      ElMessage.success('任务已重新启动')
+      ElMessage.success('执行已重新启动')
     } catch {
-      errorMessage.value = '重启任务失败。'
+      errorMessage.value = '重启执行失败。'
     }
   }
 
-  async function submitTaskInput(userInput: string) {
-    if (!activeTaskId.value || !userInput.trim()) {
+  async function submitExecuteInput(userInput: string) {
+    if (!chatId.value || !userInput.trim()) {
       return
     }
 
-    const taskId = activeTaskId.value
-    closeTaskStream()
+    const currentChatId = chatId.value
+    closeExecuteStream()
     errorMessage.value = ''
     loading.value = true
     waitingForInput.value = false
 
     try {
-      await provideTaskInput(taskId, { user_input: userInput.trim() })
+      await provideConversationInput(currentChatId, { user_input: userInput.trim() })
 
       const lastMessage = messages.value[messages.value.length - 1]
       if (lastMessage?.role === 'assistant' && lastMessage.content.includes('需要您的输入')) {
@@ -679,8 +761,8 @@ export function useChatPage() {
 
       await reloadSidebarData()
 
-      const continueUrl = buildTaskContinueUrl(taskId)
-      taskStreaming.value = true
+      const continueUrl = buildConversationContinueUrl(currentChatId)
+      executeStreaming.value = true
       const eventSource = new EventSource(continueUrl)
 
       eventSource.addEventListener('conversation.message', (event) => {
@@ -689,6 +771,14 @@ export function useChatPage() {
         if (message) {
           appendAssistantMessage(message)
         }
+      })
+
+      eventSource.addEventListener('conversation.error', (event) => {
+        const payload = JSON.parse((event as MessageEvent).data) as { error: string }
+        appendAssistantMessage(`[错误] ${payload.error}`)
+        eventSource.close()
+        executeStreaming.value = false
+        void reloadSidebarData()
       })
 
       eventSource.addEventListener('conversation.input', (event) => {
@@ -702,17 +792,17 @@ export function useChatPage() {
 
       eventSource.addEventListener('conversation.done', () => {
         eventSource.close()
-        taskStreaming.value = false
+        executeStreaming.value = false
         void reloadSidebarData()
       })
 
       eventSource.onerror = () => {
         eventSource.close()
-        taskStreaming.value = false
+        executeStreaming.value = false
         void reloadSidebarData()
       }
 
-      taskEventSource = eventSource
+      executeEventSource = eventSource
     } catch {
       errorMessage.value = '提交用户输入失败。'
       appendAssistantMessage('提交用户输入失败，请重试。')
@@ -739,7 +829,7 @@ export function useChatPage() {
     errorMessage.value = ''
     try {
       await deleteChat(targetChatId)
-      if (conversationId.value === targetChatId) {
+      if (chatId.value === targetChatId) {
         resetConversationState()
         input.value = ''
         void router.replace({ path: '/chat' })
@@ -756,12 +846,12 @@ export function useChatPage() {
   })
 
   onMounted(() => {
-    const routeConversationId = typeof route.query.conversation_id === 'string' ? route.query.conversation_id : ''
-    const lastConversationId = localStorage.getItem(LAST_CONVERSATION_ID_KEY) ?? ''
-    const initialConversationId = routeConversationId || lastConversationId
+    const routeChatId = typeof route.query.chat_id === 'string' ? route.query.chat_id : ''
+    const lastChatId = localStorage.getItem(LAST_CHAT_ID_KEY) ?? ''
+    const initialChatId = routeChatId || lastChatId
 
-    if (initialConversationId) {
-      void switchChat(initialConversationId)
+    if (initialChatId) {
+      void switchChat(initialChatId)
     }
     void reloadSidebarData()
     void loadNodes()
@@ -770,23 +860,23 @@ export function useChatPage() {
   })
 
   watch(
-    () => route.query.conversation_id,
+    () => route.query.chat_id,
     (value) => {
-      const nextConversationId = typeof value === 'string' ? value : ''
-      if (nextConversationId && nextConversationId !== conversationId.value) {
-        void switchChat(nextConversationId)
+      const nextChatId = typeof value === 'string' ? value : ''
+      if (nextChatId && nextChatId !== chatId.value) {
+        void switchChat(nextChatId)
       }
     },
   )
 
-  const conversationLabel = computed(() => conversationId.value || 'new')
+  const conversationLabel = computed(() => chatId.value || 'new')
   const selectedModel = computed(() => availableModels.value.find((item) => item.id === selectedModelId.value) ?? null)
   const assistantTitle = computed(() => selectedModel.value?.name || '模型')
   const assistantLabel = computed(() => shortenLabel(assistantTitle.value, 8) || '模型')
   const userTitle = computed(() => currentUserName.value || '用户')
   const userLabel = computed(() => shortenLabel(userTitle.value, 8) || '用户')
   const selectedNode = computed(() => availableNodes.value.find((item) => item.id === selectedNodeId.value) ?? null)
-  const streaming = computed(() => chatStreaming.value || taskStreaming.value)
+  const streaming = computed(() => chatStreaming.value || executeStreaming.value)
   const streamingMessageId = computed(() => {
     if (!streaming.value) {
       return undefined
@@ -797,7 +887,7 @@ export function useChatPage() {
     }
     return undefined
   })
-  const activeChatTitle = computed(() => chats.value.find((item) => item.id === conversationId.value)?.title || '新对话')
+  const activeChatTitle = computed(() => chats.value.find((item) => item.id === chatId.value)?.title || '新对话')
   const filteredChats = computed(() => {
     if (!selectedNodeId.value) {
       return chats.value
@@ -831,22 +921,28 @@ export function useChatPage() {
     const actionableIds = new Set(actionableAssistantMessageIds.value)
     return messages.value.filter((item) => actionableIds.has(item.id) && !!findRetrySourceMessage(item.id)).map((item) => item.id)
   })
-  const canStopTask = computed(() => !!activeTaskId.value && taskStreaming.value)
-  const canRestartTask = computed(() => !!activeTaskId.value && !taskStreaming.value)
-  const taskApprovalMessageId = computed(() => {
+  const canStopExecute = computed(() => !!chatId.value && executeStreaming.value)
+  const canRestartExecute = computed(() => !!chatId.value && !executeStreaming.value)
+  const executeApprovalMessageId = computed(() => {
     if (!waitingForConfirm.value) {
       return ''
     }
     for (let index = messages.value.length - 1; index >= 0; index -= 1) {
       const item = messages.value[index]
-      if (item.role !== 'assistant' && item.content?.includes('需要人工确认')) {
+      if (item.role === 'assistant' && item.type === 'approval') {
+        return item.id
+      }
+    }
+    for (let index = messages.value.length - 1; index >= 0; index -= 1) {
+      const item = messages.value[index]
+      if (item.role === 'assistant' && item.content?.includes('需要人工确认')) {
         return item.id
       }
     }
     const lastMessage = messages.value[messages.value.length - 1]
     return lastMessage?.role === 'assistant' ? lastMessage.id : ''
   })
-  const taskInputRequest = computed(() => {
+  const executeInputRequest = computed(() => {
     if (!waitingForInput.value || !inputQuestion.value) {
       return undefined
     }
@@ -858,20 +954,19 @@ export function useChatPage() {
     }
   })
 
-  const taskUserInput = computed(() => {
+  const executeUserInput = computed(() => {
     return undefined
   })
 
   return {
-    activeTaskId,
     activeChatTitle,
     actionableAssistantMessageIds,
     availableNodes,
     availableModels,
     assistantLabel,
     assistantTitle,
-    canRestartTask,
-    canStopTask,
+    canRestartExecute,
+    canStopExecute,
     chatStreaming,
     chats,
     chatGroups,
@@ -882,12 +977,13 @@ export function useChatPage() {
     hasChatResults,
     hasMoreChats,
     input,
+    isReasoningActive,
     loadMoreChats,
     loading,
     messages,
     reloadSidebarData,
     removeChatItem,
-    restartActiveTask,
+    restartActiveExecute,
     retryAssistantMessage,
     retryableAssistantMessageIds,
     selectedNode,
@@ -899,23 +995,23 @@ export function useChatPage() {
     sidebarSearch,
     sidebarLoading,
     startNewConversation,
-    stopActiveTask,
+    stopActiveExecute,
     stopChatResponse,
     streaming,
     streamingMessageId,
     submitMessage,
-    submitTaskInput,
+    submitExecuteInput,
     switchChat,
-    taskApprovalMessageId,
-    taskInputRequest,
-    taskRiskReason,
-    taskUserInput,
-    confirmActiveTask,
+    executeApprovalMessageId,
+    executeInputRequest,
+    executeRiskReason,
+    executeUserInput,
+    confirmActiveExecute,
     userLabel,
     userTitle,
     visibleChatCount,
     conversationLabel,
-    conversationId,
+    chatId,
     formatDateTime,
   }
 }

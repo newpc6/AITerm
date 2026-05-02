@@ -2,15 +2,15 @@ import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-import { deleteConversation, getConversations } from '@/api/aiterm'
-import type { ConversationListItem } from '@/types/api'
+import { deleteChat, getChats } from '@/api/aiterm'
+import type { ChatItem } from '@/types/api'
 
 export function useConversationHistoryPage() {
   const router = useRouter()
   const loading = ref(false)
-  const deletingConversationId = ref('')
+  const deletingChatId = ref('')
   const errorMessage = ref('')
-  const items = ref<ConversationListItem[]>([])
+  const items = ref<ChatItem[]>([])
   const page = ref(1)
   const pageSize = ref(10)
   const total = ref(0)
@@ -20,7 +20,7 @@ export function useConversationHistoryPage() {
     errorMessage.value = ''
 
     try {
-      const data = await getConversations({ page: page.value, page_size: pageSize.value })
+      const data = await getChats({ page: page.value, page_size: pageSize.value })
       items.value = data.items
       total.value = data.total
     } catch {
@@ -41,16 +41,16 @@ export function useConversationHistoryPage() {
     void loadConversations()
   }
 
-  function openConversation(conversationId: string) {
+  function openConversation(chatId: string) {
     void router.push({
       path: '/chat',
       query: {
-        conversation_id: conversationId,
+        chat_id: chatId,
       },
     })
   }
 
-  async function removeConversation(conversationId: string) {
+  async function removeConversation(chatId: string) {
     try {
       await ElMessageBox.confirm('删除后将一并移除该会话下的历史消息和关联任务，是否继续？', '删除会话', {
         confirmButtonText: '删除',
@@ -61,12 +61,12 @@ export function useConversationHistoryPage() {
       return
     }
 
-    deletingConversationId.value = conversationId
+    deletingChatId.value = chatId
     errorMessage.value = ''
 
     try {
-      await deleteConversation(conversationId)
-      items.value = items.value.filter((item) => item.id !== conversationId)
+      await deleteChat(chatId)
+      items.value = items.value.filter((item) => item.id !== chatId)
       total.value = Math.max(0, total.value - 1)
       ElMessage.success('会话已删除。')
       if (items.value.length === 0 && page.value > 1) {
@@ -76,7 +76,7 @@ export function useConversationHistoryPage() {
     } catch {
       errorMessage.value = '删除会话失败。'
     } finally {
-      deletingConversationId.value = ''
+      deletingChatId.value = ''
     }
   }
 
@@ -86,7 +86,7 @@ export function useConversationHistoryPage() {
 
   return {
     errorMessage,
-    deletingConversationId,
+    deletingChatId,
     items,
     loadConversations,
     loading,

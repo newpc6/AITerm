@@ -1,4 +1,4 @@
-export type ConversationMode = 'chat' | 'task'
+export type ConversationMode = 'chat' | 'execute'
 
 export type ApiResponse<T> = {
   code: number
@@ -29,13 +29,11 @@ export type ConversationPayload = {
   model_id?: string
   message: string
   mode: ConversationMode
-  task_id?: string
 }
 
 export type ConversationData = {
   conversation_id: string
   reply: string
-  task_id?: string
   mode: ConversationMode
 }
 
@@ -92,7 +90,7 @@ export type ChatItem = {
 
 export type ConversationListData = PaginatedData<ConversationListItem>
 
-export type TaskItem = {
+export type ExecuteItem = {
   id: string
   title: string
   status: string
@@ -106,7 +104,7 @@ export type TaskItem = {
   created_at: string
 }
 
-export type TaskDetailStep = {
+export type ExecuteDetailStep = {
   index: number
   title: string
   status: string
@@ -122,7 +120,7 @@ export type TaskDetailStep = {
   repaired_command?: string
 }
 
-export type TaskInputRequest = {
+export type ExecuteInputRequest = {
   question: string
   input_type: 'text' | 'select' | 'multiselect'
   options: string[]
@@ -130,7 +128,7 @@ export type TaskInputRequest = {
   default_value: string
 }
 
-export type TaskDetail = {
+export type ExecuteDetail = {
   id: string
   title: string
   status: string
@@ -143,7 +141,7 @@ export type TaskDetail = {
   risk_reason?: string
   summary: string
   final_result?: string
-  steps: TaskDetailStep[]
+  steps: ExecuteDetailStep[]
   input_question?: string
   input_type?: 'text' | 'select' | 'multiselect'
   input_options?: string[]
@@ -153,15 +151,15 @@ export type TaskDetail = {
   updated_at: string
 }
 
-export type TaskInputPayload = {
+export type ExecuteInputPayload = {
   user_input: string
 }
 
-export type TaskConfirmPayload = {
+export type ExecuteConfirmPayload = {
   approved: boolean
 }
 
-export type TaskListData = PaginatedData<TaskItem>
+export type ExecuteListData = PaginatedData<ExecuteItem>
 
 export type ModelConfigItem = {
   id: string
@@ -298,18 +296,6 @@ export type NodePayload = {
   name: string
   host: string
   port: number
-}
-
-export type TaskStreamStatusData = {
-  task_id: string
-  status: string
-  progress: number
-}
-
-export type TaskStreamOutputData = {
-  task_id: string
-  stream: string
-  content: string
 }
 
 export type TerminalExecutePayload = {

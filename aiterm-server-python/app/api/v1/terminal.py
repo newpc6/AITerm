@@ -4,6 +4,7 @@ from datetime import datetime
 from app.models import Response, TerminalExecuteRequest, TerminalExecuteResponse
 from app.services import execute_command, NodeService
 from app.api.deps import get_node_service
+from app.utils import now_iso
 
 router = APIRouter(prefix="/terminal", tags=["terminal"])
 
@@ -35,6 +36,6 @@ async def execute_terminal_command(
             timed_out=result.timed_out,
             node_id=node_id,
             node_name=node_name,
-            timestamp=datetime.utcnow().isoformat()
+            timestamp=now_iso()
         ).model_dump()
     )

@@ -8,6 +8,7 @@ from app.repositories.base import IModelConfigRepository, IGlobalSettingsReposit
 from app.models import ModelConfig, GlobalSettings, AuthSettings
 from app.db import async_session_maker
 from app.db.settings import ModelConfigModel, SystemDictModel, AuthSettingsModel
+from app.utils import now_iso
 
 
 class ModelConfigRepository(IModelConfigRepository):
@@ -51,7 +52,7 @@ class ModelConfigRepository(IModelConfigRepository):
 
     async def create_model(self, model: ModelConfig) -> ModelConfig:
         async with async_session_maker() as session:
-            now = datetime.utcnow().isoformat()
+            now = now_iso()
             db_model = ModelConfigModel(
                 name=model.name,
                 api_url=model.api_url,
@@ -89,7 +90,7 @@ class ModelConfigRepository(IModelConfigRepository):
             db_model.extra_body_json = json.dumps(model.extra_body)
             db_model.extra_headers_json = json.dumps(model.extra_headers)
             db_model.is_default = 1 if model.is_default else 0
-            db_model.updated_at = datetime.utcnow().isoformat()
+            db_model.updated_at = now_iso()
 
             await session.commit()
             await session.refresh(db_model)
@@ -124,7 +125,7 @@ class ModelConfigRepository(IModelConfigRepository):
                 return None
 
             db_model.is_default = 1
-            db_model.updated_at = datetime.utcnow().isoformat()
+            db_model.updated_at = now_iso()
             await session.commit()
             await session.refresh(db_model)
             return self._to_domain(db_model)
@@ -202,7 +203,7 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
 
     async def update_settings(self, settings: GlobalSettings) -> GlobalSettings:
         async with async_session_maker() as session:
-            now = datetime.utcnow().isoformat()
+            now = now_iso()
 
             data = {
                 "intent_detection_prompt": settings.intent_detection_prompt,

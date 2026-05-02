@@ -118,9 +118,18 @@ class Chat(BaseModel):
 
 
 class ChatCreate(BaseModel):
+    chat_id: Optional[str] = None
     node_id: str = "1"
     model_id: Optional[str] = None
     message: str
+
+
+class ConversationCreate(BaseModel):
+    conversation_id: Optional[str] = None
+    node_id: str = "1"
+    model_id: Optional[str] = None
+    message: str
+    mode: str = "chat"
 
 
 class ChatUpdate(BaseModel):

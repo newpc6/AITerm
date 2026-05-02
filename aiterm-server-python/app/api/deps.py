@@ -3,12 +3,12 @@ from fastapi import Depends, Header, HTTPException
 
 from app.config import get_settings
 from app.repositories import (
-    NodeRepository, TaskRepository,
+    NodeRepository,
     UserRepository, SessionRepository, ModelConfigRepository,
     GlobalSettingsRepository, AuthSettingsRepository
 )
 from app.services import (
-    NodeService, TaskService,
+    NodeService, ExecuteService,
     AuthService, UserService, ChatOrchestrator,
     ModelConfigService, GlobalSettingsService
 )
@@ -16,10 +16,6 @@ from app.services import (
 
 def get_node_repository() -> NodeRepository:
     return NodeRepository()
-
-
-def get_task_repository() -> TaskRepository:
-    return TaskRepository()
 
 
 def get_user_repository() -> UserRepository:
@@ -54,13 +50,12 @@ async def get_node_service(
     return NodeService(repo)
 
 
-async def get_task_service(
-    task_repo: TaskRepository = Depends(get_task_repository),
+async def get_execute_service(
     node_repo: NodeRepository = Depends(get_node_repository),
     model_repo: ModelConfigRepository = Depends(get_model_config_repository),
     settings=Depends(get_global_settings)
-) -> TaskService:
-    return TaskService(task_repo, node_repo, model_repo, settings)
+) -> ExecuteService:
+    return ExecuteService(node_repo, model_repo, settings)
 
 
 async def get_auth_service(
@@ -93,11 +88,10 @@ async def get_global_settings_service(
 async def get_chat_orchestrator(
     node_repo: NodeRepository = Depends(get_node_repository),
     model_repo: ModelConfigRepository = Depends(get_model_config_repository),
-    task_repo: TaskRepository = Depends(get_task_repository),
-    task_service: TaskService = Depends(get_task_service),
+    execute_service: ExecuteService = Depends(get_execute_service),
     settings=Depends(get_global_settings)
 ) -> ChatOrchestrator:
-    return ChatOrchestrator(node_repo, model_repo, task_repo, task_service, settings)
+    return ChatOrchestrator(node_repo, model_repo, execute_service, settings)
 
 
 async def get_current_user_optional(

@@ -25,10 +25,10 @@ import type {
   NodeItem,
   NodeListData,
   NodePayload,
-  TaskConfirmPayload,
-  TaskDetail,
-  TaskInputPayload,
-  TaskListData,
+  ExecuteConfirmPayload,
+  ExecuteDetail,
+  ExecuteInputPayload,
+  ExecuteListData,
   TerminalExecuteData,
   TerminalExecutePayload,
   UserItem,
@@ -84,13 +84,13 @@ export async function streamConversation(
     onMeta?: (data: ConversationStreamMetaData) => void
     onDelta?: (data: ConversationStreamDeltaData) => void
     onDone?: (data: ConversationStreamDoneData) => void
-    onTaskCreated?: (data: { conversation_id: string; task_id: string }) => void
+    onError?: (data: { error: string }) => void
     onConversationMessage?: (data: { conversation_id: string; type: string; content: string }) => void
     onConversationInput?: (data: { conversation_id: string; question: string; input_type: string; options?: string[]; placeholder?: string }) => void
   },
   signal?: AbortSignal,
 ) {
-  const response = await fetch(`${getApiBaseUrl()}/api/v1/conversations/stream`, {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/chats/stream`, {
     method: 'POST',
     signal,
     headers: {
@@ -126,8 +126,8 @@ export async function streamConversation(
       handlers.onDelta?.(parsed as ConversationStreamDeltaData)
     } else if (currentEvent === 'conversation.done') {
       handlers.onDone?.(parsed as ConversationStreamDoneData)
-    } else if (currentEvent === 'conversation.task_created') {
-      handlers.onTaskCreated?.(parsed as { conversation_id: string; task_id: string })
+    } else if (currentEvent === 'conversation.error') {
+      handlers.onError?.(parsed as { error: string })
     } else if (currentEvent === 'conversation.message') {
       handlers.onConversationMessage?.(parsed as { conversation_id: string; type: string; content: string })
     } else if (currentEvent === 'conversation.input') {
@@ -170,17 +170,17 @@ export async function streamConversation(
 }
 
 export async function getConversations(params?: PaginationParams) {
-  const { data } = await http.get<ApiResponse<ConversationListData>>('/api/v1/conversations', { params })
+  const { data } = await http.get<ApiResponse<ConversationListData>>('/api/v1/chats', { params })
   return data.data
 }
 
 export async function getConversationMessages(conversationId: string) {
-  const { data } = await http.get<ApiResponse<ConversationMessagesData>>(`/api/v1/conversations/${conversationId}/messages`)
+  const { data } = await http.get<ApiResponse<ConversationMessagesData>>(`/api/v1/chats/${conversationId}/messages`)
   return data.data
 }
 
 export async function deleteConversation(conversationId: string) {
-  const { data } = await http.delete<ApiResponse<{ conversation_id: string; status: string }>>(`/api/v1/conversations/${conversationId}`)
+  const { data } = await http.delete<ApiResponse<{ conversation_id: string; status: string }>>(`/api/v1/chats/${conversationId}`)
   return data.data
 }
 
@@ -222,6 +222,7 @@ export interface ChatMessagesData {
 }
 
 export interface ChatCreatePayload {
+  chat_id?: string
   node_id?: string
   model_id?: string
   message: string
@@ -269,8 +270,10 @@ export async function streamChat(
   handlers: {
     onMeta?: (data: ConversationStreamMetaData) => void
     onDelta?: (data: ConversationStreamDeltaData) => void
+    onReasoning?: (data: { conversation_id: string; delta: string }) => void
+    onReasoningDone?: (data: { conversation_id: string; duration: number }) => void
     onDone?: (data: ConversationStreamDoneData) => void
-    onTaskCreated?: (data: { conversation_id: string; task_id: string }) => void
+    onError?: (data: { error: string }) => void
     onConversationMessage?: (data: { conversation_id: string; type: string; content: string }) => void
     onConversationInput?: (data: { conversation_id: string; question: string; input_type: string; options?: string[]; placeholder?: string }) => void
   },
@@ -310,10 +313,14 @@ export async function streamChat(
       handlers.onMeta?.(parsed as ConversationStreamMetaData)
     } else if (currentEvent === 'conversation.delta') {
       handlers.onDelta?.(parsed as ConversationStreamDeltaData)
+    } else if (currentEvent === 'conversation.reasoning') {
+      handlers.onReasoning?.(parsed as { conversation_id: string; delta: string })
+    } else if (currentEvent === 'conversation.reasoning_done') {
+      handlers.onReasoningDone?.(parsed as { conversation_id: string; duration: number })
     } else if (currentEvent === 'conversation.done') {
       handlers.onDone?.(parsed as ConversationStreamDoneData)
-    } else if (currentEvent === 'conversation.task_created') {
-      handlers.onTaskCreated?.(parsed as { conversation_id: string; task_id: string })
+    } else if (currentEvent === 'conversation.error') {
+      handlers.onError?.(parsed as { error: string })
     } else if (currentEvent === 'conversation.message') {
       handlers.onConversationMessage?.(parsed as { conversation_id: string; type: string; content: string })
     } else if (currentEvent === 'conversation.input') {
@@ -356,27 +363,27 @@ export async function streamChat(
 }
 
 export async function getTasks(params?: PaginationParams) {
-  const { data } = await http.get<ApiResponse<TaskListData>>('/api/v1/tasks', { params })
+  const { data } = await http.get<ApiResponse<ExecuteListData>>('/api/v1/tasks', { params })
   return data.data
 }
 
 export async function getTaskDetail(taskId: string) {
-  const { data } = await http.get<ApiResponse<TaskDetail>>(`/api/v1/tasks/${taskId}`)
+  const { data } = await http.get<ApiResponse<ExecuteDetail>>(`/api/v1/tasks/${taskId}`)
   return data.data
 }
 
-export async function confirmTask(taskId: string, payload: TaskConfirmPayload) {
-  const { data } = await http.post<ApiResponse<TaskDetail>>(`/api/v1/tasks/${taskId}/confirm`, payload)
+export async function confirmTask(taskId: string, payload: ExecuteConfirmPayload) {
+  const { data } = await http.post<ApiResponse<ExecuteDetail>>(`/api/v1/tasks/${taskId}/confirm`, payload)
   return data.data
 }
 
 export async function stopTask(taskId: string) {
-  const { data } = await http.post<ApiResponse<TaskDetail>>(`/api/v1/tasks/${taskId}/stop`)
+  const { data } = await http.post<ApiResponse<ExecuteDetail>>(`/api/v1/tasks/${taskId}/stop`)
   return data.data
 }
 
 export async function restartTask(taskId: string) {
-  const { data } = await http.post<ApiResponse<TaskDetail>>(`/api/v1/tasks/${taskId}/restart`)
+  const { data } = await http.post<ApiResponse<ExecuteDetail>>(`/api/v1/tasks/${taskId}/restart`)
   return data.data
 }
 
@@ -385,8 +392,8 @@ export async function deleteTask(taskId: string) {
   return data.data
 }
 
-export async function provideTaskInput(taskId: string, payload: TaskInputPayload) {
-  const { data } = await http.post<ApiResponse<TaskDetail>>(`/api/v1/tasks/${taskId}/input`, payload)
+export async function provideTaskInput(taskId: string, payload: ExecuteInputPayload) {
+  const { data } = await http.post<ApiResponse<ExecuteDetail>>(`/api/v1/tasks/${taskId}/input`, payload)
   return data.data
 }
 
@@ -404,6 +411,37 @@ export function buildTaskContinueUrl(taskId: string) {
 export async function getModels(params?: PaginationParams) {
   const { data } = await http.get<ApiResponse<ModelConfigListData>>('/api/v1/settings/models', { params })
   return data.data
+}
+
+export async function confirmConversationExecute(conversationId: string, payload: ExecuteConfirmPayload) {
+  const { data } = await http.post<ApiResponse<ExecuteDetail>>(`/api/v1/chats/${conversationId}/confirm`, payload)
+  return data.data
+}
+
+export async function stopConversationExecute(conversationId: string) {
+  const { data } = await http.post<ApiResponse<ExecuteDetail>>(`/api/v1/chats/${conversationId}/stop`)
+  return data.data
+}
+
+export async function restartConversationExecute(conversationId: string) {
+  const { data } = await http.post<ApiResponse<ExecuteDetail>>(`/api/v1/chats/${conversationId}/restart`)
+  return data.data
+}
+
+export async function provideConversationInput(conversationId: string, payload: ExecuteInputPayload) {
+  const { data } = await http.post<ApiResponse<ExecuteDetail>>(`/api/v1/chats/${conversationId}/input`, payload)
+  return data.data
+}
+
+export function buildConversationContinueUrl(conversationId: string) {
+  const baseUrl = getApiBaseUrl().trim()
+  const eventPath = `/api/v1/chats/${conversationId}/continue`
+  const url = baseUrl ? new URL(eventPath, baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`) : new URL(eventPath, window.location.origin)
+  const token = getAuthToken()
+  if (token) {
+    url.searchParams.set('access_token', token)
+  }
+  return url.toString()
 }
 
 export async function getModel(modelId: string) {

@@ -1,9 +1,9 @@
 <script setup lang="ts">
-import type { TaskItem } from '@/types/api'
+import type { ExecuteItem } from '@/types/api'
 import { formatDateTime } from '@/utils/datetime'
 
 defineProps<{
-  tasks: TaskItem[]
+  tasks: ExecuteItem[]
   loading: boolean
   deletingTaskId: string
 }>()
