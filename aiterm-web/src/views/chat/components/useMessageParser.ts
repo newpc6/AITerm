@@ -194,7 +194,7 @@ export function parseStructuredInputResponse(content: string): StructuredInputRe
 }
 
 export function isExecutePlanMessage(message: ChatMessage) {
-  return message.role === 'assistant' && message.content.includes('任务计划如下') && message.content.includes('\n')
+  return message.role === 'assistant' && message.content.includes('计划步骤如下') && message.content.includes('\n')
 }
 
 export function getExecutePlanIntro(content: string) {

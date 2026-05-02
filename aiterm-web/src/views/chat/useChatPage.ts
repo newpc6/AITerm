@@ -219,7 +219,7 @@ export function useChatPage() {
       case 'plan.info':
         return normalized
       case 'plan':
-        return `任务计划如下：\n${normalized}`
+        return `计划步骤如下：\n${normalized}`
       case 'approval':
         return normalized
       case 'input.request':
@@ -246,7 +246,7 @@ export function useChatPage() {
       case 'error':
         return `[错误] ${normalized}`
       case 'plan':
-        return `任务计划如下：\n${normalized}`
+        return `计划步骤如下：\n${normalized}`
       case 'step':
         return normalized
       case 'output':
