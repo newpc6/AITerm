@@ -102,6 +102,39 @@
         <el-button type="primary" :loading="saving" @click="saveSettings">保存</el-button>
       </div>
     </div>
+
+    <div class="card">
+      <div class="card-header">
+        <p class="label">沙盒路径配置</p>
+      </div>
+
+      <el-form-item label="沙盒路径">
+        <div class="tag-container">
+          <el-tag v-for="(item, index) in form.sandbox_paths" :key="index" type="warning" closable
+            :disable-transitions="false" @close="removeSandboxPath(index)" class="rule-tag">
+            {{ item }}
+          </el-tag>
+          <el-button size="small" type="primary" plain @click="openSandboxDialog" :disabled="loading || saving">
+            + 添加
+          </el-button>
+          <el-button size="small" type="default" plain @click="browseSandboxPath" :disabled="loading || saving">
+            打开文件夹
+          </el-button>
+        </div>
+        <div class="tag-hint">所有文件读写操作必须在沙盒路径内进行，防止误操作覆盖系统关键文件</div>
+      </el-form-item>
+
+      <el-form-item label="沙盒路径规则提示词">
+        <el-input v-model="form.sandbox_rules_prompt" type="textarea" :rows="8" resize="vertical"
+          placeholder="可使用 {{paths_text}} 占位符显示沙盒路径列表" :disabled="loading || saving" />
+        <div class="form-item-hint">自定义沙盒路径限制规则，留空使用默认规则。可用占位符：{{paths_text}} - 沙盒路径列表</div>
+      </el-form-item>
+
+      <div class="form-actions">
+        <el-button :disabled="loading || saving" @click="resetForm">重置</el-button>
+        <el-button type="primary" :loading="saving" @click="saveSettings">保存</el-button>
+      </div>
+    </div>
   </el-form>
 
   <el-dialog v-model="showBlacklistDialog" title="添加黑名单规则" width="400px">
@@ -126,6 +159,20 @@
     <template #footer>
       <el-button @click="showWhitelistDialog = false">取消</el-button>
       <el-button type="primary" @click="addWhitelistItem">添加</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="showSandboxDialog" title="添加沙盒路径" width="500px">
+    <el-form @submit.prevent="addSandboxPath">
+      <el-form-item label="路径">
+        <el-input v-model="newSandboxPath" placeholder="例如：C:\Users\Username\sandbox 或 /home/user/sandbox"
+          @keyup.enter="addSandboxPath" autofocus />
+      </el-form-item>
+      <div class="dialog-hint">添加沙盒路径后，所有文件读写操作将限制在这些路径内</div>
+    </el-form>
+    <template #footer>
+      <el-button @click="showSandboxDialog = false">取消</el-button>
+      <el-button type="primary" @click="addSandboxPath">添加</el-button>
     </template>
   </el-dialog>
 </section>

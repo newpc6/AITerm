@@ -209,7 +209,6 @@ export interface ChatMessage {
   role: string
   type: string
   content: string
-  metadata: Record<string, unknown>
   created_at: string | null
 }
 
@@ -476,6 +475,11 @@ export async function getGlobalSettings() {
 
 export async function updateGlobalSettings(payload: GlobalSettingsPayload) {
   const { data } = await http.put<ApiResponse<GlobalSettingsData>>('/api/v1/settings/global', payload)
+  return data.data
+}
+
+export async function selectFolder() {
+  const { data } = await http.post<ApiResponse<{ path: string | null }>>('/api/v1/settings/select-folder')
   return data.data
 }
 

@@ -1,7 +1,7 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 
-import { getGlobalSettings, updateGlobalSettings } from '@/api/aiterm'
+import { getGlobalSettings, updateGlobalSettings, selectFolder } from '@/api/aiterm'
 import type { GlobalSettingsData, GlobalSettingsPayload } from '@/types/api'
 
 export function useGlobalSettingsPage() {
@@ -21,12 +21,16 @@ export function useGlobalSettingsPage() {
     execution_command_rules_prompt: '',
     execution_command_blacklist: [],
     execution_command_whitelist: [],
+    sandbox_paths: [],
+    sandbox_rules_prompt: '',
   })
 
   const showBlacklistDialog = ref(false)
   const showWhitelistDialog = ref(false)
+  const showSandboxDialog = ref(false)
   const newBlacklistItem = ref('')
   const newWhitelistItem = ref('')
+  const newSandboxPath = ref('')
 
   function syncForm(data: GlobalSettingsData) {
     form.value = {
@@ -42,6 +46,8 @@ export function useGlobalSettingsPage() {
       execution_command_rules_prompt: data.execution_command_rules_prompt,
       execution_command_blacklist: data.execution_command_blacklist ?? [],
       execution_command_whitelist: data.execution_command_whitelist ?? [],
+      sandbox_paths: data.sandbox_paths ?? [],
+      sandbox_rules_prompt: data.sandbox_rules_prompt ?? '',
     }
   }
 
@@ -119,6 +125,44 @@ export function useGlobalSettingsPage() {
     newWhitelistItem.value = ''
   }
 
+  function removeSandboxPath(index: number) {
+    form.value.sandbox_paths?.splice(index, 1)
+  }
+
+  function openSandboxDialog() {
+    newSandboxPath.value = ''
+    showSandboxDialog.value = true
+  }
+
+  function addSandboxPath() {
+    const item = newSandboxPath.value.trim()
+    if (!item) return
+    if (form.value.sandbox_paths?.includes(item)) {
+      ElMessage.warning('该路径已存在')
+      return
+    }
+    form.value.sandbox_paths = form.value.sandbox_paths || []
+    form.value.sandbox_paths.push(item)
+    showSandboxDialog.value = false
+    newSandboxPath.value = ''
+  }
+
+  async function browseSandboxPath() {
+    try {
+      const result = await selectFolder()
+      if (result.path) {
+        if (form.value.sandbox_paths?.includes(result.path)) {
+          ElMessage.warning('该路径已存在')
+          return
+        }
+        form.value.sandbox_paths = form.value.sandbox_paths || []
+        form.value.sandbox_paths.push(result.path)
+      }
+    } catch {
+      ElMessage.error('打开文件夹选择对话框失败')
+    }
+  }
+
   onMounted(() => {
     void loadSettings()
   })
@@ -130,16 +174,22 @@ export function useGlobalSettingsPage() {
     form,
     showBlacklistDialog,
     showWhitelistDialog,
+    showSandboxDialog,
     newBlacklistItem,
     newWhitelistItem,
+    newSandboxPath,
     loadSettings,
     saveSettings,
     resetForm,
     removeBlacklistItem,
     removeWhitelistItem,
+    removeSandboxPath,
     openBlacklistDialog,
     openWhitelistDialog,
+    openSandboxDialog,
     addBlacklistItem,
     addWhitelistItem,
+    addSandboxPath,
+    browseSandboxPath,
   }
 }

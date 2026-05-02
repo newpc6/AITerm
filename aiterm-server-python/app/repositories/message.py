@@ -1,5 +1,5 @@
 import json
-from typing import List, Optional, Dict, Any
+from typing import List, Optional
 from sqlalchemy import select, delete, desc, func
 
 from app.db import async_session_maker
@@ -32,7 +32,7 @@ class MessageRepository:
             model = result.scalar_one_or_none()
             return self._to_domain(model) if model else None
 
-    async def create_message(self, chat_id: str, role: str, content: str, type: str = MessageType.TEXT.value, metadata: Dict[str, Any] = None) -> Optional[Message]:
+    async def create_message(self, chat_id: str, role: str, content: str, type: str = MessageType.TEXT.value) -> Optional[Message]:
         if not content or not content.strip():
             return None
         async with async_session_maker() as session:
@@ -40,15 +40,14 @@ class MessageRepository:
                 chat_id=int(chat_id),
                 role=role,
                 type=type,
-                content=content,
-                extra=json.dumps(metadata or {}, ensure_ascii=False)
+                content=content
             )
             session.add(model)
             await session.commit()
             await session.refresh(model)
             return self._to_domain(model)
 
-    async def update_message(self, message_id: str, **kwargs) -> Optional[Message]:
+    async def update_message(self, message_id: str, content: str = None, type: str = None) -> Optional[Message]:
         async with async_session_maker() as session:
             result = await session.execute(
                 select(MessageModel).where(MessageModel.id == int(message_id))
@@ -57,13 +56,10 @@ class MessageRepository:
             if not model:
                 return None
 
-            for key, value in kwargs.items():
-                if hasattr(model, key):
-                    if key == "metadata" and isinstance(value, dict):
-                        setattr(model, "extra", json.dumps(
-                            value, ensure_ascii=False))
-                    else:
-                        setattr(model, key, value)
+            if content is not None:
+                model.content = content
+            if type is not None:
+                model.type = type
 
             await session.commit()
             return self._to_domain(model)
@@ -104,12 +100,6 @@ class MessageRepository:
             return [self._to_domain(m) for m in models]
 
     def _to_domain(self, model: MessageModel) -> Message:
-        metadata = {}
-        try:
-            metadata = json.loads(model.extra) if model.extra else {}
-        except:
-            pass
-
         created_at = ensure_timezone(model.created_at)
         return Message(
             id=str(model.id),
@@ -117,6 +107,5 @@ class MessageRepository:
             role=model.role,
             type=model.type,
             content=model.content,
-            metadata=metadata,
             created_at=created_at.isoformat() if created_at else None
         )

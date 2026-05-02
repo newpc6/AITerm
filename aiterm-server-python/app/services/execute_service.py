@@ -1,6 +1,8 @@
 import asyncio
 import json
 import logging
+import os
+import re
 from typing import AsyncGenerator, Optional, Dict, Any, List
 
 from app.models import Node, ModelConfig
@@ -31,13 +33,25 @@ class ExecuteService:
         self._cancelled_executions: set = set()
         self._execution_steps: Dict[str, List[ExecuteStep]] = {}
 
+    def _parse_message_metadata(self, content: str) -> dict:
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, dict):
+                return parsed
+        except:
+            pass
+        return {}
+
     async def _save_message(self, chat_id: str, role: str, content: str, msg_type: str = "text", metadata: dict = None):
+        if metadata:
+            structured_content = {"message": content, **metadata}
+            content = json.dumps(structured_content, ensure_ascii=False)
+
         await self.message_repo.create_message(
             chat_id=chat_id,
             role=role,
             content=content,
-            type=msg_type,
-            metadata=metadata or {}
+            type=msg_type
         )
 
     def _is_cancelled(self, chat_id: str) -> bool:
@@ -54,13 +68,55 @@ class ExecuteService:
                 return True, f"危险命令检测: {pattern}"
         return False, ""
 
+    def _check_sandbox_path(self, command: str) -> tuple:
+        sandbox_paths = getattr(self.settings, 'sandbox_paths', []) or []
+        if not sandbox_paths:
+            return True, ""
+
+        path_patterns = [
+            r'["\']([^"\']+)["\']',
+            r'(?:(?:-o|--output|-O|--output-document)\s+)([^\s]+)',
+            r'(?:>|>>)\s*([^\s]+)',
+            r'(?:<)\s*([^\s]+)',
+            r'(?:-f|--file)\s+([^\s]+)',
+            r'(?:-d|--directory)\s+([^\s]+)',
+            r'(?:-p|--path)\s+([^\s]+)',
+            r'(?:New-Item|Remove-Item|Copy-Item|Move-Item|Set-Content|Add-Content|Get-Content)\s+(?:-Path\s+)?["\']?([^"\'\s]+)',
+            r'(?:Out-File|Set-Content)\s+(?:-FilePath\s+)?["\']?([^"\'\s]+)',
+        ]
+
+        for pattern in path_patterns:
+            matches = re.findall(pattern, command, re.IGNORECASE)
+            for match in matches:
+                path = match if isinstance(
+                    match, str) else match[0] if match else ""
+                if not path:
+                    continue
+
+                if not os.path.isabs(path):
+                    continue
+
+                normalized_path = os.path.normpath(path)
+                in_sandbox = False
+                for sandbox in sandbox_paths:
+                    normalized_sandbox = os.path.normpath(sandbox)
+                    if normalized_path.lower().startswith(normalized_sandbox.lower()):
+                        in_sandbox = True
+                        break
+
+                if not in_sandbox:
+                    return False, f"路径 '{path}' 不在沙盒目录内，操作被拒绝"
+
+        return True, ""
+
     def _build_llm_settings(self, model_config: ModelConfig) -> LLMSettings:
         return LLMSettings(
             api_url=model_config.api_url,
             api_key=model_config.api_key,
             model=model_config.model,
             temperature=model_config.temperature,
-            extra_params=model_config.extra_params or {}
+            extra_params=model_config.extra_params or {},
+            sandbox_paths=getattr(self.settings, 'sandbox_paths', []) or []
         )
 
     async def stop_execution(self, chat_id: str) -> Optional[Chat]:
@@ -265,6 +321,16 @@ class ExecuteService:
                 return
 
             if not step.command.strip():
+                continue
+
+            sandbox_ok, sandbox_error = self._check_sandbox_path(step.command)
+            if not sandbox_ok:
+                step.status = "failed"
+                steps[index] = step
+                self._execution_steps[chat_id] = steps
+                error_msg = f"沙盒路径检查失败：{sandbox_error}"
+                await self._save_message(chat_id, "assistant", error_msg, "error")
+                yield {"event": "conversation.message", "data": {"chat_id": chat_id, "type": "error", "content": error_msg}}
                 continue
 
             await self.chat_repo.update_chat(
@@ -525,20 +591,22 @@ class ExecuteService:
         if not steps:
             messages = await self.message_repo.list_messages(chat_id, 1, 50)
             for msg in reversed(messages):
-                if msg.type == "plan" and msg.metadata and "steps" in msg.metadata:
-                    steps = [
-                        ExecuteStep(
-                            index=s.get("index", i),
-                            title=s.get("title", ""),
-                            status="pending",
-                            command=s.get("command", "")
-                        )
-                        for i, s in enumerate(msg.metadata.get("steps", []))
-                    ]
-                    self._execution_steps[chat_id] = steps
-                    logger.info(
-                        f"_continue_execution: restored {len(steps)} steps from message")
-                    break
+                if msg.type == "plan":
+                    metadata = self._parse_message_metadata(msg.content)
+                    if metadata and "steps" in metadata:
+                        steps = [
+                            ExecuteStep(
+                                index=s.get("index", i),
+                                title=s.get("title", ""),
+                                status="pending",
+                                command=s.get("command", "")
+                            )
+                            for i, s in enumerate(metadata.get("steps", []))
+                        ]
+                        self._execution_steps[chat_id] = steps
+                        logger.info(
+                            f"_continue_execution: restored {len(steps)} steps from message")
+                        break
 
         if not steps:
             error_msg = "未找到执行计划"

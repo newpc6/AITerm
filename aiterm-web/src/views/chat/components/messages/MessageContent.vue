@@ -3,11 +3,11 @@ import { computed, ref, watch, onUnmounted } from 'vue'
 import { Loading, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
 import MarkdownContent from '@/components/MarkdownContent.vue'
 
-interface StructuredContent {
-  answer: string
+interface MessageMetadata {
   thinking?: string
   reasoning_duration?: number
   total_duration?: number
+  [key: string]: unknown
 }
 
 const props = defineProps<{
@@ -15,19 +15,39 @@ const props = defineProps<{
   role: 'user' | 'assistant'
   isStreaming?: boolean
   isReasoningActive?: boolean
+  metadata?: MessageMetadata
 }>()
 
 const thinkingPattern = /<thinking(?:\s+duration="([\d.]+)")?[^>]*>\n?([\s\S]*?)\n?<\/thinking>\n?\n?/
 
 const parsedContent = computed(() => {
+  if (props.metadata?.thinking) {
+    return {
+      thinking: props.metadata.thinking,
+      duration: props.metadata.reasoning_duration || 0,
+      content: props.content,
+      totalDuration: props.metadata.total_duration || 0,
+    }
+  }
+
   try {
-    const parsed = JSON.parse(props.content) as StructuredContent
-    if (typeof parsed.answer === 'string') {
-      return {
-        thinking: parsed.thinking || '',
-        duration: parsed.reasoning_duration || 0,
-        content: parsed.answer,
-        totalDuration: parsed.total_duration || 0,
+    const parsed = JSON.parse(props.content)
+    if (typeof parsed === 'object' && parsed !== null) {
+      if (typeof parsed.answer === 'string') {
+        return {
+          thinking: parsed.thinking || '',
+          duration: parsed.reasoning_duration || 0,
+          content: parsed.answer,
+          totalDuration: parsed.total_duration || 0,
+        }
+      }
+      if (typeof parsed.content === 'string' && typeof parsed.type === 'string') {
+        return {
+          thinking: '',
+          duration: 0,
+          content: parsed.content,
+          totalDuration: 0,
+        }
       }
     }
   } catch {

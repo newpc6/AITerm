@@ -13,19 +13,10 @@ class MessageModel(Base):
     role = Column(String(50), nullable=False)
     type = Column(String(50), nullable=False, default="text")
     content = Column(Text, nullable=False)
-    extra = Column(Text, nullable=False, default="{}")
     created_at = Column(DateTime, nullable=False,
                         default=lambda: datetime.now(timezone.utc))
 
     def to_dict(self):
-        extra_dict = {}
-        if self.extra:
-            try:
-                extra_dict = json.loads(self.extra) if isinstance(
-                    self.extra, str) else self.extra
-            except:
-                extra_dict = {}
-
         created_at_str = None
         if self.created_at:
             dt = self.created_at
@@ -39,9 +30,5 @@ class MessageModel(Base):
             "role": self.role,
             "type": self.type,
             "content": self.content,
-            "metadata": extra_dict,
             "created_at": created_at_str
         }
-
-    def set_extra(self, extra_dict: dict):
-        self.extra = json.dumps(extra_dict, ensure_ascii=False)

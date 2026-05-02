@@ -177,11 +177,12 @@ onMounted(async () => {
             <pre v-if="getExecutePlanCode(message.content)"
               class="message__code"><code>{{ getExecutePlanCode(message.content) }}</code></pre>
           </div>
-          <MessageContent v-else :content="message.content" :role="message.role" :is-streaming="isMsgStreaming"
-            :is-reasoning-active="isMsgStreaming && isReasoningActive" />
+          <MessageContent v-else-if="message.type !== 'approval'" :content="message.content" :role="message.role"
+            :is-streaming="isMsgStreaming" :is-reasoning-active="isMsgStreaming && isReasoningActive"
+            :metadata="message.metadata" />
         </template>
 
-        <ExecuteApprovalCard v-if="canShowExecuteApproval(message)" :hint="executeApprovalHint"
+        <ExecuteApprovalCard v-if="canShowExecuteApproval(message)" :hint="message.content"
           :loading="executeApprovalLoading" @confirm="handleExecuteConfirm" />
       </template>
     </MessageItem>

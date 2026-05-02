@@ -1,4 +1,4 @@
-import os
+﻿import os
 import sys
 import asyncio
 import logging
@@ -25,10 +25,12 @@ from sqlalchemy import select
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)]
 )
 
 logger = logging.getLogger("aiterm")
+logger.setLevel(logging.INFO)
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -65,7 +67,8 @@ async def ensure_bootstrap_data():
             updated_at=now
         )
         await user_repo.create_user(admin_user, password_hash)
-        logger.info("Created default admin user (username: admin, password: 12345678)")
+        logger.info(
+            "Created default admin user (username: admin, password: 12345678)")
 
     model_repo = ModelConfigRepository()
     models = await model_repo.list_models()
@@ -116,7 +119,8 @@ async def lifespan(app: FastAPI):
     await ensure_bootstrap_data()
 
     logger.info(f"AITerm server starting on port {settings.port}")
-    logger.info(f"Database: {settings.database.driver} at {settings.database.sqlite_path}")
+    logger.info(
+        f"Database: {settings.database.driver} at {settings.database.sqlite_path}")
 
     yield
 

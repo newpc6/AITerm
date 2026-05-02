@@ -50,6 +50,8 @@ class LLMSettings(BaseSettings):
     execution_command_blacklist: List[str] = ["del ", "delete ", "erase ", "rd ", "rmdir ", "rm ", "remove-item ", "format ", "shutdown ",
                                               "reboot ", "restart-computer", "stop-service ", "sc stop ", "net stop ", "taskkill ", "kill ", "drop table ", "truncate table "]
     execution_command_whitelist: List[str] = []
+    sandbox_paths: List[str] = []
+    sandbox_rules_prompt: str = ""
 
     class Config:
         env_prefix = "LLM_"

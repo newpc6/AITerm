@@ -44,13 +44,38 @@ function createLocalMessage(role: ChatMessage['role'], content: string, createdA
   }
 }
 
-function createMessageFromApi(item: { id: string; role: string; content: string; type?: string; metadata?: Record<string, unknown>; created_at: string | null }): ChatMessage {
+function createMessageFromApi(item: { id: string; role: string; content: string; type?: string; created_at: string | null }): ChatMessage {
+  let content = item.content
+  let metadata: Record<string, unknown> | undefined = undefined
+
+  try {
+    const parsed = JSON.parse(item.content)
+    if (typeof parsed === 'object' && parsed !== null) {
+      if (typeof parsed.answer === 'string') {
+        content = parsed.answer
+        metadata = {
+          thinking: parsed.thinking,
+          reasoning_duration: parsed.reasoning_duration,
+          total_duration: parsed.total_duration,
+        }
+      } else if (typeof parsed.message === 'string') {
+        content = parsed.message
+        const { message, ...rest } = parsed
+        if (Object.keys(rest).length > 0) {
+          metadata = rest
+        }
+      }
+    }
+  } catch {
+    // JSON 解析失败，直接使用原始内容
+  }
+
   return {
     id: item.id,
     role: item.role as ChatMessage['role'],
-    content: item.content,
+    content,
     type: item.type as ChatMessage['type'],
-    metadata: item.metadata,
+    metadata,
     createdAt: item.created_at || new Date().toISOString(),
   }
 }
@@ -161,15 +186,22 @@ export function useChatPage() {
     void router.replace({ path: '/chat' })
   }
 
-  function appendAssistantMessage(content: string) {
+  function appendAssistantMessage(content: string, type?: string) {
     if (!content || !content.trim()) {
       return
     }
     const lastMessage = messages.value[messages.value.length - 1]
     if (lastMessage?.role === 'assistant' && !lastMessage.content.trim()) {
       lastMessage.content = content
+      if (type) {
+        lastMessage.type = type as ChatMessage['type']
+      }
     } else {
-      messages.value.push(createLocalMessage('assistant', content))
+      const msg = createLocalMessage('assistant', content)
+      if (type) {
+        msg.type = type as ChatMessage['type']
+      }
+      messages.value.push(msg)
     }
   }
 
@@ -220,7 +252,7 @@ export function useChatPage() {
       case 'output':
         return normalized
       case 'approval':
-        return ''
+        return normalized
       case 'approval_confirmed':
         return normalized
       case 'input':
@@ -560,7 +592,7 @@ export function useChatPage() {
             }
             const message = formatConversationMessage(data.type, data.content)
             if (message) {
-              appendAssistantMessage(message)
+              appendAssistantMessage(message, data.type)
             }
           },
           onConversationInput: (data) => {
@@ -660,7 +692,7 @@ export function useChatPage() {
           }
           const message = formatConversationMessage(payload.type, payload.content)
           if (message) {
-            appendAssistantMessage(message)
+            appendAssistantMessage(message, payload.type)
           }
         })
 
@@ -769,7 +801,7 @@ export function useChatPage() {
         const payload = JSON.parse((event as MessageEvent).data) as { conversation_id: string; type: string; content: string }
         const message = formatConversationMessage(payload.type, payload.content)
         if (message) {
-          appendAssistantMessage(message)
+          appendAssistantMessage(message, payload.type)
         }
       })
 

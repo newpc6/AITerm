@@ -203,6 +203,8 @@ export type GlobalSettingsData = {
   execution_command_rules_prompt: string
   execution_command_blacklist: string[]
   execution_command_whitelist: string[]
+  sandbox_paths: string[]
+  sandbox_rules_prompt: string
 }
 
 export type GlobalSettingsPayload = {
@@ -218,6 +220,8 @@ export type GlobalSettingsPayload = {
   execution_command_rules_prompt?: string
   execution_command_blacklist?: string[]
   execution_command_whitelist?: string[]
+  sandbox_paths?: string[]
+  sandbox_rules_prompt?: string
 }
 
 export type AuthSettingsData = {

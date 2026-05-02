@@ -101,7 +101,6 @@ class Message(BaseModel):
     role: str
     type: str = MessageType.TEXT.value
     content: str
-    metadata: Dict[str, Any] = {}
     created_at: Optional[str] = None
 
 
@@ -143,4 +142,3 @@ class MessageCreate(BaseModel):
     role: str
     type: str = MessageType.TEXT.value
     content: str
-    metadata: Dict[str, Any] = {}

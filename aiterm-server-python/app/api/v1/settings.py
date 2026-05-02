@@ -1,5 +1,8 @@
 from fastapi import APIRouter, Depends, Query
 from typing import Optional, List
+import asyncio
+import sys
+import os
 
 from app.models import (
     Response, AuthSettings, AuthSettingsUpdate,
@@ -15,6 +18,50 @@ from app.api.deps import (
 from app.repositories import AuthSettingsRepository
 
 router = APIRouter(tags=["settings"])
+
+
+@router.post("/select-folder")
+async def select_folder(
+    current_user = Depends(require_admin)
+):
+    try:
+        def open_folder_dialog():
+            if sys.platform == "win32":
+                import tkinter as tk
+                from tkinter import filedialog
+                root = tk.Tk()
+                root.withdraw()
+                root.attributes("-topmost", True)
+                folder = filedialog.askdirectory(title="选择沙盒文件夹")
+                root.destroy()
+                return folder
+            elif sys.platform == "darwin":
+                import subprocess
+                result = subprocess.run(
+                    ["osascript", "-e", 'POSIX path of (choose folder with prompt "选择沙盒文件夹")'],
+                    capture_output=True, text=True
+                )
+                if result.returncode == 0:
+                    return result.stdout.strip()
+                return None
+            else:
+                import tkinter as tk
+                from tkinter import filedialog
+                root = tk.Tk()
+                root.withdraw()
+                folder = filedialog.askdirectory(title="选择沙盒文件夹")
+                root.destroy()
+                return folder
+        
+        loop = asyncio.get_event_loop()
+        folder = await loop.run_in_executor(None, open_folder_dialog)
+        
+        if folder:
+            return Response(data={"path": folder})
+        else:
+            return Response(data={"path": None})
+    except Exception as e:
+        return Response(code=1004, message=f"打开文件夹选择对话框失败: {str(e)}")
 
 
 @router.get("/models")

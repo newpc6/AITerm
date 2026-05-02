@@ -181,12 +181,15 @@ CONFIG_KEYS = [
     "execution_command_rules_prompt",
     "execution_command_blacklist",
     "execution_command_whitelist",
+    "sandbox_paths",
+    "sandbox_rules_prompt",
 ]
 
 DEFAULT_VALUES = {
     "chat_history_limit": "12",
     "execution_command_blacklist": "[]",
     "execution_command_whitelist": "[]",
+    "sandbox_paths": "[]",
 }
 
 
@@ -218,6 +221,8 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
                 "execution_command_rules_prompt": settings.execution_command_rules_prompt,
                 "execution_command_blacklist": json.dumps(settings.execution_command_blacklist),
                 "execution_command_whitelist": json.dumps(settings.execution_command_whitelist),
+                "sandbox_paths": json.dumps(settings.sandbox_paths),
+                "sandbox_rules_prompt": settings.sandbox_rules_prompt,
             }
 
             for key, value in data.items():
@@ -250,6 +255,7 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
 
         blacklist = []
         whitelist = []
+        sandbox_paths = []
         try:
             blacklist = json.loads(
                 get_value("execution_command_blacklist", "[]"))
@@ -258,6 +264,11 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
         try:
             whitelist = json.loads(
                 get_value("execution_command_whitelist", "[]"))
+        except:
+            pass
+        try:
+            sandbox_paths = json.loads(
+                get_value("sandbox_paths", "[]"))
         except:
             pass
 
@@ -284,6 +295,8 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
                 "execution_command_rules_prompt"),
             execution_command_blacklist=blacklist,
             execution_command_whitelist=whitelist,
+            sandbox_paths=sandbox_paths,
+            sandbox_rules_prompt=get_value("sandbox_rules_prompt"),
         )
 
 

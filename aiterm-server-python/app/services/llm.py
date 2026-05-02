@@ -274,11 +274,13 @@ class ExecutePlanner:
     def _build_system_prompt(self, node: Node, request: str) -> str:
         template = self.settings.execution_planner_prompt or "你是一个执行规划器，请将用户请求转换为可执行操作计划。"
         command_rules = self._build_command_rules()
+        sandbox_info = self._build_sandbox_info()
         node_desc = describe_node(node)
 
         prompt = template.replace("{{node_description}}", node_desc)
         prompt = prompt.replace("{{user_request}}", request)
         prompt += command_rules
+        prompt += sandbox_info
         prompt += """
 
 你必须只返回 JSON，不要输出 markdown，不要输出解释。JSON 结构如下：
@@ -361,6 +363,27 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
 
         template = self.settings.execution_command_rules_prompt or "\n\n命令风控规则：{{command_rules}}"
         return "\n\n" + template.replace("{{command_rules}}", "\n".join(rules))
+
+    def _build_sandbox_info(self) -> str:
+        sandbox_paths = self.settings.sandbox_paths or []
+
+        if not sandbox_paths:
+            return ""
+
+        paths_text = "\n".join(f"  - {path}" for path in sandbox_paths)
+
+        default_rules = """【沙盒路径限制】
+所有文件读写操作必须在以下沙盒路径内进行：
+{{paths_text}}
+
+重要规则：
+1. 创建、写入、修改文件时，路径必须在上述沙盒目录内
+2. 不要操作沙盒路径之外的文件，特别是系统关键文件（如 main.py、配置文件等）
+3. 如果用户请求的操作需要访问沙盒外的路径，请提示用户确认或要求用户提供沙盒内的路径
+4. 优先使用沙盒路径下的子目录来组织文件"""
+
+        template = self.settings.sandbox_rules_prompt or default_rules
+        return "\n\n" + template.replace("{{paths_text}}", paths_text)
 
     async def generate_plan(
         self,

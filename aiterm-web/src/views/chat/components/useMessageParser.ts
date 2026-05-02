@@ -51,7 +51,7 @@ export function getMessageKind(message: ChatMessage): ExecuteStructuredMessage |
       case 'retry':
         return { kind: 'retry', title: '重试', body: message.content }
       case 'approval':
-        return { kind: 'info', title: '需要确认', body: message.content }
+        return null
       case 'approved':
         return { kind: 'approved', title: '已批准', body: message.content.replace(/^已批准\n?/, '') }
       case 'rejected':
@@ -110,7 +110,7 @@ export function parseExecuteStructuredMessage(content: string): ExecuteStructure
   if (normalized.startsWith('任务计划如下：')) {
     return {
       kind: 'plan',
-      title: '执行计划',
+      title: '执行步骤',
       body: normalized.replace(/^任务计划如下：\s*/, ''),
     }
   }
