@@ -3,32 +3,13 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
 import { getAuthToken } from '@/auth'
-import {
-  buildTaskContinueUrl,
-  confirmTask,
-  deleteConversation,
-  deleteTask,
-  getAuthStatus,
-  getConversationMessages,
-  getConversations,
-  getModels,
-  getNodes,
-  getTaskDetail,
-  getTasks,
-  provideTaskInput,
-  restartTask,
-  stopTask,
-  streamConversation,
-  submitConversation,
-} from '@/api/aiterm'
+import { buildTaskContinueUrl, confirmTask, deleteChat, getAuthStatus, getChatMessages, getChats, getModels, getNodes, provideTaskInput, restartTask, stopTask, streamChat } from '@/api/aiterm'
 import { getApiBaseUrl } from '@/config'
 import { formatDateTime } from '@/utils/datetime'
-import type { ConversationListItem, ConversationMode, ModelConfigItem, NodeItem, TaskDetail, TaskItem, TaskStreamOutputData, TaskStreamStatusData } from '@/types/api'
+import type { ChatItem, ModelConfigItem, NodeItem, TaskItem, TaskStreamOutputData, TaskStreamStatusData } from '@/types/api'
 import type { ChatMessage } from '@/types/chat'
 
 const LAST_CONVERSATION_ID_KEY = 'aiterm:last-conversation-id'
-type SidebarTab = 'conversations' | 'tasks'
-type TaskStatusFilter = 'executing' | 'completed' | 'failed'
 type SidebarGroup<T> = {
   key: string
   label: string
@@ -49,11 +30,13 @@ function createLocalMessage(role: ChatMessage['role'], content: string, createdA
   }
 }
 
-function createMessageFromApi(item: { id: string; role: ChatMessage['role']; content: string; created_at: string }): ChatMessage {
+function createMessageFromApi(item: { id: string; role: ChatMessage['role']; content: string; type?: string; metadata?: Record<string, unknown>; created_at: string }): ChatMessage {
   return {
     id: item.id,
     role: item.role,
     content: item.content,
+    type: item.type as ChatMessage['type'],
+    metadata: item.metadata,
     createdAt: item.created_at,
   }
 }
@@ -69,13 +52,8 @@ function buildEventSourceUrl(taskId: string) {
   return url.toString()
 }
 
-function createInitialMessages(mode: ConversationMode): ChatMessage[] {
-  return [
-    createLocalMessage(
-      'assistant',
-      mode === 'task' ? '已进入任务模式，请描述希望执行的任务。任务执行过程和输出会持续写入会话记录。' : '已进入对话模式，你可以直接向模型提问，我会按一问一答的方式继续这个会话。',
-    ),
-  ]
+function createInitialMessages(): ChatMessage[] {
+  return [createLocalMessage('assistant', '已进入对话模式，你可以直接向模型提问，我会按一问一答的方式继续这个会话。')]
 }
 
 function shortenLabel(value: string, maxLength: number) {
@@ -104,18 +82,18 @@ function parseTimestamp(value: string) {
   return Number.isNaN(timestamp) ? 0 : timestamp
 }
 
-function buildConversationGroups(items: ConversationListItem[], search: string): SidebarGroup<ConversationListItem>[] {
+function buildChatGroups(items: ChatItem[], search: string): SidebarGroup<ChatItem>[] {
   const keyword = search.trim().toLowerCase()
   const now = Date.now()
   const dayMs = 24 * 60 * 60 * 1000
-  const groups = new Map<string, SidebarGroup<ConversationListItem>>()
+  const groups = new Map<string, SidebarGroup<ChatItem>>()
 
   for (const item of items) {
-    if (!includesKeyword([item.title, item.last_message, item.id], keyword)) {
+    if (!includesKeyword([item.title, item.summary, item.id], keyword)) {
       continue
     }
 
-    const age = now - parseTimestamp(item.updated_at)
+    const age = now - parseTimestamp(item.updated_at || '')
     const key = age <= dayMs ? 'today' : age <= dayMs * 7 ? 'recent' : 'earlier'
     const label = key === 'today' ? '今天' : key === 'recent' ? '近 7 天' : '更早'
     if (!groups.has(key)) {
@@ -125,20 +103,6 @@ function buildConversationGroups(items: ConversationListItem[], search: string):
   }
 
   return Array.from(groups.values())
-}
-
-function filterTasksByStatus(items: TaskItem[], search: string, filter: TaskStatusFilter): TaskItem[] {
-  const keyword = search.trim().toLowerCase()
-  return items.filter((item) => {
-    const matchesFilter =
-      filter === 'executing'
-        ? ['waiting_confirm', 'pending', 'analyzing', 'executing'].includes(item.status)
-        : filter === 'completed'
-          ? item.status === 'completed'
-          : ['failed', 'cancelled'].includes(item.status)
-
-    return matchesFilter && includesKeyword([item.title, item.status, item.pending_command, item.risk_reason, item.id], keyword)
-  })
 }
 
 export function useChatPage() {
@@ -154,24 +118,25 @@ export function useChatPage() {
   const sidebarSearch = ref('')
   const conversationId = ref('')
   const activeTaskId = ref('')
-  const activeMode = ref<ConversationMode>('chat')
-  const sidebarTab = ref<SidebarTab>('conversations')
-  const taskStatusFilter = ref<TaskStatusFilter>('executing')
   const selectedNodeId = ref('')
   const selectedModelId = ref('')
   const availableNodes = ref<NodeItem[]>([])
   const availableModels = ref<ModelConfigItem[]>([])
   const currentUserName = ref('用户')
-  const conversations = ref<ConversationListItem[]>([])
-  const tasks = ref<TaskItem[]>([])
-  const taskDetail = ref<TaskDetail | null>(null)
-  const messages = ref<ChatMessage[]>(createInitialMessages('chat'))
-  const conversationPage = ref(1)
-  const conversationPageSize = ref(10)
-  const conversationTotal = ref(0)
-  const taskPage = ref(1)
-  const taskPageSize = ref(10)
-  const taskTotal = ref(0)
+  const chats = ref<ChatItem[]>([])
+  const messages = ref<ChatMessage[]>(createInitialMessages())
+  const chatPage = ref(1)
+  const chatPageSize = ref(20)
+  const chatTotal = ref(0)
+
+  const taskStatus = ref('')
+  const taskRiskReason = ref('')
+  const inputQuestion = ref('')
+  const inputType = ref<'text' | 'select' | 'multiselect'>('text')
+  const inputOptions = ref<string[]>([])
+  const inputPlaceholder = ref('')
+  const waitingForInput = ref(false)
+  const waitingForConfirm = ref(false)
 
   let taskEventSource: EventSource | null = null
   let chatStreamController: AbortController | null = null
@@ -180,9 +145,7 @@ export function useChatPage() {
     closeStreams()
     conversationId.value = ''
     activeTaskId.value = ''
-    activeMode.value = 'chat'
-    taskDetail.value = null
-    messages.value = createInitialMessages('chat')
+    messages.value = createInitialMessages()
     localStorage.removeItem(LAST_CONVERSATION_ID_KEY)
   }
 
@@ -227,26 +190,45 @@ export function useChatPage() {
     }
   }
 
-  async function loadConversationMessages(targetConversationId: string) {
+  function formatConversationMessage(type: string, content: string) {
+    const normalized = content.trim()
+    if (!normalized) {
+      return ''
+    }
+
+    switch (type) {
+      case 'error':
+        return `[错误] ${normalized}`
+      case 'plan':
+        return `任务计划如下：\n${normalized}`
+      case 'step':
+        return normalized
+      case 'output':
+        return normalized
+      case 'approval':
+        return ''
+      case 'approval_confirmed':
+        return normalized
+      case 'input':
+        return normalized
+      case 'analysis':
+        return `[分析] ${normalized}`
+      case 'retry':
+        return `[重试] ${normalized}`
+      case 'summary':
+        return normalized
+      default:
+        return normalized
+    }
+  }
+
+  async function loadChatMessages(targetChatId: string) {
     try {
-      const data = await getConversationMessages(targetConversationId)
+      const data = await getChatMessages(targetChatId)
       messages.value = data.items.map((item) => createMessageFromApi(item))
 
       if (messages.value.length === 0) {
-        messages.value = createInitialMessages(activeMode.value)
-      }
-
-      if (data.latest_task_id) {
-        activeTaskId.value = data.latest_task_id
-        activeMode.value = 'task'
-        await loadTaskDetail(data.latest_task_id)
-        if (taskDetail.value?.node_id) {
-          selectedNodeId.value = taskDetail.value.node_id
-        }
-      } else {
-        activeTaskId.value = ''
-        activeMode.value = 'chat'
-        taskDetail.value = null
+        messages.value = createInitialMessages()
       }
     } catch {
       resetConversationState()
@@ -255,23 +237,21 @@ export function useChatPage() {
     }
   }
 
-  async function switchConversation(targetConversationId: string) {
-    if (!targetConversationId) {
+  async function switchChat(targetChatId: string) {
+    if (!targetChatId) {
       return
     }
 
     closeStreams()
-    conversationId.value = targetConversationId
-    localStorage.setItem(LAST_CONVERSATION_ID_KEY, targetConversationId)
-    await loadConversationMessages(targetConversationId)
-  }
-
-  async function openTaskFromSidebar(task: TaskItem) {
-    sidebarTab.value = 'tasks'
-    activeTaskId.value = task.id
-    selectedNodeId.value = task.node_id
-    await loadTaskDetail(task.id)
-    await switchConversation(task.conversation_id)
+    conversationId.value = targetChatId
+    localStorage.setItem(LAST_CONVERSATION_ID_KEY, targetChatId)
+    void router.replace({
+      path: '/chat',
+      query: {
+        conversation_id: targetChatId,
+      },
+    })
+    await loadChatMessages(targetChatId)
   }
 
   async function loadNodes() {
@@ -310,60 +290,35 @@ export function useChatPage() {
     }
   }
 
-  async function loadConversations(reset = true) {
+  async function loadChats(reset = true) {
     try {
       if (reset) {
-        conversationPage.value = 1
+        chatPage.value = 1
       }
-      const data = await getConversations({ page: conversationPage.value, page_size: conversationPageSize.value })
+      const data = await getChats({ page: chatPage.value, page_size: chatPageSize.value })
       if (reset) {
-        conversations.value = data.items
+        chats.value = data.items
       } else {
-        conversations.value = [...conversations.value, ...data.items]
+        chats.value = [...chats.value, ...data.items]
       }
-      conversationTotal.value = data.total
+      chatTotal.value = data.total
     } catch {
       errorMessage.value = '历史会话接口不可用。'
     }
   }
 
-  async function loadMoreConversations() {
-    if (conversations.value.length >= conversationTotal.value) {
+  async function loadMoreChats() {
+    if (chats.value.length >= chatTotal.value) {
       return
     }
-    conversationPage.value += 1
-    await loadConversations(false)
-  }
-
-  async function loadTasks(reset = true) {
-    try {
-      if (reset) {
-        taskPage.value = 1
-      }
-      const data = await getTasks({ page: taskPage.value, page_size: taskPageSize.value })
-      if (reset) {
-        tasks.value = data.items
-      } else {
-        tasks.value = [...tasks.value, ...data.items]
-      }
-      taskTotal.value = data.total
-    } catch {
-      errorMessage.value = '任务接口不可用。'
-    }
-  }
-
-  async function loadMoreTasks() {
-    if (tasks.value.length >= taskTotal.value) {
-      return
-    }
-    taskPage.value += 1
-    await loadTasks(false)
+    chatPage.value += 1
+    await loadChats(false)
   }
 
   async function reloadSidebarData() {
     sidebarLoading.value = true
     try {
-      await Promise.all([loadConversations(), loadTasks()])
+      await loadChats()
     } finally {
       sidebarLoading.value = false
     }
@@ -375,53 +330,6 @@ export function useChatPage() {
 
   function setSelectedModelId(value: string) {
     selectedModelId.value = value
-  }
-
-  function setSidebarTab(value: SidebarTab) {
-    sidebarTab.value = value
-  }
-
-  function setTaskStatusFilter(value: TaskStatusFilter) {
-    taskStatusFilter.value = value
-  }
-
-  function setActiveMode(value: ConversationMode) {
-    activeMode.value = value
-    if (!conversationId.value && messages.value.length <= 1) {
-      messages.value = createInitialMessages(value)
-    }
-    sidebarTab.value = value === 'task' ? 'tasks' : 'conversations'
-  }
-
-  async function loadTaskDetail(taskId: string) {
-    try {
-      taskDetail.value = await getTaskDetail(taskId)
-      selectedNodeId.value = taskDetail.value.node_id
-      updateTaskSnapshot(taskDetail.value)
-    } catch {
-      errorMessage.value = '任务详情接口不可用。'
-    }
-  }
-
-  function updateTaskSnapshot(task: TaskItem | TaskDetail) {
-    const nextItem: TaskItem = {
-      id: task.id,
-      title: task.title,
-      status: task.status,
-      progress: task.progress,
-      conversation_id: task.conversation_id,
-      node_id: task.node_id,
-      pending_command: task.pending_command,
-      risk_reason: task.risk_reason,
-      created_at: task.created_at,
-    }
-
-    const index = tasks.value.findIndex((item) => item.id === nextItem.id)
-    if (index >= 0) {
-      tasks.value[index] = nextItem
-      return
-    }
-    tasks.value = [nextItem, ...tasks.value]
   }
 
   function closeTaskStream() {
@@ -510,66 +418,35 @@ export function useChatPage() {
     taskStreaming.value = true
     taskEventSource = new EventSource(buildEventSourceUrl(taskId))
 
-    taskEventSource.addEventListener('task.status', (event) => {
-      const payload = JSON.parse((event as MessageEvent).data) as TaskStreamStatusData
-      if (taskDetail.value && taskDetail.value.id === payload.task_id) {
-        taskDetail.value = {
-          ...taskDetail.value,
-          status: payload.status,
-          progress: payload.progress,
-        }
-        updateTaskSnapshot(taskDetail.value)
+    taskEventSource.addEventListener('conversation.message', (event) => {
+      const payload = JSON.parse((event as MessageEvent).data) as { conversation_id: string; type: string; content: string }
+      if (payload.type === 'approval') {
+        waitingForConfirm.value = true
+        taskRiskReason.value = payload.content
       }
-    })
-
-    taskEventSource.addEventListener('task.output', (event) => {
-      const payload = JSON.parse((event as MessageEvent).data) as TaskStreamOutputData
-      const message = formatTaskOutputMessage(payload.stream, payload.content)
+      const message = formatConversationMessage(payload.type, payload.content)
       if (message) {
         appendAssistantMessage(message)
       }
     })
 
-    taskEventSource.addEventListener('task.input', (event) => {
-      const payload = JSON.parse((event as MessageEvent).data) as { task_id: string; question: string; input_type: string; options?: string[]; placeholder?: string }
-      const taskId = payload.task_id
-      if (taskDetail.value?.id === taskId || activeTaskId.value === taskId) {
-        const existing = taskDetail.value || {
-          id: taskId,
-          title: '',
-          status: 'waiting_input' as const,
-          progress: 40,
-          conversation_id: '',
-          node_id: '',
-          summary: '',
-          steps: [],
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        }
-        taskDetail.value = {
-          ...existing,
-          id: taskId,
-          status: 'waiting_input',
-          progress: 40,
-          input_question: payload.question,
-          input_type: payload.input_type as 'text' | 'select' | 'multiselect',
-          input_options: payload.options || [],
-          input_placeholder: payload.placeholder,
-        }
-        updateTaskSnapshot(taskDetail.value)
-
-        const lastMessage = messages.value[messages.value.length - 1]
-        if (lastMessage?.role === 'assistant' && lastMessage.content === '等待用户输入...') {
-          const optionsStr = payload.options?.length ? payload.options.join('|||') : ''
-          lastMessage.content = `[INPUT_REQUEST]\n问题: ${payload.question}\n类型: ${payload.input_type}\n选项: ${optionsStr}\n占位符: ${payload.placeholder || ''}\n[/INPUT_REQUEST]`
-        }
-      }
+    taskEventSource.addEventListener('conversation.input', (event) => {
+      const payload = JSON.parse((event as MessageEvent).data) as { conversation_id: string; question: string; input_type: string; options?: string[]; placeholder?: string }
+      inputQuestion.value = payload.question
+      inputType.value = payload.input_type as 'text' | 'select' | 'multiselect'
+      inputOptions.value = payload.options || []
+      inputPlaceholder.value = payload.placeholder || ''
+      waitingForInput.value = true
     })
 
-    taskEventSource.onerror = async () => {
+    taskEventSource.addEventListener('conversation.done', () => {
       closeTaskStream()
-      await loadTaskDetail(taskId)
-      await reloadSidebarData()
+      void reloadSidebarData()
+    })
+
+    taskEventSource.onerror = () => {
+      closeTaskStream()
+      void reloadSidebarData()
     }
   }
 
@@ -597,21 +474,23 @@ export function useChatPage() {
   async function submitChatMessage(value: string, targetNodeId: string, targetModelId: string) {
     abortChatStream()
     chatStreaming.value = true
+    taskStreaming.value = false
     const controller = new AbortController()
     chatStreamController = controller
 
     try {
-      await streamConversation(
+      await streamChat(
         {
-          conversation_id: conversationId.value,
           node_id: targetNodeId,
           model_id: targetModelId || undefined,
           message: value,
-          mode: 'chat',
         },
         {
           onMeta: (data) => {
             conversationId.value = data.conversation_id
+            if ((data as { mode?: string }).mode === 'task') {
+              taskStreaming.value = true
+            }
             localStorage.setItem(LAST_CONVERSATION_ID_KEY, data.conversation_id)
             void router.replace({
               path: '/chat',
@@ -630,56 +509,42 @@ export function useChatPage() {
             conversationId.value = data.conversation_id
             finalizeAssistantStream(data.reply)
           },
+          onTaskCreated: (data) => {
+            activeTaskId.value = data.task_id
+          },
+          onConversationMessage: (data) => {
+            if (data.type === 'approval') {
+              waitingForConfirm.value = true
+              taskRiskReason.value = data.content
+            }
+            const message = formatConversationMessage(data.type, data.content)
+            if (message) {
+              appendAssistantMessage(message)
+            }
+          },
+          onConversationInput: (data) => {
+            inputQuestion.value = data.question
+            inputType.value = data.input_type as 'text' | 'select' | 'multiselect'
+            inputOptions.value = data.options || []
+            inputPlaceholder.value = data.placeholder || ''
+            waitingForInput.value = true
+          },
         },
         controller.signal,
       )
 
-      activeTaskId.value = ''
-      taskDetail.value = null
       await reloadSidebarData()
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
         return
       }
 
-      errorMessage.value = '对话流请求失败，请检查后端服务或大模型配置。'
-      finalizeAssistantStream('对话流请求失败，请检查后端服务或设置页中的大模型配置。')
+      errorMessage.value = '请求失败，请检查后端服务或大模型配置。'
+      finalizeAssistantStream('请求失败，请检查后端服务或设置页中的大模型配置。')
     } finally {
       chatStreaming.value = false
+      taskStreaming.value = false
       chatStreamController = null
-    }
-  }
-
-  async function submitTaskMessage(value: string, targetNodeId: string, targetModelId: string) {
-    const data = await submitConversation({
-      conversation_id: conversationId.value,
-      node_id: targetNodeId,
-      model_id: targetModelId || undefined,
-      message: value,
-      mode: 'task',
-    })
-
-    conversationId.value = data.conversation_id
-    localStorage.setItem(LAST_CONVERSATION_ID_KEY, data.conversation_id)
-    void router.replace({
-      path: '/chat',
-      query: {
-        conversation_id: data.conversation_id,
-      },
-    })
-    await loadConversationMessages(data.conversation_id)
-    await reloadSidebarData()
-    if (data.task_id) {
-      activeMode.value = 'task'
-      sidebarTab.value = 'tasks'
-      activeTaskId.value = data.task_id
-      appendAssistantMessage(`当前任务编号：${data.task_id}`)
-      await loadTaskDetail(data.task_id)
-      if (taskDetail.value?.status === 'waiting_confirm') {
-        appendAssistantMessage('任务正在等待确认后执行。')
-      } else {
-        connectTaskStream(data.task_id)
-      }
     }
   }
 
@@ -691,19 +556,16 @@ export function useChatPage() {
 
     errorMessage.value = ''
     messages.value.push(createLocalMessage('user', trimmed))
+    messages.value.push(createLocalMessage('assistant', ''))
     loading.value = true
 
     try {
       const targetNodeId = selectedNodeId.value || availableNodes.value[0]?.id || ''
       const targetModelId = selectedModelId.value || availableModels.value.find((m) => m.is_default)?.id || ''
-      if (activeMode.value === 'chat') {
-        await submitChatMessage(trimmed, targetNodeId, targetModelId)
-      } else {
-        await submitTaskMessage(trimmed, targetNodeId, targetModelId)
-      }
+      await submitChatMessage(trimmed, targetNodeId, targetModelId)
     } catch {
       errorMessage.value = '请求失败，请检查后端服务或大模型配置。'
-      appendAssistantMessage('请求失败，请检查后端服务或设置页中的大模型配置。')
+      finalizeAssistantStream('请求失败，请检查后端服务或设置页中的大模型配置。')
     } finally {
       loading.value = false
     }
@@ -720,10 +582,6 @@ export function useChatPage() {
   }
 
   async function retryAssistantMessage(messageId: string) {
-    if (activeMode.value !== 'chat') {
-      return
-    }
-
     const source = findRetrySourceMessage(messageId)
     if (!source) {
       ElMessage.warning('未找到可重答的上一条用户提问')
@@ -734,27 +592,24 @@ export function useChatPage() {
   }
 
   async function confirmActiveTask(approved: boolean) {
-    if (!taskDetail.value || confirming.value) {
+    if (!activeTaskId.value || confirming.value) {
       return
     }
 
     confirming.value = true
     errorMessage.value = ''
-    
-    const pendingCommand = taskDetail.value.pending_command || ''
-    const riskReason = taskDetail.value.risk_reason || ''
+    waitingForConfirm.value = false
+
+    const riskReason = taskRiskReason.value
 
     try {
-      const updatedTask = await confirmTask(taskDetail.value.id, { approved })
-      taskDetail.value = updatedTask
-      updateTaskSnapshot(updatedTask)
+      const updatedTask = await confirmTask(activeTaskId.value, { approved })
 
       if (approved) {
-        appendAssistantMessage(`[TASK_CONFIRM]\n状态: 已批准\n命令: ${pendingCommand}\n原因: ${riskReason}\n[/TASK_CONFIRM]`)
         connectTaskStream(updatedTask.id)
       } else {
         closeTaskStream()
-        appendAssistantMessage(`[TASK_CONFIRM]\n状态: 已拒绝\n命令: ${pendingCommand}\n原因: ${riskReason}\n[/TASK_CONFIRM]`)
+        appendAssistantMessage(`已拒绝\n原因：${riskReason}`)
         await reloadSidebarData()
       }
     } catch {
@@ -765,18 +620,16 @@ export function useChatPage() {
   }
 
   async function stopActiveTask() {
-    if (!taskDetail.value || confirming.value) {
+    if (!activeTaskId.value || confirming.value) {
       return
     }
 
     closeTaskStream()
     errorMessage.value = ''
     try {
-      const updatedTask = await stopTask(taskDetail.value.id)
-      taskDetail.value = updatedTask
-      updateTaskSnapshot(updatedTask)
+      await stopTask(activeTaskId.value)
       if (conversationId.value) {
-        await loadConversationMessages(conversationId.value)
+        await loadChatMessages(conversationId.value)
       }
       await reloadSidebarData()
       ElMessage.success('任务已停止')
@@ -786,21 +639,19 @@ export function useChatPage() {
   }
 
   async function restartActiveTask() {
-    if (!taskDetail.value || confirming.value) {
+    if (!activeTaskId.value || confirming.value) {
       return
     }
 
     closeTaskStream()
     errorMessage.value = ''
     try {
-      const updatedTask = await restartTask(taskDetail.value.id)
-      taskDetail.value = updatedTask
-      updateTaskSnapshot(updatedTask)
+      await restartTask(activeTaskId.value)
       if (conversationId.value) {
-        await loadConversationMessages(conversationId.value)
+        await loadChatMessages(conversationId.value)
       }
       await reloadSidebarData()
-      connectTaskStream(updatedTask.id)
+      connectTaskStream(activeTaskId.value)
       ElMessage.success('任务已重新启动')
     } catch {
       errorMessage.value = '重启任务失败。'
@@ -808,29 +659,22 @@ export function useChatPage() {
   }
 
   async function submitTaskInput(userInput: string) {
-    if (!taskDetail.value || !userInput.trim()) {
+    if (!activeTaskId.value || !userInput.trim()) {
       return
     }
 
-    const taskId = taskDetail.value.id
+    const taskId = activeTaskId.value
     closeTaskStream()
     errorMessage.value = ''
     loading.value = true
+    waitingForInput.value = false
 
     try {
-      const updatedTask = await provideTaskInput(taskId, { user_input: userInput.trim() })
-      taskDetail.value = updatedTask
-      updateTaskSnapshot(updatedTask)
+      await provideTaskInput(taskId, { user_input: userInput.trim() })
 
       const lastMessage = messages.value[messages.value.length - 1]
-      if (lastMessage?.role === 'assistant' && lastMessage.content.startsWith('[INPUT_REQUEST]')) {
-        const questionMatch = lastMessage.content.match(/问题: (.+)/)
-        const typeMatch = lastMessage.content.match(/类型: (.+)/)
-        const optionsMatch = lastMessage.content.match(/选项: (.+)/)
-        const question = questionMatch?.[1] || ''
-        const inputType = typeMatch?.[1] || 'text'
-        const optionsStr = optionsMatch?.[1] || ''
-        lastMessage.content = `[INPUT_RESPONSE]\n问题: ${question}\n类型: ${inputType}\n选项: ${optionsStr}\n回答: ${userInput.trim()}\n[/INPUT_RESPONSE]`
+      if (lastMessage?.role === 'assistant' && lastMessage.content.includes('需要您的输入')) {
+        lastMessage.content = `用户输入: ${userInput.trim()}`
       }
 
       await reloadSidebarData()
@@ -839,67 +683,33 @@ export function useChatPage() {
       taskStreaming.value = true
       const eventSource = new EventSource(continueUrl)
 
-      eventSource.addEventListener('task.status', (event) => {
-        const payload = JSON.parse((event as MessageEvent).data) as TaskStreamStatusData
-        if (taskDetail.value && taskDetail.value.id === payload.task_id) {
-          taskDetail.value = {
-            ...taskDetail.value,
-            status: payload.status,
-            progress: payload.progress,
-          }
-          updateTaskSnapshot(taskDetail.value)
-        }
-      })
-
-      eventSource.addEventListener('task.output', (event) => {
-        const payload = JSON.parse((event as MessageEvent).data) as TaskStreamOutputData
-        const message = formatTaskOutputMessage(payload.stream, payload.content)
+      eventSource.addEventListener('conversation.message', (event) => {
+        const payload = JSON.parse((event as MessageEvent).data) as { conversation_id: string; type: string; content: string }
+        const message = formatConversationMessage(payload.type, payload.content)
         if (message) {
           appendAssistantMessage(message)
         }
       })
 
-      eventSource.addEventListener('task.input', (event) => {
-        const payload = JSON.parse((event as MessageEvent).data) as { task_id: string; question: string; input_type: string; options?: string[]; placeholder?: string }
-        const inputTaskId = payload.task_id
-        if (taskDetail.value?.id === inputTaskId || taskId === inputTaskId) {
-          const existing = taskDetail.value || {
-            id: inputTaskId,
-            title: '',
-            status: 'waiting_input' as const,
-            progress: 40,
-            conversation_id: '',
-            node_id: '',
-            summary: '',
-            steps: [],
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          }
-          taskDetail.value = {
-            ...existing,
-            id: inputTaskId,
-            status: 'waiting_input',
-            progress: 40,
-            input_question: payload.question,
-            input_type: payload.input_type as 'text' | 'select' | 'multiselect',
-            input_options: payload.options || [],
-            input_placeholder: payload.placeholder,
-          }
-          updateTaskSnapshot(taskDetail.value)
-
-          const lastMessage = messages.value[messages.value.length - 1]
-          if (lastMessage?.role === 'assistant' && lastMessage.content === '等待用户输入...') {
-            const optionsStr = payload.options?.length ? payload.options.join('|||') : ''
-            lastMessage.content = `[INPUT_REQUEST]\n问题: ${payload.question}\n类型: ${payload.input_type}\n选项: ${optionsStr}\n占位符: ${payload.placeholder || ''}\n[/INPUT_REQUEST]`
-          }
-        }
+      eventSource.addEventListener('conversation.input', (event) => {
+        const payload = JSON.parse((event as MessageEvent).data) as { conversation_id: string; question: string; input_type: string; options?: string[]; placeholder?: string }
+        inputQuestion.value = payload.question
+        inputType.value = payload.input_type as 'text' | 'select' | 'multiselect'
+        inputOptions.value = payload.options || []
+        inputPlaceholder.value = payload.placeholder || ''
+        waitingForInput.value = true
       })
 
-      eventSource.onerror = async () => {
+      eventSource.addEventListener('conversation.done', () => {
         eventSource.close()
         taskStreaming.value = false
-        await loadTaskDetail(taskId)
-        await reloadSidebarData()
+        void reloadSidebarData()
+      })
+
+      eventSource.onerror = () => {
+        eventSource.close()
+        taskStreaming.value = false
+        void reloadSidebarData()
       }
 
       taskEventSource = eventSource
@@ -911,8 +721,8 @@ export function useChatPage() {
     }
   }
 
-  async function removeConversationItem(targetConversationId: string) {
-    if (!targetConversationId) {
+  async function removeChatItem(targetChatId: string) {
+    if (!targetChatId) {
       return
     }
 
@@ -928,8 +738,8 @@ export function useChatPage() {
 
     errorMessage.value = ''
     try {
-      await deleteConversation(targetConversationId)
-      if (conversationId.value === targetConversationId) {
+      await deleteChat(targetChatId)
+      if (conversationId.value === targetChatId) {
         resetConversationState()
         input.value = ''
         void router.replace({ path: '/chat' })
@@ -938,42 +748,6 @@ export function useChatPage() {
       ElMessage.success('对话已删除')
     } catch {
       errorMessage.value = '删除对话失败。'
-    }
-  }
-
-  async function removeTaskItem(taskId: string) {
-    if (!taskId) {
-      return
-    }
-
-    try {
-      await ElMessageBox.confirm('删除后将移除当前任务记录，但会保留原对话消息，是否继续？', '删除任务', {
-        type: 'warning',
-        confirmButtonText: '删除',
-        cancelButtonText: '取消',
-      })
-    } catch {
-      return
-    }
-
-    if (activeTaskId.value === taskId) {
-      closeTaskStream()
-    }
-
-    errorMessage.value = ''
-    try {
-      await deleteTask(taskId)
-      if (activeTaskId.value === taskId) {
-        activeTaskId.value = ''
-        taskDetail.value = null
-        if (conversationId.value) {
-          await loadConversationMessages(conversationId.value)
-        }
-      }
-      await reloadSidebarData()
-      ElMessage.success('任务已删除')
-    } catch {
-      errorMessage.value = '删除任务失败。'
     }
   }
 
@@ -987,7 +761,7 @@ export function useChatPage() {
     const initialConversationId = routeConversationId || lastConversationId
 
     if (initialConversationId) {
-      void switchConversation(initialConversationId)
+      void switchChat(initialConversationId)
     }
     void reloadSidebarData()
     void loadNodes()
@@ -1000,20 +774,15 @@ export function useChatPage() {
     (value) => {
       const nextConversationId = typeof value === 'string' ? value : ''
       if (nextConversationId && nextConversationId !== conversationId.value) {
-        void switchConversation(nextConversationId)
+        void switchChat(nextConversationId)
       }
     },
   )
 
   const conversationLabel = computed(() => conversationId.value || 'new')
   const selectedModel = computed(() => availableModels.value.find((item) => item.id === selectedModelId.value) ?? null)
-  const assistantTitle = computed(() => {
-    if (activeMode.value === 'task') {
-      return 'AITerm'
-    }
-    return selectedModel.value?.name || '模型'
-  })
-  const assistantLabel = computed(() => shortenLabel(assistantTitle.value, activeMode.value === 'task' ? 10 : 8) || '模型')
+  const assistantTitle = computed(() => selectedModel.value?.name || '模型')
+  const assistantLabel = computed(() => shortenLabel(assistantTitle.value, 8) || '模型')
   const userTitle = computed(() => currentUserName.value || '用户')
   const userLabel = computed(() => shortenLabel(userTitle.value, 8) || '用户')
   const selectedNode = computed(() => availableNodes.value.find((item) => item.id === selectedNodeId.value) ?? null)
@@ -1028,28 +797,17 @@ export function useChatPage() {
     }
     return undefined
   })
-  const activeConversationTitle = computed(() => conversations.value.find((item) => item.id === conversationId.value)?.title || '新对话')
-  const filteredConversations = computed(() => {
-    const chatOnlyItems = conversations.value.filter((item) => !item.latest_task_id)
+  const activeChatTitle = computed(() => chats.value.find((item) => item.id === conversationId.value)?.title || '新对话')
+  const filteredChats = computed(() => {
     if (!selectedNodeId.value) {
-      return chatOnlyItems
+      return chats.value
     }
-    return chatOnlyItems.filter((item) => !item.latest_node_id || item.latest_node_id === selectedNodeId.value)
+    return chats.value.filter((item) => !item.node_id || item.node_id === selectedNodeId.value)
   })
-  const filteredTasks = computed(() => {
-    if (!selectedNodeId.value) {
-      return tasks.value
-    }
-    return tasks.value.filter((item) => item.node_id === selectedNodeId.value)
-  })
-  const conversationGroups = computed(() => buildConversationGroups(filteredConversations.value, sidebarSearch.value))
-  const filteredTaskItems = computed(() => filterTasksByStatus(filteredTasks.value, sidebarSearch.value, taskStatusFilter.value))
-  const visibleConversationCount = computed(() => conversationGroups.value.reduce((total, group) => total + group.items.length, 0))
-  const visibleTaskCount = computed(() => filteredTaskItems.value.length)
-  const hasConversationResults = computed(() => conversationGroups.value.some((group) => group.items.length > 0))
-  const hasTaskResults = computed(() => filteredTaskItems.value.length > 0)
-  const hasMoreConversations = computed(() => conversations.value.length < conversationTotal.value)
-  const hasMoreTasks = computed(() => tasks.value.length < taskTotal.value)
+  const chatGroups = computed(() => buildChatGroups(filteredChats.value, sidebarSearch.value))
+  const visibleChatCount = computed(() => chatGroups.value.reduce((total, group) => total + group.items.length, 0))
+  const hasChatResults = computed(() => chatGroups.value.some((group) => group.items.length > 0))
+  const hasMoreChats = computed(() => chats.value.length < chatTotal.value)
   const latestAssistantMessage = computed(() => {
     for (let index = messages.value.length - 1; index >= 0; index -= 1) {
       const item = messages.value[index]
@@ -1070,56 +828,43 @@ export function useChatPage() {
     return [latestMessage.id]
   })
   const retryableAssistantMessageIds = computed(() => {
-    if (activeMode.value !== 'chat') {
-      return []
-    }
     const actionableIds = new Set(actionableAssistantMessageIds.value)
     return messages.value.filter((item) => actionableIds.has(item.id) && !!findRetrySourceMessage(item.id)).map((item) => item.id)
   })
-  const canStopTask = computed(() => !!taskDetail.value && ['waiting_confirm', 'pending', 'analyzing', 'executing'].includes(taskDetail.value.status))
-  const canRestartTask = computed(() => !!taskDetail.value && ['waiting_confirm', 'completed', 'failed', 'cancelled'].includes(taskDetail.value.status))
+  const canStopTask = computed(() => !!activeTaskId.value && taskStreaming.value)
+  const canRestartTask = computed(() => !!activeTaskId.value && !taskStreaming.value)
   const taskApprovalMessageId = computed(() => {
-    if (activeMode.value !== 'task' || taskDetail.value?.status !== 'waiting_confirm') {
+    if (!waitingForConfirm.value) {
       return ''
     }
-    const pendingCommand = taskDetail.value.pending_command?.trim()
     for (let index = messages.value.length - 1; index >= 0; index -= 1) {
       const item = messages.value[index]
-      if (item.role !== 'assistant' || !item.content) {
-        continue
-      }
-      if (pendingCommand && item.content.includes(pendingCommand)) {
-        return item.id
-      }
-      if (item.content.includes('等待人工确认后执行')) {
+      if (item.role !== 'assistant' && item.content?.includes('需要人工确认')) {
         return item.id
       }
     }
-    return ''
+    const lastMessage = messages.value[messages.value.length - 1]
+    return lastMessage?.role === 'assistant' ? lastMessage.id : ''
   })
   const taskInputRequest = computed(() => {
-    if (activeMode.value !== 'task' || !taskDetail.value?.input_question) {
+    if (!waitingForInput.value || !inputQuestion.value) {
       return undefined
     }
     return {
-      question: taskDetail.value.input_question,
-      input_type: taskDetail.value.input_type || 'text',
-      options: taskDetail.value.input_options,
-      placeholder: taskDetail.value.input_placeholder,
+      question: inputQuestion.value,
+      input_type: inputType.value || 'text',
+      options: inputOptions.value,
+      placeholder: inputPlaceholder.value,
     }
   })
 
   const taskUserInput = computed(() => {
-    if (activeMode.value !== 'task' || taskDetail.value?.status === 'waiting_input') {
-      return undefined
-    }
-    return taskDetail.value?.user_input
+    return undefined
   })
 
   return {
     activeTaskId,
-    activeConversationTitle,
-    activeMode,
+    activeChatTitle,
     actionableAssistantMessageIds,
     availableNodes,
     availableModels,
@@ -1128,27 +873,20 @@ export function useChatPage() {
     canRestartTask,
     canStopTask,
     chatStreaming,
+    chats,
+    chatGroups,
+    chatTotal,
     confirming,
     copyMessage,
-    conversations,
-    conversationGroups,
-    conversationLabel,
-    conversationTotal,
     errorMessage,
-    filteredTaskItems,
-    hasConversationResults,
-    hasMoreConversations,
-    hasMoreTasks,
-    hasTaskResults,
+    hasChatResults,
+    hasMoreChats,
     input,
-    loadMoreConversations,
-    loadMoreTasks,
+    loadMoreChats,
     loading,
     messages,
-    openTaskFromSidebar,
     reloadSidebarData,
-    removeConversationItem,
-    removeTaskItem,
+    removeChatItem,
     restartActiveTask,
     retryAssistantMessage,
     retryableAssistantMessageIds,
@@ -1156,34 +894,28 @@ export function useChatPage() {
     selectedNodeId,
     selectedModel,
     selectedModelId,
-    setActiveMode,
     setSelectedNodeId,
     setSelectedModelId,
-    setSidebarTab,
     sidebarSearch,
     sidebarLoading,
-    sidebarTab,
     startNewConversation,
-    setTaskStatusFilter,
     stopActiveTask,
     stopChatResponse,
     streaming,
     streamingMessageId,
     submitMessage,
     submitTaskInput,
+    switchChat,
     taskApprovalMessageId,
-    taskDetail,
     taskInputRequest,
+    taskRiskReason,
     taskUserInput,
-    taskStatusFilter,
-    taskTotal,
-    switchConversation,
     confirmActiveTask,
-    tasks,
     userLabel,
     userTitle,
-    visibleConversationCount,
-    visibleTaskCount,
+    visibleChatCount,
+    conversationLabel,
+    conversationId,
     formatDateTime,
   }
 }

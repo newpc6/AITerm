@@ -1,7 +1,7 @@
-from sqlalchemy import Column, Integer, String, Float, Text, Boolean
+from sqlalchemy import Column, Integer, String, Text
 from datetime import datetime
 
-from app.db import Base
+from app.db.base import Base
 
 
 class ModelConfigModel(Base):
@@ -12,7 +12,7 @@ class ModelConfigModel(Base):
     api_url = Column(String(500), nullable=False)
     api_key = Column(String(500), nullable=False, default="")
     model = Column(String(255), nullable=False)
-    temperature = Column(Float, nullable=False, default=0.7)
+    temperature = Column(Integer, nullable=False, default=70)
     extra_params_json = Column(Text, nullable=False, default="{}")
     extra_body_json = Column(Text, nullable=False, default="{}")
     extra_headers_json = Column(Text, nullable=False, default="{}")
@@ -27,7 +27,7 @@ class ModelConfigModel(Base):
             "api_url": self.api_url,
             "api_key": self.api_key,
             "model": self.model,
-            "temperature": self.temperature,
+            "temperature": self.temperature / 100.0,
             "extra_params_json": self.extra_params_json,
             "extra_body_json": self.extra_body_json,
             "extra_headers_json": self.extra_headers_json,
@@ -37,33 +37,28 @@ class ModelConfigModel(Base):
         }
 
 
-class GlobalSettingsModel(Base):
-    __tablename__ = "global_settings"
+class SystemDictModel(Base):
+    __tablename__ = "system_dict"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    chat_system_prompt = Column(Text, nullable=False, default="")
-    task_planner_prompt = Column(Text, nullable=False, default="")
-    task_planner_user_prompt = Column(Text, nullable=False, default="")
-    task_windows_tool_prompt = Column(Text, nullable=False, default="")
-    task_linux_tool_prompt = Column(Text, nullable=False, default="")
-    task_mac_tool_prompt = Column(Text, nullable=False, default="")
-    task_failure_repair_prompt = Column(Text, nullable=False, default="")
-    task_command_rules_prompt = Column(Text, nullable=False, default="")
-    task_command_blacklist_json = Column(Text, nullable=False, default="[]")
-    task_command_whitelist_json = Column(Text, nullable=False, default="[]")
+    category = Column(String(50), nullable=False, default="global", index=True)
+    key = Column(String(100), nullable=False)
+    value = Column(Text, nullable=False, default="")
+    description = Column(String(500), nullable=False, default="")
+    sort_order = Column(Integer, nullable=False, default=0)
+    created_at = Column(String(50), nullable=False)
+    updated_at = Column(String(50), nullable=False)
 
     def to_dict(self):
         return {
-            "chat_system_prompt": self.chat_system_prompt,
-            "task_planner_prompt": self.task_planner_prompt,
-            "task_planner_user_prompt": self.task_planner_user_prompt,
-            "task_windows_tool_prompt": self.task_windows_tool_prompt,
-            "task_linux_tool_prompt": self.task_linux_tool_prompt,
-            "task_mac_tool_prompt": self.task_mac_tool_prompt,
-            "task_failure_repair_prompt": self.task_failure_repair_prompt,
-            "task_command_rules_prompt": self.task_command_rules_prompt,
-            "task_command_blacklist_json": self.task_command_blacklist_json,
-            "task_command_whitelist_json": self.task_command_whitelist_json
+            "id": self.id,
+            "category": self.category,
+            "key": self.key,
+            "value": self.value,
+            "description": self.description,
+            "sort_order": self.sort_order,
+            "created_at": self.created_at,
+            "updated_at": self.updated_at
         }
 
 

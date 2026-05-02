@@ -42,26 +42,30 @@ class ModelConfigUpdate(BaseModel):
 
 
 class GlobalSettings(BaseModel):
+    intent_detection_prompt: str = ""
     chat_system_prompt: str = ""
-    task_planner_prompt: str = ""
-    task_planner_user_prompt: str = ""
-    task_windows_tool_prompt: str = ""
-    task_linux_tool_prompt: str = ""
-    task_mac_tool_prompt: str = ""
-    task_failure_repair_prompt: str = ""
-    task_command_rules_prompt: str = ""
-    task_command_blacklist: List[str] = []
-    task_command_whitelist: List[str] = []
+    chat_history_limit: int = 12
+    execution_planner_prompt: str = ""
+    execution_planner_user_prompt: str = ""
+    execution_windows_tool_prompt: str = ""
+    execution_linux_tool_prompt: str = ""
+    execution_mac_tool_prompt: str = ""
+    execution_failure_repair_prompt: str = ""
+    execution_command_rules_prompt: str = ""
+    execution_command_blacklist: List[str] = []
+    execution_command_whitelist: List[str] = []
 
 
 class GlobalSettingsUpdate(BaseModel):
+    intent_detection_prompt: Optional[str] = None
     chat_system_prompt: Optional[str] = None
-    task_planner_prompt: Optional[str] = None
-    task_planner_user_prompt: Optional[str] = None
-    task_windows_tool_prompt: Optional[str] = None
-    task_linux_tool_prompt: Optional[str] = None
-    task_mac_tool_prompt: Optional[str] = None
-    task_failure_repair_prompt: Optional[str] = None
-    task_command_rules_prompt: Optional[str] = None
-    task_command_blacklist: Optional[List[str]] = None
-    task_command_whitelist: Optional[List[str]] = None
+    chat_history_limit: Optional[int] = None
+    execution_planner_prompt: Optional[str] = None
+    execution_planner_user_prompt: Optional[str] = None
+    execution_windows_tool_prompt: Optional[str] = None
+    execution_linux_tool_prompt: Optional[str] = None
+    execution_mac_tool_prompt: Optional[str] = None
+    execution_failure_repair_prompt: Optional[str] = None
+    execution_command_rules_prompt: Optional[str] = None
+    execution_command_blacklist: Optional[List[str]] = None
+    execution_command_whitelist: Optional[List[str]] = None

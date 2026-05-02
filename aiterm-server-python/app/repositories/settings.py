@@ -7,7 +7,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.base import IModelConfigRepository, IGlobalSettingsRepository, IAuthSettingsRepository
 from app.models import ModelConfig, GlobalSettings, AuthSettings
 from app.db import async_session_maker
-from app.db.settings import ModelConfigModel, GlobalSettingsModel, AuthSettingsModel
+from app.db.settings import ModelConfigModel, SystemDictModel, AuthSettingsModel
 
 
 class ModelConfigRepository(IModelConfigRepository):
@@ -34,7 +34,8 @@ class ModelConfigRepository(IModelConfigRepository):
     async def get_model(self, model_id: str) -> Optional[ModelConfig]:
         async with async_session_maker() as session:
             result = await session.execute(
-                select(ModelConfigModel).where(ModelConfigModel.id == int(model_id))
+                select(ModelConfigModel).where(
+                    ModelConfigModel.id == int(model_id))
             )
             model = result.scalar_one_or_none()
             return self._to_domain(model) if model else None
@@ -42,7 +43,8 @@ class ModelConfigRepository(IModelConfigRepository):
     async def get_default_model(self) -> Optional[ModelConfig]:
         async with async_session_maker() as session:
             result = await session.execute(
-                select(ModelConfigModel).where(ModelConfigModel.is_default == 1).limit(1)
+                select(ModelConfigModel).where(
+                    ModelConfigModel.is_default == 1).limit(1)
             )
             model = result.scalar_one_or_none()
             return self._to_domain(model) if model else None
@@ -55,7 +57,7 @@ class ModelConfigRepository(IModelConfigRepository):
                 api_url=model.api_url,
                 api_key=model.api_key,
                 model=model.model,
-                temperature=model.temperature,
+                temperature=int(model.temperature * 100),
                 extra_params_json=json.dumps(model.extra_params),
                 extra_body_json=json.dumps(model.extra_body),
                 extra_headers_json=json.dumps(model.extra_headers),
@@ -71,71 +73,89 @@ class ModelConfigRepository(IModelConfigRepository):
     async def update_model(self, model_id: str, model: ModelConfig) -> Optional[ModelConfig]:
         async with async_session_maker() as session:
             result = await session.execute(
-                select(ModelConfigModel).where(ModelConfigModel.id == int(model_id))
+                select(ModelConfigModel).where(
+                    ModelConfigModel.id == int(model_id))
             )
             db_model = result.scalar_one_or_none()
             if not db_model:
                 return None
-            
+
             db_model.name = model.name
             db_model.api_url = model.api_url
             db_model.api_key = model.api_key
             db_model.model = model.model
-            db_model.temperature = model.temperature
+            db_model.temperature = int(model.temperature * 100)
             db_model.extra_params_json = json.dumps(model.extra_params)
             db_model.extra_body_json = json.dumps(model.extra_body)
             db_model.extra_headers_json = json.dumps(model.extra_headers)
             db_model.is_default = 1 if model.is_default else 0
             db_model.updated_at = datetime.utcnow().isoformat()
-            
+
             await session.commit()
+            await session.refresh(db_model)
             return self._to_domain(db_model)
 
     async def delete_model(self, model_id: str) -> bool:
         async with async_session_maker() as session:
             result = await session.execute(
-                delete(ModelConfigModel).where(ModelConfigModel.id == int(model_id))
+                select(ModelConfigModel).where(
+                    ModelConfigModel.id == int(model_id))
             )
-            await session.commit()
-            return result.rowcount > 0
+            db_model = result.scalar_one_or_none()
+            if not db_model:
+                return False
 
-    async def set_default_model(self, model_id: str) -> bool:
+            await session.delete(db_model)
+            await session.commit()
+            return True
+
+    async def set_default_model(self, model_id: str) -> Optional[ModelConfig]:
         async with async_session_maker() as session:
             await session.execute(
                 update(ModelConfigModel).values(is_default=0)
             )
-            await session.execute(
-                update(ModelConfigModel)
-                .where(ModelConfigModel.id == int(model_id))
-                .values(is_default=1)
+
+            result = await session.execute(
+                select(ModelConfigModel).where(
+                    ModelConfigModel.id == int(model_id))
             )
+            db_model = result.scalar_one_or_none()
+            if not db_model:
+                return None
+
+            db_model.is_default = 1
+            db_model.updated_at = datetime.utcnow().isoformat()
             await session.commit()
-            return True
+            await session.refresh(db_model)
+            return self._to_domain(db_model)
 
     def _to_domain(self, model: ModelConfigModel) -> ModelConfig:
         extra_params = {}
         extra_body = {}
         extra_headers = {}
         try:
-            extra_params = json.loads(model.extra_params_json) if model.extra_params_json else {}
+            extra_params = json.loads(
+                model.extra_params_json) if model.extra_params_json else {}
         except:
             pass
         try:
-            extra_body = json.loads(model.extra_body_json) if model.extra_body_json else {}
+            extra_body = json.loads(
+                model.extra_body_json) if model.extra_body_json else {}
         except:
             pass
         try:
-            extra_headers = json.loads(model.extra_headers_json) if model.extra_headers_json else {}
+            extra_headers = json.loads(
+                model.extra_headers_json) if model.extra_headers_json else {}
         except:
             pass
-        
+
         return ModelConfig(
             id=str(model.id),
             name=model.name,
             api_url=model.api_url,
             api_key=model.api_key,
             model=model.model,
-            temperature=model.temperature,
+            temperature=model.temperature / 100.0,
             extra_params=extra_params,
             extra_body=extra_body,
             extra_headers=extra_headers,
@@ -145,67 +165,124 @@ class ModelConfigRepository(IModelConfigRepository):
         )
 
 
+DICT_CATEGORY = "global_settings"
+
+CONFIG_KEYS = [
+    "intent_detection_prompt",
+    "chat_system_prompt",
+    "chat_history_limit",
+    "execution_planner_prompt",
+    "execution_planner_user_prompt",
+    "execution_windows_tool_prompt",
+    "execution_linux_tool_prompt",
+    "execution_mac_tool_prompt",
+    "execution_failure_repair_prompt",
+    "execution_command_rules_prompt",
+    "execution_command_blacklist",
+    "execution_command_whitelist",
+]
+
+DEFAULT_VALUES = {
+    "chat_history_limit": "12",
+    "execution_command_blacklist": "[]",
+    "execution_command_whitelist": "[]",
+}
+
+
 class GlobalSettingsRepository(IGlobalSettingsRepository):
     async def get_settings(self) -> GlobalSettings:
         async with async_session_maker() as session:
-            result = await session.execute(select(GlobalSettingsModel))
-            model = result.scalar_one_or_none()
-            
-            if not model:
-                model = GlobalSettingsModel()
-                session.add(model)
-                await session.commit()
-                await session.refresh(model)
-            
-            return self._to_domain(model)
+            result = await session.execute(
+                select(SystemDictModel).where(
+                    SystemDictModel.category == DICT_CATEGORY)
+            )
+            configs = {c.key: c.value for c in result.scalars().all()}
+
+            return self._to_domain(configs)
 
     async def update_settings(self, settings: GlobalSettings) -> GlobalSettings:
         async with async_session_maker() as session:
-            result = await session.execute(select(GlobalSettingsModel))
-            model = result.scalar_one_or_none()
-            
-            if not model:
-                model = GlobalSettingsModel()
-                session.add(model)
-            
-            model.chat_system_prompt = settings.chat_system_prompt
-            model.task_planner_prompt = settings.task_planner_prompt
-            model.task_planner_user_prompt = settings.task_planner_user_prompt
-            model.task_windows_tool_prompt = settings.task_windows_tool_prompt
-            model.task_linux_tool_prompt = settings.task_linux_tool_prompt
-            model.task_mac_tool_prompt = settings.task_mac_tool_prompt
-            model.task_failure_repair_prompt = settings.task_failure_repair_prompt
-            model.task_command_rules_prompt = settings.task_command_rules_prompt
-            model.task_command_blacklist_json = json.dumps(settings.task_command_blacklist)
-            model.task_command_whitelist_json = json.dumps(settings.task_command_whitelist)
-            
-            await session.commit()
-            await session.refresh(model)
-            return self._to_domain(model)
+            now = datetime.utcnow().isoformat()
 
-    def _to_domain(self, model: GlobalSettingsModel) -> GlobalSettings:
+            data = {
+                "intent_detection_prompt": settings.intent_detection_prompt,
+                "chat_system_prompt": settings.chat_system_prompt,
+                "chat_history_limit": str(settings.chat_history_limit),
+                "execution_planner_prompt": settings.execution_planner_prompt,
+                "execution_planner_user_prompt": settings.execution_planner_user_prompt,
+                "execution_windows_tool_prompt": settings.execution_windows_tool_prompt,
+                "execution_linux_tool_prompt": settings.execution_linux_tool_prompt,
+                "execution_mac_tool_prompt": settings.execution_mac_tool_prompt,
+                "execution_failure_repair_prompt": settings.execution_failure_repair_prompt,
+                "execution_command_rules_prompt": settings.execution_command_rules_prompt,
+                "execution_command_blacklist": json.dumps(settings.execution_command_blacklist),
+                "execution_command_whitelist": json.dumps(settings.execution_command_whitelist),
+            }
+
+            for key, value in data.items():
+                result = await session.execute(
+                    select(SystemDictModel).where(
+                        SystemDictModel.category == DICT_CATEGORY,
+                        SystemDictModel.key == key
+                    )
+                )
+                config = result.scalar_one_or_none()
+                if config:
+                    config.value = value
+                    config.updated_at = now
+                else:
+                    config = SystemDictModel(
+                        category=DICT_CATEGORY,
+                        key=key,
+                        value=value,
+                        created_at=now,
+                        updated_at=now
+                    )
+                    session.add(config)
+
+            await session.commit()
+            return await self.get_settings()
+
+    def _to_domain(self, configs: dict) -> GlobalSettings:
+        def get_value(key: str, default: str = "") -> str:
+            return configs.get(key, DEFAULT_VALUES.get(key, default))
+
         blacklist = []
         whitelist = []
         try:
-            blacklist = json.loads(model.task_command_blacklist_json) if model.task_command_blacklist_json else []
+            blacklist = json.loads(
+                get_value("execution_command_blacklist", "[]"))
         except:
             pass
         try:
-            whitelist = json.loads(model.task_command_whitelist_json) if model.task_command_whitelist_json else []
+            whitelist = json.loads(
+                get_value("execution_command_whitelist", "[]"))
         except:
             pass
-        
+
+        try:
+            chat_history_limit = int(get_value("chat_history_limit", "12"))
+        except:
+            chat_history_limit = 12
+
         return GlobalSettings(
-            chat_system_prompt=model.chat_system_prompt or "",
-            task_planner_prompt=model.task_planner_prompt or "",
-            task_planner_user_prompt=model.task_planner_user_prompt or "",
-            task_windows_tool_prompt=model.task_windows_tool_prompt or "",
-            task_linux_tool_prompt=model.task_linux_tool_prompt or "",
-            task_mac_tool_prompt=model.task_mac_tool_prompt or "",
-            task_failure_repair_prompt=model.task_failure_repair_prompt or "",
-            task_command_rules_prompt=model.task_command_rules_prompt or "",
-            task_command_blacklist=blacklist,
-            task_command_whitelist=whitelist
+            intent_detection_prompt=get_value("intent_detection_prompt"),
+            chat_system_prompt=get_value("chat_system_prompt"),
+            chat_history_limit=chat_history_limit,
+            execution_planner_prompt=get_value("execution_planner_prompt"),
+            execution_planner_user_prompt=get_value(
+                "execution_planner_user_prompt"),
+            execution_windows_tool_prompt=get_value(
+                "execution_windows_tool_prompt"),
+            execution_linux_tool_prompt=get_value(
+                "execution_linux_tool_prompt"),
+            execution_mac_tool_prompt=get_value("execution_mac_tool_prompt"),
+            execution_failure_repair_prompt=get_value(
+                "execution_failure_repair_prompt"),
+            execution_command_rules_prompt=get_value(
+                "execution_command_rules_prompt"),
+            execution_command_blacklist=blacklist,
+            execution_command_whitelist=whitelist,
         )
 
 
@@ -214,35 +291,37 @@ class AuthSettingsRepository(IAuthSettingsRepository):
         async with async_session_maker() as session:
             result = await session.execute(select(AuthSettingsModel))
             model = result.scalar_one_or_none()
-            
+
             if not model:
                 model = AuthSettingsModel()
                 session.add(model)
                 await session.commit()
                 await session.refresh(model)
-            
-            return self._to_domain(model)
+
+            return AuthSettings(
+                enabled=bool(model.enabled),
+                allow_password_login=bool(model.allow_password_login),
+                session_ttl_hours=model.session_ttl_hours
+            )
 
     async def update_settings(self, settings: AuthSettings) -> AuthSettings:
         async with async_session_maker() as session:
             result = await session.execute(select(AuthSettingsModel))
             model = result.scalar_one_or_none()
-            
+
             if not model:
                 model = AuthSettingsModel()
                 session.add(model)
-            
+
             model.enabled = 1 if settings.enabled else 0
             model.allow_password_login = 1 if settings.allow_password_login else 0
             model.session_ttl_hours = settings.session_ttl_hours
-            
+
             await session.commit()
             await session.refresh(model)
-            return self._to_domain(model)
 
-    def _to_domain(self, model: AuthSettingsModel) -> AuthSettings:
-        return AuthSettings(
-            enabled=bool(model.enabled),
-            allow_password_login=bool(model.allow_password_login),
-            session_ttl_hours=model.session_ttl_hours
-        )
+            return AuthSettings(
+                enabled=bool(model.enabled),
+                allow_password_login=bool(model.allow_password_login),
+                session_ttl_hours=model.session_ttl_hours
+            )

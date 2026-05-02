@@ -1,17 +1,11 @@
 <script setup lang="ts">
-import type { ConversationMode, NodeItem } from '@/types/api'
+import { Promotion, VideoPause } from '@element-plus/icons-vue'
 
 const modelValue = defineModel<string>({ required: true })
 
 defineProps<{
-  activeMode: ConversationMode
   chatStreaming: boolean
-  conversationLabel: string
-  activeTaskId: string
-  availableNodes: NodeItem[]
   loading: boolean
-  selectedNodeId: string
-  streaming: boolean
 }>()
 
 const emit = defineEmits<{
@@ -37,39 +31,40 @@ function handleKeydown(event: KeyboardEvent) {
 
 <template>
   <div class="chat-input">
-    <el-input v-model="modelValue" type="textarea" :rows="3" resize="none"
-      :placeholder="activeMode === 'task' ? '描述你希望 AITerm 自动执行的任务（回车发送，Ctrl+回车换行）' : '输入你想和模型继续讨论的问题（回车发送，Ctrl+回车换行）'"
-      @keydown="handleKeydown" />
-    <div class="chat-actions">
-      <div class="label">
-        模式: {{ activeMode === 'task' ? '任务' : '对话' }}
-        <span> | 会话: {{ conversationLabel }}</span>
-        <span v-if="activeTaskId"> | 任务: {{ activeTaskId }}</span>
-        <span v-if="streaming"> | 执行中</span>
-      </div>
-      <div class="chat-actions__buttons">
-        <el-button v-if="chatStreaming" @click="handleStopChat">中止回答</el-button>
-        <el-button type="primary" :loading="loading" @click="handleSubmit">{{ activeMode === 'task' ? '创建任务' : '发送对话'
-          }}</el-button>
-      </div>
+    <div class="chat-input__wrapper">
+      <el-input v-model="modelValue" type="textarea" :rows="3" resize="none" placeholder="输入你的问题或任务描述（回车发送，Ctrl+回车换行）"
+        @keydown="handleKeydown" />
+      <el-button v-if="chatStreaming" class="chat-input__send-btn" type="danger" :icon="VideoPause" circle
+        @click="handleStopChat" />
+      <el-button v-else class="chat-input__send-btn" type="primary" :icon="Promotion" circle
+        :disabled="loading || !modelValue.trim()" @click="handleSubmit" />
     </div>
   </div>
 </template>
 
 <style scoped>
-.chat-actions__buttons {
+.chat-input__wrapper {
+  position: relative;
   display: flex;
+  align-items: flex-start;
   gap: 12px;
+}
+
+.chat-input__send-btn {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  margin-top: 8px;
+  background: var(--color-bg-input);
+  border: 1px solid var(--color-border-primary);
+}
+
+.chat-input__send-btn:hover {
+  background: var(--color-bg-card-hover);
+  border-color: rgba(255, 255, 255, 0.12);
 }
 
 :deep(.el-textarea__inner) {
   min-height: 92px !important;
-}
-
-@media (max-width: 720px) {
-  .chat-actions__buttons {
-    width: 100%;
-    justify-content: stretch;
-  }
 }
 </style>

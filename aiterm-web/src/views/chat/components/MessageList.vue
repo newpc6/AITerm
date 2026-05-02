@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
-import { CopyDocument, RefreshRight, Loading, VideoPause } from '@element-plus/icons-vue'
+import { CopyDocument, RefreshRight, Loading, VideoPause, SuccessFilled } from '@element-plus/icons-vue'
 
 import MarkdownContent from '@/components/MarkdownContent.vue'
 import type { ChatMessage } from '@/types/chat'
@@ -105,7 +105,7 @@ function isTaskPlanMessage(message: ChatMessage) {
 }
 
 type TaskStructuredMessage = {
-  kind: 'plan' | 'step-start' | 'step-result' | 'summary' | 'repair' | 'info' | 'analyzing' | 'input-request'
+  kind: 'plan' | 'step-start' | 'step-result' | 'summary' | 'repair' | 'info' | 'analyzing' | 'input-request' | 'approved' | 'output' | 'error' | 'analysis' | 'retry'
   title?: string
   stepLabel?: string
   body?: string
@@ -117,6 +117,51 @@ type TaskStructuredMessage = {
 type UserInputResponse = {
   question: string
   answer: string
+}
+
+function getMessageKind(message: ChatMessage): TaskStructuredMessage | null {
+  if (message.type) {
+    switch (message.type) {
+      case 'plan':
+        return { kind: 'plan', title: '步骤规划', body: message.content.replace(/^步骤规划\n?/, '') }
+      case 'step':
+        const stepMatch = message.content.match(/^开始执行第\s*(\d+)\s*步[:：]\s*(.+?)\n命令[:：]\s*([\s\S]+)$/)
+        if (stepMatch) {
+          return {
+            kind: 'step-start',
+            stepLabel: `第 ${stepMatch[1]} 步`,
+            title: stepMatch[2].trim(),
+            command: stepMatch[3].trim(),
+          }
+        }
+        return { kind: 'step-start', title: '执行中', body: message.content }
+      case 'step_result':
+        return { kind: 'step-result', body: message.content }
+      case 'output':
+        return { kind: 'output', body: message.content }
+      case 'error':
+        return { kind: 'error', title: '错误', body: message.content }
+      case 'summary':
+        return { kind: 'summary', title: '总结', body: message.content }
+      case 'analysis':
+        return { kind: 'analysis', title: '分析', body: message.content }
+      case 'retry':
+        return { kind: 'retry', title: '重试', body: message.content }
+      case 'approval':
+        return { kind: 'info', title: '需要确认', body: message.content }
+      case 'approved':
+        return { kind: 'approved', title: '已批准', body: message.content.replace(/^已批准\n?/, '') }
+      case 'rejected':
+        return { kind: 'info', title: '已拒绝', body: message.content }
+      case 'input':
+        return { kind: 'input-request', question: message.content.replace(/^需要您的输入[:：]\s*/, '') }
+      case 'input_response':
+        return { kind: 'input-request', question: message.content }
+      default:
+        break
+    }
+  }
+  return parseTaskStructuredMessage(message.content)
 }
 
 function parseUserInputResponse(content: string): UserInputResponse | null {
@@ -142,11 +187,12 @@ function parseTaskStructuredMessage(content: string): TaskStructuredMessage | nu
     return null
   }
 
-  if (normalized.includes('正在') && normalized.includes('分析任务')) {
+  if (normalized.startsWith('步骤规划')) {
+    const body = normalized.replace(/^步骤规划\n?/, '')
     return {
-      kind: 'analyzing',
-      title: '分析中',
-      body: normalized,
+      kind: 'plan',
+      title: '步骤规划',
+      body: body,
     }
   }
 
@@ -201,11 +247,20 @@ function parseTaskStructuredMessage(content: string): TaskStructuredMessage | nu
     }
   }
 
-  if (normalized.startsWith('已生成 ') || normalized.includes('需要人工确认')) {
+  if (normalized.includes('需要人工确认')) {
     return {
       kind: 'info',
-      title: '任务提示',
+      title: '操作确认',
       body: normalized,
+    }
+  }
+
+  if (normalized.startsWith('已批准')) {
+    const bodyMatch = normalized.match(/^已批准\n命令[:：]\s*([\s\S]+)$/)
+    return {
+      kind: 'approved',
+      title: '已批准',
+      body: bodyMatch ? bodyMatch[1].trim() : normalized.replace(/^已批准\n?/, ''),
     }
   }
 
@@ -404,21 +459,21 @@ function parseTaskConfirmMessage(content: string): TaskConfirmMessage | null {
     const statusMatch = content.match(/状态: (.+)/)
     const commandMatch = content.match(/命令: (.+)/)
     const reasonMatch = content.match(/原因: (.+)/)
-    
+
     const statusText = statusMatch?.[1]?.trim() || ''
     const status = statusText === '已批准' ? 'approved' : 'rejected'
-    
+
     return {
       status,
       command: commandMatch?.[1]?.trim() || '',
       reason: reasonMatch?.[1]?.trim() || '',
     }
   }
-  
+
   if (content.includes('需要人工确认') || content.includes('需要确认')) {
     const lines = content.split('\n')
     let command = ''
-    
+
     for (const line of lines) {
       if (line.includes('Remove-Item') || line.includes('rm ') || line.includes('del ') || line.includes('delete')) {
         command = line.trim()
@@ -430,14 +485,14 @@ function parseTaskConfirmMessage(content: string): TaskConfirmMessage | null {
         break
       }
     }
-    
+
     return {
       status: 'approved',
       command,
       reason: '',
     }
   }
-  
+
   return null
 }
 
@@ -474,11 +529,11 @@ onMounted(async () => {
           <el-icon class="message__loading-icon is-loading">
             <Loading />
           </el-icon>
-          <span class="message__loading-text">思考中...</span>
+          <!-- <span class="message__loading-text">思考中...</span> -->
         </div>
         <template v-else>
           <div
-            v-if="taskInputRequest && (message.content === '等待用户输入...' || message.content.startsWith('[INPUT_REQUEST]')) && !taskUserInput"
+            v-if="taskInputRequest && (message.content.includes('需要您的输入') || message.content === '等待用户输入...' || message.content.startsWith('[INPUT_REQUEST]')) && !taskUserInput"
             class="message__task-card message__task-card--input">
             <div class="message__task-card-header">
               <div class="message__task-card-title">需要输入</div>
@@ -606,8 +661,7 @@ onMounted(async () => {
               <span class="message__input-answer-value">{{ taskUserInput }}</span>
             </div>
           </div>
-          <div v-else-if="parseTaskConfirmMessage(message.content)"
-            class="message__task-card"
+          <div v-else-if="parseTaskConfirmMessage(message.content)" class="message__task-card"
             :class="parseTaskConfirmMessage(message.content)?.status === 'approved' ? 'message__task-card--approved' : 'message__task-card--rejected'">
             <div class="message__task-card-header">
               <div class="message__task-card-title">
@@ -623,7 +677,8 @@ onMounted(async () => {
             </div>
             <div v-if="parseTaskConfirmMessage(message.content)?.reason" class="message__task-confirm-reason">
               <div class="message__task-confirm-label">风险说明：</div>
-              <div class="message__task-confirm-reason-text">{{ parseTaskConfirmMessage(message.content)?.reason }}</div>
+              <div class="message__task-confirm-reason-text">{{ parseTaskConfirmMessage(message.content)?.reason }}
+              </div>
             </div>
           </div>
           <div v-else-if="parseStructuredInputRequest(message.content)"
@@ -693,27 +748,25 @@ onMounted(async () => {
               <span class="message__input-answer-value">{{ parseUserInputResponse(message.content)?.answer }}</span>
             </div>
           </div>
-          <div v-else-if="parseTaskStructuredMessage(message.content)?.kind === 'analyzing'"
+          <div v-else-if="getMessageKind(message)?.kind === 'analyzing'"
             class="message__task-card message__task-card--analyzing">
             <div class="message__task-card-header">
-              <div class="message__task-card-title">{{ parseTaskStructuredMessage(message.content)?.title }}</div>
+              <div class="message__task-card-title">{{ getMessageKind(message)?.title }}</div>
               <el-icon v-if="isStreaming(message)" class="message__task-card-loading is-loading">
                 <Loading />
               </el-icon>
             </div>
-            <MarkdownContent class="message__content" mode="markdown"
-              :content="parseTaskStructuredMessage(message.content)?.body || ''" />
+            <MarkdownContent class="message__content" mode="markdown" :content="getMessageKind(message)?.body || ''" />
           </div>
-          <div v-else-if="parseTaskStructuredMessage(message.content)?.kind === 'plan'"
-            class="message__task-card message__task-card--plan">
-            <div class="message__task-card-title">{{ parseTaskStructuredMessage(message.content)?.title }}</div>
-            <pre class="message__code"><code>{{ parseTaskStructuredMessage(message.content)?.body }}</code></pre>
+          <div v-else-if="getMessageKind(message)?.kind === 'plan'" class="message__task-card message__task-card--plan">
+            <div class="message__task-card-title">{{ getMessageKind(message)?.title }}</div>
+            <pre class="message__code"><code>{{ getMessageKind(message)?.body }}</code></pre>
           </div>
-          <div v-else-if="parseTaskStructuredMessage(message.content)?.kind === 'step-start'"
+          <div v-else-if="getMessageKind(message)?.kind === 'step-start'"
             class="message__task-card message__task-card--step">
             <div class="message__task-card-header">
-              <div class="message__task-card-title">{{ parseTaskStructuredMessage(message.content)?.stepLabel ||
-                parseTaskStructuredMessage(message.content)?.title }}</div>
+              <div class="message__task-card-title">{{ getMessageKind(message)?.stepLabel ||
+                getMessageKind(message)?.title }}</div>
               <div class="message__task-card-actions">
                 <el-icon v-if="isStreaming(message)" class="message__task-card-loading is-loading">
                   <Loading />
@@ -724,37 +777,43 @@ onMounted(async () => {
                 </el-button>
               </div>
             </div>
-            <div
-              v-if="parseTaskStructuredMessage(message.content)?.title && parseTaskStructuredMessage(message.content)?.stepLabel"
-              class="message__task-card-subtitle">{{ parseTaskStructuredMessage(message.content)?.title }}</div>
-            <pre v-if="parseTaskStructuredMessage(message.content)?.command" class="message__code"><code>{{
-              parseTaskStructuredMessage(message.content)?.command }}</code></pre>
+            <div v-if="getMessageKind(message)?.title && getMessageKind(message)?.stepLabel"
+              class="message__task-card-subtitle">{{ getMessageKind(message)?.title }}</div>
+            <pre v-if="getMessageKind(message)?.command" class="message__code"><code>{{
+              getMessageKind(message)?.command }}</code></pre>
             <MarkdownContent v-else class="message__content" mode="markdown"
-              :content="parseTaskStructuredMessage(message.content)?.body || ''" />
+              :content="getMessageKind(message)?.body || ''" />
           </div>
-          <div v-else-if="parseTaskStructuredMessage(message.content)?.kind === 'step-result'"
+          <div v-else-if="getMessageKind(message)?.kind === 'step-result'"
             class="message__task-card message__task-card--result">
-            <div class="message__task-card-title">{{ parseTaskStructuredMessage(message.content)?.stepLabel }}</div>
-            <MarkdownContent class="message__content" mode="markdown"
-              :content="parseTaskStructuredMessage(message.content)?.body || ''" />
+            <div class="message__task-card-title">{{ getMessageKind(message)?.stepLabel }}</div>
+            <MarkdownContent class="message__content" mode="markdown" :content="getMessageKind(message)?.body || ''" />
           </div>
-          <div v-else-if="parseTaskStructuredMessage(message.content)?.kind === 'summary'"
+          <div v-else-if="getMessageKind(message)?.kind === 'summary'"
             class="message__task-card message__task-card--summary">
-            <div class="message__task-card-title">{{ parseTaskStructuredMessage(message.content)?.title }}</div>
-            <MarkdownContent class="message__content" mode="markdown"
-              :content="parseTaskStructuredMessage(message.content)?.body || ''" />
+            <div class="message__task-card-title">{{ getMessageKind(message)?.title }}</div>
+            <MarkdownContent class="message__content" mode="markdown" :content="getMessageKind(message)?.body || ''" />
           </div>
-          <div v-else-if="parseTaskStructuredMessage(message.content)?.kind === 'repair'"
+          <div v-else-if="getMessageKind(message)?.kind === 'repair'"
             class="message__task-card message__task-card--repair">
-            <div class="message__task-card-title">{{ parseTaskStructuredMessage(message.content)?.title }}</div>
-            <MarkdownContent class="message__content" mode="markdown"
-              :content="parseTaskStructuredMessage(message.content)?.body || ''" />
+            <div class="message__task-card-title">{{ getMessageKind(message)?.title }}</div>
+            <MarkdownContent class="message__content" mode="markdown" :content="getMessageKind(message)?.body || ''" />
           </div>
-          <div v-else-if="parseTaskStructuredMessage(message.content)?.kind === 'info'"
-            class="message__task-card message__task-card--info">
-            <div class="message__task-card-title">{{ parseTaskStructuredMessage(message.content)?.title }}</div>
-            <MarkdownContent class="message__content" mode="markdown"
-              :content="parseTaskStructuredMessage(message.content)?.body || ''" />
+          <div v-else-if="getMessageKind(message)?.kind === 'info'" class="message__task-card message__task-card--info">
+            <div class="message__task-card-title">{{ getMessageKind(message)?.title }}</div>
+            <MarkdownContent class="message__content" mode="markdown" :content="getMessageKind(message)?.body || ''" />
+          </div>
+          <div v-else-if="getMessageKind(message)?.kind === 'approved'"
+            class="message__task-card message__task-card--approved">
+            <div class="message__task-card-header">
+              <div class="message__task-card-title">
+                <el-icon class="message__task-card-icon--success">
+                  <SuccessFilled />
+                </el-icon>
+                {{ getMessageKind(message)?.title }}
+              </div>
+            </div>
+            <pre class="message__code"><code>{{ getMessageKind(message)?.body }}</code></pre>
           </div>
           <div v-else-if="isTaskPlanMessage(message)" class="message__content">
             <MarkdownContent :content="getTaskPlanIntro(message.content)" />
@@ -949,12 +1008,23 @@ onMounted(async () => {
 }
 
 .message__task-card--rejected {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(239, 68, 68, 0.3);
+  background: var(--color-danger-bg);
+  border-color: var(--color-danger-border);
 }
 
 .message__task-card--info {
-  background: rgba(55, 65, 81, 0.26);
+  background: var(--color-info);
+}
+
+.message__task-card--approved {
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
+}
+
+.message__task-card-icon--success {
+  color: var(--color-success);
+  margin-right: 6px;
+  vertical-align: middle;
 }
 
 .message__task-card-header {
@@ -964,7 +1034,7 @@ onMounted(async () => {
 }
 
 .message__task-card-title {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   letter-spacing: 0.06em;
   color: rgba(191, 219, 254, 0.88);
@@ -974,27 +1044,27 @@ onMounted(async () => {
 .message__task-card-actions {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--spacing-sm);
 }
 
 .message__task-card-loading {
-  font-size: 14px;
-  color: #60a5fa;
+  font-size: var(--font-size-md);
+  color: var(--color-accent-secondary);
   animation: spin 1s linear infinite;
 }
 
 .message__task-card-subtitle {
   font-size: 15px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.95);
+  color: var(--color-text-primary);
 }
 
 .message__code {
-  margin: 12px 0 0;
-  padding: 12px 14px;
+  margin: var(--spacing-md) 0 0;
+  padding: var(--spacing-md) 14px;
   border-radius: 14px;
   background: rgba(15, 23, 42, 0.7);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--color-border-primary);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   font-family: Consolas, 'Courier New', monospace;
@@ -1013,12 +1083,12 @@ onMounted(async () => {
   gap: 10px;
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--color-border-primary);
 }
 
 .message__task-approval-hint {
   margin: 0;
-  color: #f59e0b;
+  color: var(--color-warning);
 }
 
 .message__task-approval-actions {
@@ -1028,14 +1098,14 @@ onMounted(async () => {
 
 .message__input-question {
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.92);
+  color: var(--color-text-secondary);
   line-height: 1.6;
 }
 
 .message__input-form-inline {
   margin-top: 14px;
   padding-top: 12px;
-  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid var(--color-border-primary);
 }
 
 .message__input-options {
@@ -1044,48 +1114,48 @@ onMounted(async () => {
 
 .message__input-options-label {
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: var(--color-text-muted);
   margin-bottom: 6px;
 }
 
 .message__task-card--answered {
-  background: rgba(34, 197, 94, 0.12);
-  border-color: rgba(34, 197, 94, 0.3);
+  background: var(--color-success-bg);
+  border-color: var(--color-success-border);
 }
 
 .message__input-answer {
   margin-top: 10px;
   padding: 10px 14px;
   background: rgba(34, 197, 94, 0.15);
-  border-radius: 10px;
+  border-radius: var(--border-radius-md);
   border: 1px solid rgba(34, 197, 94, 0.25);
 }
 
 .message__input-answer-label {
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: rgba(34, 197, 94, 0.9);
-  margin-right: 8px;
+  margin-right: var(--spacing-sm);
 }
 
 .message__input-answer-value {
-  font-size: 14px;
-  color: rgba(255, 255, 255, 0.95);
+  font-size: var(--font-size-md);
+  color: var(--color-text-primary);
   font-weight: 500;
 }
 
 .message__input-option {
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.04);
-  border-radius: 8px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--color-bg-input);
+  border-radius: var(--spacing-sm);
   margin-bottom: 6px;
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.88);
+  color: var(--color-text-secondary);
 }
 
 .message__input-form-content {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--spacing-md);
 }
 
 .message__input-row {

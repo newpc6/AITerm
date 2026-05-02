@@ -10,7 +10,6 @@
         </div> -->
         <div class="chat-sidebar__header-actions">
           <el-button type="primary" @click="startNewConversation">新对话</el-button>
-          <el-button plain @click="startNewConversation(); setActiveMode('task')">新任务</el-button>
         </div>
       </div>
 
@@ -28,98 +27,57 @@
       </div>
 
       <div class="chat-sidebar__toolbar">
-        <el-input v-model="sidebarSearch" placeholder="搜索对话、任务、关键字" clearable class="chat-sidebar__search" />
-        <el-radio-group :model-value="sidebarTab" size="small" @update:model-value="setSidebarTab"
-          class="chat-sidebar__tabs">
-          <el-radio-button label="conversations">历史对话</el-radio-button>
-          <el-radio-button label="tasks">任务</el-radio-button>
-        </el-radio-group>
+        <el-input v-model="sidebarSearch" placeholder="搜索对话、关键字" clearable class="chat-sidebar__search" />
         <div class="chat-sidebar__toolbar-meta">
-          <span>{{ sidebarTab === 'conversations' ? visibleConversationCount : visibleTaskCount }} 条</span>
+          <span>{{ visibleChatCount }} 条</span>
           <el-button text :loading="sidebarLoading" @click="reloadSidebarData">刷新</el-button>
         </div>
       </div>
 
-      <div v-if="sidebarTab === 'conversations'" class="chat-sidebar__list">
-        <div v-for="group in conversationGroups" :key="group.key" class="chat-sidebar__group">
+      <div class="chat-sidebar__list">
+        <div v-for="group in chatGroups" :key="group.key" class="chat-sidebar__group">
           <div class="chat-sidebar__group-title">{{ group.label }}</div>
           <div v-for="item in group.items" :key="item.id" class="chat-sidebar__item"
-            :class="{ 'is-active': item.id === conversationLabel }" @click="switchConversation(item.id)">
+            :class="{ 'is-active': item.id === conversationId }" @click="switchChat(item.id)">
             <div class="chat-sidebar__item-header">
-              <div class="chat-sidebar__item-title">{{ item.title }}</div>
-              <el-button text @click.stop="removeConversationItem(item.id)">删除</el-button>
+              <div class="chat-sidebar__item-title">{{ item.title || '新对话' }}</div>
+              <el-button text @click.stop="removeChatItem(item.id)">删除</el-button>
             </div>
-            <div class="chat-sidebar__item-text">{{ item.last_message || '暂无内容' }}</div>
+            <div class="chat-sidebar__item-text">{{ item.summary || '暂无内容' }}</div>
             <div class="chat-sidebar__item-meta">
-              <span>{{ item.message_count }} 条消息</span>
               <span>{{ formatDateTime(item.updated_at) }}</span>
             </div>
           </div>
         </div>
-        <div v-if="hasMoreConversations" class="chat-sidebar__load-more">
-          <el-button text :loading="sidebarLoading" @click="loadMoreConversations">加载更多</el-button>
+        <div v-if="hasMoreChats" class="chat-sidebar__load-more">
+          <el-button text :loading="sidebarLoading" @click="loadMoreChats">加载更多</el-button>
         </div>
-        <div v-if="!sidebarLoading && !hasConversationResults" class="chat-sidebar__empty">
+        <div v-if="!sidebarLoading && !hasChatResults" class="chat-sidebar__empty">
           暂无历史对话，点击"新对话"开始。
         </div>
       </div>
-
-      <template v-else>
-        <el-radio-group :model-value="taskStatusFilter" size="small" class="chat-sidebar__task-filters"
-          @update:model-value="setTaskStatusFilter">
-          <el-radio-button label="executing">执行中</el-radio-button>
-          <el-radio-button label="completed">已完成</el-radio-button>
-          <el-radio-button label="failed">失败</el-radio-button>
-        </el-radio-group>
-        <div class="chat-sidebar__list">
-          <div v-for="task in filteredTaskItems" :key="task.id" class="chat-sidebar__item"
-            :class="{ 'is-active': task.id === activeTaskId }" @click="openTaskFromSidebar(task)">
-            <div class="chat-sidebar__item-header">
-              <div class="chat-sidebar__item-title">{{ task.title }}</div>
-              <el-button text @click.stop="removeTaskItem(task.id)">删除</el-button>
-            </div>
-            <div class="chat-sidebar__item-text">状态：{{ task.status }} · 进度：{{ task.progress }}%</div>
-            <div class="chat-sidebar__item-meta">
-              <span>任务 {{ task.id }}</span>
-              <span>{{ formatDateTime(task.created_at) }}</span>
-            </div>
-          </div>
-          <div v-if="hasMoreTasks" class="chat-sidebar__load-more">
-            <el-button text :loading="sidebarLoading" @click="loadMoreTasks">加载更多</el-button>
-          </div>
-          <div v-if="!sidebarLoading && !hasTaskResults" class="chat-sidebar__empty">
-            当前筛选下暂无任务记录，切换状态或发送任务后可查看。
-          </div>
-        </div>
-      </template>
     </aside>
 
     <div class="card chat-main">
       <div class="chat-main__header">
         <div>
           <p class="label">当前对话</p>
-          <div class="value">{{ activeConversationTitle }}</div>
+          <div class="value">{{ activeChatTitle }}</div>
           <p class="chat-main__node-note">节点上下文：{{ selectedNode?.name || '未选择节点' }} · 模型：{{ selectedModel?.name ||
             '未选择模型' }}</p>
         </div>
         <div class="chat-main__meta">
-          <el-tag :type="activeMode === 'task' ? 'warning' : 'success'">{{ activeMode === 'task' ? '任务模式' : '对话模式'
-            }}</el-tag>
           <span>{{ selectedNode?.name || '未选择节点' }}</span>
           <span>{{ selectedModel?.name || '未选择模型' }}</span>
-          <span>会话 {{ conversationLabel }}</span>
+          <span>会话 {{ conversationId || 'new' }}</span>
           <span v-if="activeTaskId">任务 {{ activeTaskId }}</span>
         </div>
       </div>
 
-      <TaskStatusCard v-if="taskDetail" :task="taskDetail" :streaming="streaming" :confirming="confirming"
-        :can-stop="canStopTask" :can-restart="canRestartTask" @stop="stopActiveTask" @restart="restartActiveTask"
-        @submit-input="submitTaskInput" />
-
       <div class="chat-main__messages">
         <MessageList :messages="messages" :actionable-message-ids="actionableAssistantMessageIds"
           :assistant-label="assistantLabel" :assistant-title="assistantTitle"
-          :retryable-message-ids="retryableAssistantMessageIds" :task-approval-hint="taskDetail?.risk_reason"
+          :retryable-message-ids="retryableAssistantMessageIds" :task-approval-hint="taskRiskReason"
           :task-approval-loading="confirming" :task-approval-message-id="taskApprovalMessageId" :user-label="userLabel"
           :user-title="userTitle" :streaming-message-id="streamingMessageId" :can-stop-task="canStopTask"
           :task-input-request="taskInputRequest" :task-input-loading="loading" :task-user-input="taskUserInput"
@@ -127,9 +85,7 @@
           @stop-task="stopActiveTask" @submit-task-input="submitTaskInput" />
       </div>
 
-      <ChatComposer v-model="input" :active-mode="activeMode" :chat-streaming="chatStreaming"
-        :conversation-label="conversationLabel" :active-task-id="activeTaskId" :available-nodes="availableNodes"
-        :selected-node-id="selectedNodeId" :loading="loading" :streaming="streaming" @submit="submitMessage"
+      <ChatComposer v-model="input" :chat-streaming="chatStreaming" :loading="loading" @submit="submitMessage"
         @stop-chat="stopChatResponse" />
     </div>
   </div>

@@ -7,12 +7,13 @@ import httpx
 from app.config import LLMSettings
 from app.models import (
     Node, TaskPlanStep, TaskPlanResult, UserInputRequest,
-    TaskFailureRepairResult, ConversationMessage, TaskStep, ModelConfig
+    TaskFailureRepairResult, TaskStep, ModelConfig
 )
 from app.services.command import detect_platform, describe_node
 import logging
 
 logger = logging.getLogger("aiterm")
+
 
 class LLMClient:
     def __init__(self, settings: Union[LLMSettings, ModelConfig]):
@@ -100,7 +101,8 @@ class LLMClient:
             )
 
             if response.status_code >= 400:
-                error_data = response.json() if response.headers.get("content-type", "").startswith("application/json") else {}
+                error_data = response.json() if response.headers.get(
+                    "content-type", "").startswith("application/json") else {}
                 if "error" in error_data and error_data["error"].get("message"):
                     raise ValueError(error_data["error"]["message"])
                 raise ValueError(f"模型请求失败: HTTP {response.status_code}")
@@ -142,6 +144,10 @@ class LLMClient:
         if self.extra_body:
             payload.update(self.extra_body)
 
+        logger.info(
+            f"chat_stream: Sending request to {self._build_chat_url()}")
+        logger.info(f"chat_stream: Model: {self.model}")
+
         async with httpx.AsyncClient(timeout=self.timeout) as client:
             async with client.stream(
                 "POST",
@@ -149,6 +155,8 @@ class LLMClient:
                 headers=self._get_headers(),
                 json=payload
             ) as response:
+                logger.info(
+                    f"chat_stream: Response status: {response.status_code}")
                 if response.status_code >= 400:
                     body = await response.aread()
                     try:
@@ -159,12 +167,16 @@ class LLMClient:
                         pass
                     raise ValueError(f"模型请求失败: HTTP {response.status_code}")
 
+                line_count = 0
                 async for line in response.aiter_lines():
+                    line_count += 1
                     if not line or not line.startswith("data:"):
                         continue
 
                     data_str = line[5:].strip()
                     if data_str == "[DONE]":
+                        logger.info(
+                            f"chat_stream: Received [DONE] after {line_count} lines")
                         break
 
                     try:
@@ -181,9 +193,14 @@ class LLMClient:
                                     if isinstance(item, dict) and "text" in item
                                 )
                             if content:
+                                logger.info(
+                                    f"chat_stream: Yielding content: {content[:50]}...")
                                 yield content
                     except json.JSONDecodeError:
                         continue
+
+                logger.info(
+                    f"chat_stream: Finished, total lines: {line_count}")
 
 
 class TaskPlanner:
@@ -192,7 +209,7 @@ class TaskPlanner:
         self.llm_client = LLMClient(settings)
 
     def _build_system_prompt(self, node: Node, request: str) -> str:
-        template = self.settings.task_planner_prompt or "你是一个任务规划器，请将用户请求转换为可执行任务计划。"
+        template = self.settings.execution_planner_prompt or "你是一个执行规划器，请将用户请求转换为可执行操作计划。"
         command_rules = self._build_command_rules()
         node_desc = describe_node(node)
 
@@ -203,14 +220,14 @@ class TaskPlanner:
 
 你必须只返回 JSON，不要输出 markdown，不要输出解释。JSON 结构如下：
 
-1. 正常任务计划：
-{"title":"任务标题","summary":"任务摘要","requires_confirmation":false,"risk_reason":"","needs_user_input":false,"steps":[{"title":"步骤标题","command":"具体命令"}]}
+1. 正常执行计划：
+{"title":"操作标题","summary":"操作摘要","requires_confirmation":false,"risk_reason":"","needs_user_input":false,"steps":[{"title":"步骤标题","command":"具体命令"}]}
 
 2. 需要用户补充信息时（如缺少下载地址、文件路径等关键信息）：
-{"title":"任务标题","summary":"需要用户补充信息","requires_confirmation":false,"risk_reason":"","needs_user_input":true,"input_request":{"question":"请提供下载地址","input_type":"text","options":[],"placeholder":"输入下载地址","default_value":""},"steps":[]}
+{"title":"操作标题","summary":"需要用户补充信息","requires_confirmation":false,"risk_reason":"","needs_user_input":true,"input_request":{"question":"请提供下载地址","input_type":"text","options":[],"placeholder":"输入下载地址","default_value":""},"steps":[]}
 
 3. 需要用户选择方案时（有多种实现方式）：
-{"title":"任务标题","summary":"请选择实现方案","requires_confirmation":false,"risk_reason":"","needs_user_input":true,"input_request":{"question":"请选择下载方式","input_type":"select","options":["直接下载","使用代理下载","使用镜像站"],"placeholder":"","default_value":"直接下载"},"steps":[]}
+{"title":"操作标题","summary":"请选择实现方案","requires_confirmation":false,"risk_reason":"","needs_user_input":true,"input_request":{"question":"请选择下载方式","input_type":"select","options":["直接下载","使用代理下载","使用镜像站"],"placeholder":"","default_value":"直接下载"},"steps":[]}
 
 input_type 可选值：text（文本输入）、select（单选）、multiselect（多选）
 如果信息充足，直接生成 steps；如果信息不足或需要用户选择，设置 needs_user_input 为 true 并填写 input_request。"""
@@ -221,9 +238,9 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
         self,
         node: Node,
         request: str,
-        history: List[ConversationMessage]
+        history: List[Dict[str, Any]]
     ) -> str:
-        template = self.settings.task_planner_user_prompt or "请基于以下用户请求生成任务计划。"
+        template = self.settings.execution_planner_user_prompt or "请基于以下用户请求生成执行计划。"
         node_desc = describe_node(node)
         history_text = self._build_history_text(history)
         platform_name, platform_prompt = self._build_platform_prompt(node)
@@ -238,31 +255,33 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
 
         return prompt
 
-    def _build_history_text(self, history: List[ConversationMessage]) -> str:
+    def _build_history_text(self, history: List[Dict[str, Any]]) -> str:
         if not history:
             return ""
 
         recent = history[-6:] if len(history) > 6 else history
         lines = ["\n\n最近对话上下文："]
         for msg in recent:
-            if msg.role in ["user", "assistant"]:
-                lines.append(f"- {msg.role}: {msg.content.strip()}")
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role in ["user", "assistant"]:
+                lines.append(f"- {role}: {content.strip()}")
 
         return "\n".join(lines)
 
     def _build_platform_prompt(self, node: Node) -> tuple:
         platform = detect_platform(node)
         if platform == "windows":
-            return "Windows", self.settings.task_windows_tool_prompt
+            return "Windows", self.settings.execution_windows_tool_prompt
         elif platform == "linux":
-            return "Linux", self.settings.task_linux_tool_prompt
+            return "Linux", self.settings.execution_linux_tool_prompt
         elif platform == "macos":
-            return "macOS", self.settings.task_mac_tool_prompt
+            return "macOS", self.settings.execution_mac_tool_prompt
         return "未知", ""
 
     def _build_command_rules(self) -> str:
-        blacklist = self.settings.task_command_blacklist or []
-        whitelist = self.settings.task_command_whitelist or []
+        blacklist = self.settings.execution_command_blacklist or []
+        whitelist = self.settings.execution_command_whitelist or []
 
         if not blacklist and not whitelist:
             return ""
@@ -273,24 +292,27 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
         if whitelist:
             rules.append(f"- 以下命令片段属于白名单，可在生成命令时参考：{'、'.join(whitelist)}")
 
-        template = self.settings.task_command_rules_prompt or "\n\n命令风控规则：{{command_rules}}"
+        template = self.settings.execution_command_rules_prompt or "\n\n命令风控规则：{{command_rules}}"
         return "\n\n" + template.replace("{{command_rules}}", "\n".join(rules))
 
     async def generate_plan(
         self,
         node: Node,
         request: str,
-        history: List[ConversationMessage]
+        history: List[Dict[str, Any]]
     ) -> TaskPlanResult:
         messages = [
-            {"role": "system", "content": self._build_system_prompt(node, request)},
-            {"role": "user", "content": self._build_user_prompt(node, request, history)}
+            {"role": "system", "content": self._build_system_prompt(
+                node, request)},
+            {"role": "user", "content": self._build_user_prompt(
+                node, request, history)}
         ]
 
         response = await self.llm_client.chat(messages, temperature=0.2)
         return self._parse_plan(response)
 
     def _parse_plan(self, raw: str) -> TaskPlanResult:
+        logger.info(f"Parsing plan from response: {raw[:200]}...")
         cleaned = raw.strip()
         cleaned = re.sub(r"^```json\s*", "", cleaned)
         cleaned = re.sub(r"^```\s*", "", cleaned)
@@ -303,7 +325,8 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
 
         try:
             data = json.loads(cleaned)
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as e:
+            logger.warning(f"JSON decode failed, attempting repair: {e}")
             repaired = self._repair_json(cleaned)
             data = json.loads(repaired)
 
@@ -327,7 +350,7 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
                 default_value=ir.get("default_value", "").strip()
             )
 
-        return TaskPlanResult(
+        result = TaskPlanResult(
             title=data.get("title", "").strip() or "模型生成任务",
             summary=data.get("summary", "").strip() or "模型已生成执行计划。",
             requires_confirmation=data.get("requires_confirmation", False),
@@ -336,6 +359,9 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
             input_request=input_request,
             steps=steps
         )
+        logger.info(
+            f"Plan parsed successfully: title={result.title}, needs_user_input={result.needs_user_input}")
+        return result
 
     def _repair_json(self, raw: str) -> str:
         result = []
@@ -396,14 +422,15 @@ class TaskRepairer:
         outputs: List[str],
         failure_text: str
     ) -> str:
-        template = self.settings.task_failure_repair_prompt or "请分析以下自动化任务失败信息。"
+        template = self.settings.execution_failure_repair_prompt or "请分析以下执行操作失败信息。"
         node_desc = describe_node(node)
 
         prompt = template.replace("{{node_description}}", node_desc)
         prompt = prompt.replace("{{user_request}}", request)
         prompt = prompt.replace("{{step_title}}", step.title)
         prompt = prompt.replace("{{failed_command}}", step.command)
-        prompt = prompt.replace("{{execution_output}}", "\n".join(outputs) if outputs else "无输出")
+        prompt = prompt.replace("{{execution_output}}", "\n".join(
+            outputs) if outputs else "无输出")
         prompt = prompt.replace("{{failure_text}}", failure_text)
 
         return prompt
@@ -450,9 +477,10 @@ class TaskRepairer:
 
 
 class ChatService:
-    def __init__(self, settings: Union[LLMSettings, ModelConfig], chat_system_prompt: str = ""):
+    def __init__(self, settings: Union[LLMSettings, ModelConfig], chat_system_prompt: str = "", chat_history_limit: int = 12):
         self.settings = settings
         self.chat_system_prompt = chat_system_prompt
+        self.chat_history_limit = chat_history_limit
         self.llm_client = LLMClient(settings)
 
     def _build_system_prompt(self, node: Node) -> str:
@@ -463,15 +491,19 @@ class ChatService:
     async def chat(
         self,
         node: Node,
-        history: List[ConversationMessage],
+        history: List[Dict[str, Any]],
         message: str
     ) -> str:
-        messages = [{"role": "system", "content": self._build_system_prompt(node)}]
+        messages = [
+            {"role": "system", "content": self._build_system_prompt(node)}]
 
-        recent = history[-12:] if len(history) > 12 else history
+        limit = self.chat_history_limit
+        recent = history[-limit:] if len(history) > limit else history
         for msg in recent:
-            if msg.role in ["user", "assistant"]:
-                messages.append({"role": msg.role, "content": msg.content})
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role in ["user", "assistant"]:
+                messages.append({"role": role, "content": content})
 
         messages.append({"role": "user", "content": message})
         return await self.llm_client.chat(messages)
@@ -479,21 +511,38 @@ class ChatService:
     async def chat_stream(
         self,
         node: Node,
-        history: List[ConversationMessage],
+        history: List[Dict[str, Any]],
         message: str
     ) -> AsyncGenerator[str, None]:
-        messages = [{"role": "system", "content": self._build_system_prompt(node)}]
+        messages = [
+            {"role": "system", "content": self._build_system_prompt(node)}]
 
-        recent = history[-12:] if len(history) > 12 else history
+        limit = self.chat_history_limit
+        recent = history[-limit:] if len(history) > limit else history
         for msg in recent:
-            if msg.role in ["user", "assistant"]:
-                messages.append({"role": msg.role, "content": msg.content})
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role in ["user", "assistant"]:
+                messages.append({"role": role, "content": content})
 
         messages.append({"role": "user", "content": message})
 
+        logger.info(
+            f"ChatService.chat_stream: Starting with {len(messages)} messages (history_limit={limit})")
+        logger.info(
+            f"ChatService.chat_stream: System prompt: {messages[0]['content'][:100]}...")
+        logger.info(
+            f"ChatService.chat_stream: User message: {message[:100]}...")
+
+        chunk_count = 0
         async for chunk in self.llm_client.chat_stream(messages):
-            logger.info(f"模型返回stream数据: {chunk}")
+            chunk_count += 1
+            logger.info(
+                f"ChatService.chat_stream: Received chunk #{chunk_count}: {chunk[:50] if len(chunk) > 50 else chunk}...")
             yield chunk
+
+        logger.info(
+            f"ChatService.chat_stream: Finished with {chunk_count} chunks")
 
 
 class TaskSummarizer:

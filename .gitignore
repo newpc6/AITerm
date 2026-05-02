@@ -110,5 +110,6 @@ aiterm-server-python/app/*/__pycache__/
 aiterm-server-python/app/*/*/__pycache__/
 aiterm-server-python/.venv/
 aiterm-server-python/venv/
+aiterm-server-python/scripts/
 docs
 chat.md

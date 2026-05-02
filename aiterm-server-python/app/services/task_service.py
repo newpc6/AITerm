@@ -4,10 +4,11 @@ from datetime import datetime
 from typing import List, Optional, Dict, Any, AsyncGenerator, Tuple
 
 from app.models import (
-    Task, TaskStep, Node, ConversationMessage, ModelConfig,
+    Task, TaskStep, Node, ModelConfig,
     TaskStatus, TaskStepStatus, TaskPlanResult
 )
-from app.repositories import ITaskRepository, INodeRepository, IConversationRepository, IModelConfigRepository
+from app.repositories import ITaskRepository, INodeRepository, IModelConfigRepository
+from app.repositories.message import MessageRepository
 from app.services.command import execute_command, describe_node, cancel_command
 from app.services.llm import TaskPlanner, TaskRepairer, TaskSummarizer
 from app.config import LLMSettings
@@ -20,15 +21,14 @@ class TaskService:
         self,
         task_repo: ITaskRepository,
         node_repo: INodeRepository,
-        conversation_repo: IConversationRepository,
         model_repo: IModelConfigRepository,
         settings
     ):
         self.task_repo = task_repo
         self.node_repo = node_repo
-        self.conversation_repo = conversation_repo
         self.model_repo = model_repo
         self.settings = settings
+        self.message_repo = MessageRepository()
         self._counter = 1
         self._running_tasks: Dict[str, asyncio.Task] = {}
         self._cancelled_tasks: set = set()
@@ -37,6 +37,14 @@ class TaskService:
         current = self._counter
         self._counter += 1
         return str(current)
+
+    async def _save_message(self, chat_id: str, role: str, content: str, msg_type: str = "text"):
+        await self.message_repo.create_message(
+            chat_id=chat_id,
+            role=role,
+            content=content,
+            type=msg_type
+        )
 
     async def list_tasks(self, page: int = 1, page_size: int = 20) -> Tuple[List[Task], int]:
         return await self.task_repo.list_tasks(page, page_size)
@@ -170,7 +178,8 @@ class TaskService:
 
     async def continue_with_input(
         self,
-        task_id: str
+        task_id: str,
+        conversation_id: str
     ) -> AsyncGenerator[Dict[str, Any], None]:
         task = await self.task_repo.get_task(task_id)
         if not task or task.status != TaskStatus.PENDING or not task.user_input:
@@ -184,7 +193,7 @@ class TaskService:
             task.summary = "未配置模型，请先在设置页添加模型配置。"
             task.updated_at = now
             await self.task_repo.update_task(task_id, task)
-            yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
+            yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "error", "content": "未配置模型，请先在设置页添加模型配置。"}}
             return
 
         llm_settings = self._build_llm_settings(model_config)
@@ -197,8 +206,6 @@ class TaskService:
         task.summary = "正在根据用户输入重新规划任务..."
         task.updated_at = now
         await self.task_repo.update_task(task_id, task)
-
-        yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
 
         if self._is_cancelled(task_id):
             return
@@ -216,8 +223,7 @@ class TaskService:
             task.summary = f"任务重新规划失败：{str(e)}"
             task.updated_at = now
             await self.task_repo.update_task(task_id, task)
-            yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
-            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stderr", "content": f"任务重新规划失败: {str(e)}"}}
+            yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "error", "content": f"任务重新规划失败: {str(e)}"}}
             return
 
         if self._is_cancelled(task_id):
@@ -237,18 +243,13 @@ class TaskService:
             task.updated_at = now
             await self.task_repo.update_task(task_id, task)
 
-            yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
-
             input_msg = f"需要您的输入：{plan.input_request.question}"
             if plan.input_request.options:
                 input_msg += f"\n选项：{', '.join(plan.input_request.options)}"
-            await self.conversation_repo.append_message(ConversationMessage(
-                id="0", conversation_id=task.conversation_id, role="assistant",
-                content=input_msg, created_at=datetime.utcnow().isoformat()
-            ))
-            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "input.request", "content": input_msg}}
-            yield {"event": "task.input", "data": {
-                "task_id": task_id,
+            await self._save_message(task.conversation_id, "assistant", input_msg, "input")
+            yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "input", "content": input_msg}}
+            yield {"event": "conversation.input", "data": {
+                "conversation_id": conversation_id,
                 "question": plan.input_request.question,
                 "input_type": plan.input_request.input_type,
                 "options": plan.input_request.options,
@@ -270,6 +271,19 @@ class TaskService:
         pending_preview = "\n".join(
             f"{i+1}. {s.title}: {s.command}" for i, s in enumerate(plan.steps))
 
+        blacklist_risks = []
+        for step in steps:
+            is_risky, risk_msg = self._check_command_risk(step.command)
+            if is_risky:
+                blacklist_risks.append(risk_msg)
+
+        if blacklist_risks:
+            if plan.risk_reason:
+                plan.risk_reason = plan.risk_reason + \
+                    "；" + "；".join(blacklist_risks)
+            else:
+                plan.risk_reason = "；".join(blacklist_risks)
+
         now = datetime.utcnow().isoformat()
         task.title = plan.title or task.title
         task.pending_command = pending_preview
@@ -289,18 +303,13 @@ class TaskService:
 
         await self.task_repo.update_task(task_id, task)
 
-        yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
-
         planned_msg = f"已根据用户输入生成 {len(task.steps)} 个执行步骤。"
-        await self.conversation_repo.append_message(ConversationMessage(
-            id="0", conversation_id=task.conversation_id, role="assistant",
-            content=planned_msg, created_at=datetime.utcnow().isoformat()
-        ))
-        yield {"event": "task.output", "data": {"task_id": task_id, "stream": "plan.info", "content": planned_msg}}
+        await self._save_message(task.conversation_id, "assistant", planned_msg, "plan")
+        yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "plan", "content": planned_msg}}
 
         if task.status == TaskStatus.WAITING_CONFIRM:
             confirm_msg = f"该任务需要人工确认后执行。\n{pending_preview}"
-            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "approval", "content": confirm_msg}}
+            yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "approval", "content": confirm_msg}}
             return
 
         execution_outputs = []
@@ -321,14 +330,9 @@ class TaskService:
             task.steps[index] = step
             await self.task_repo.update_task(task_id, task)
 
-            yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
-
             start_msg = f"开始执行第 {index+1} 步：{step.title}\n命令：{step.command}"
-            await self.conversation_repo.append_message(ConversationMessage(
-                id="0", conversation_id=task.conversation_id, role="assistant",
-                content=start_msg, created_at=datetime.utcnow().isoformat()
-            ))
-            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "step.start", "content": start_msg}}
+            await self._save_message(task.conversation_id, "assistant", start_msg, "step")
+            yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "step", "content": start_msg}}
 
             result = await execute_command(step.command, task_id=task_id)
             step_outputs = []
@@ -339,11 +343,8 @@ class TaskService:
                     line_text = content
                 execution_outputs.append(line_text)
                 step_outputs.append(line_text)
-                await self.conversation_repo.append_message(ConversationMessage(
-                    id="0", conversation_id=task.conversation_id, role="assistant",
-                    content=line_text, created_at=datetime.utcnow().isoformat()
-                ))
-                yield {"event": "task.output", "data": {"task_id": task_id, "stream": stream, "content": content}}
+                await self._save_message(task.conversation_id, "assistant", line_text, "output")
+                yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "output", "content": content}}
 
             step.result_output = "\n".join(step_outputs)
 
@@ -353,11 +354,8 @@ class TaskService:
             if result.cancelled:
                 step.status = TaskStepStatus.CANCELLED
                 cancel_msg = "进程已被用户终止。"
-                await self.conversation_repo.append_message(ConversationMessage(
-                    id="0", conversation_id=task.conversation_id, role="assistant",
-                    content=cancel_msg, created_at=datetime.utcnow().isoformat()
-                ))
-                yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stdout", "content": cancel_msg}}
+                await self._save_message(task.conversation_id, "assistant", cancel_msg, "output")
+                yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "output", "content": cancel_msg}}
                 continue
 
             if result.exit_code != 0 or result.error:
@@ -367,11 +365,8 @@ class TaskService:
                 elif result.error:
                     error_text = f"命令执行失败: {str(result.error)}"
 
-                await self.conversation_repo.append_message(ConversationMessage(
-                    id="0", conversation_id=task.conversation_id, role="assistant",
-                    content=error_text, created_at=datetime.utcnow().isoformat()
-                ))
-                yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stderr", "content": error_text}}
+                await self._save_message(task.conversation_id, "assistant", error_text, "error")
+                yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "error", "content": error_text}}
 
                 if not result.timed_out and step.repair_count < 2:
                     try:
@@ -382,11 +377,8 @@ class TaskService:
                             analysis = f"失败复盘：原因：{repair_result.reason}"
                             if repair_result.suggestion:
                                 analysis += f"；建议：{repair_result.suggestion}"
-                            await self.conversation_repo.append_message(ConversationMessage(
-                                id="0", conversation_id=task.conversation_id, role="assistant",
-                                content=analysis, created_at=datetime.utcnow().isoformat()
-                            ))
-                            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "repair.analysis", "content": analysis}}
+                            await self._save_message(task.conversation_id, "assistant", analysis, "analysis")
+                            yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "analysis", "content": analysis}}
 
                         if repair_result.corrected_command and repair_result.corrected_command != step.command:
                             step.command = repair_result.corrected_command
@@ -401,11 +393,8 @@ class TaskService:
                             step.repaired_command = repair_result.corrected_command
 
                             retry_msg = f"第 {index+1} 步失败，已自动复盘并修正命令，继续执行：{step.title}\n命令：{step.command}"
-                            await self.conversation_repo.append_message(ConversationMessage(
-                                id="0", conversation_id=task.conversation_id, role="assistant",
-                                content=retry_msg, created_at=datetime.utcnow().isoformat()
-                            ))
-                            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "repair.retry", "content": retry_msg}}
+                            await self._save_message(task.conversation_id, "assistant", retry_msg, "retry")
+                            yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "retry", "content": retry_msg}}
 
                             result = await execute_command(step.command, task_id=task_id)
                             step_outputs = []
@@ -416,20 +405,14 @@ class TaskService:
                                     line_text = content
                                 execution_outputs.append(line_text)
                                 step_outputs.append(line_text)
-                                await self.conversation_repo.append_message(ConversationMessage(
-                                    id="0", conversation_id=task.conversation_id, role="assistant",
-                                    content=line_text, created_at=datetime.utcnow().isoformat()
-                                ))
-                                yield {"event": "task.output", "data": {"task_id": task_id, "stream": stream, "content": content}}
+                                await self._save_message(task.conversation_id, "assistant", line_text, "output")
+                                yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "output", "content": content}}
 
                             step.repaired_output = "\n".join(step_outputs)
 
                             if result.exit_code == 0 and not result.error:
                                 success_msg = f"第 {index+1} 步修复后执行成功。"
-                                await self.conversation_repo.append_message(ConversationMessage(
-                                    id="0", conversation_id=task.conversation_id, role="assistant",
-                                    content=success_msg, created_at=datetime.utcnow().isoformat()
-                                ))
+                                await self._save_message(task.conversation_id, "assistant", success_msg, "output")
                                 step.status = TaskStepStatus.COMPLETED
                                 task.steps[index] = step
                                 task.progress = 55 + \
@@ -441,11 +424,8 @@ class TaskService:
                     except Exception as e:
                         logger.error(f"Task repair failed: {e}")
                         error_msg = f"修复尝试失败: {str(e)}"
-                        await self.conversation_repo.append_message(ConversationMessage(
-                            id="0", conversation_id=task.conversation_id, role="assistant",
-                            content=error_msg, created_at=datetime.utcnow().isoformat()
-                        ))
-                        yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stderr", "content": error_msg}}
+                        await self._save_message(task.conversation_id, "assistant", error_msg, "error")
+                        yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "error", "content": error_msg}}
 
                 step.status = TaskStepStatus.FAILED
                 task.steps[index] = step
@@ -455,7 +435,7 @@ class TaskService:
                 task.updated_at = datetime.utcnow().isoformat()
                 await self.task_repo.update_task(task_id, task)
 
-                yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
+                yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "error", "content": f"第 {index+1} 步执行失败，任务终止。"}}
                 return
 
             step.status = TaskStepStatus.COMPLETED
@@ -480,8 +460,7 @@ class TaskService:
         task.updated_at = now
         await self.task_repo.update_task(task_id, task)
 
-        yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
-        yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stdout", "content": task.summary}}
+        yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "summary", "content": task.summary}}
 
     def _is_cancelled(self, task_id: str) -> bool:
         return task_id in self._cancelled_tasks
@@ -503,20 +482,44 @@ class TaskService:
             extra_body=model_config.extra_body or {},
             extra_headers=model_config.extra_headers or {},
             chat_system_prompt=self.settings.chat_system_prompt,
-            task_planner_prompt=self.settings.task_planner_prompt,
-            task_planner_user_prompt=self.settings.task_planner_user_prompt,
-            task_windows_tool_prompt=self.settings.task_windows_tool_prompt,
-            task_linux_tool_prompt=self.settings.task_linux_tool_prompt,
-            task_mac_tool_prompt=self.settings.task_mac_tool_prompt,
-            task_failure_repair_prompt=self.settings.task_failure_repair_prompt,
-            task_command_rules_prompt=self.settings.task_command_rules_prompt,
-            task_command_blacklist=self.settings.task_command_blacklist,
-            task_command_whitelist=self.settings.task_command_whitelist
+            execution_planner_prompt=self.settings.execution_planner_prompt,
+            execution_planner_user_prompt=self.settings.execution_planner_user_prompt,
+            execution_windows_tool_prompt=self.settings.execution_windows_tool_prompt,
+            execution_linux_tool_prompt=self.settings.execution_linux_tool_prompt,
+            execution_mac_tool_prompt=self.settings.execution_mac_tool_prompt,
+            execution_failure_repair_prompt=self.settings.execution_failure_repair_prompt,
+            execution_command_rules_prompt=self.settings.execution_command_rules_prompt,
+            execution_command_blacklist=self.settings.execution_command_blacklist,
+            execution_command_whitelist=self.settings.execution_command_whitelist
         )
+
+    def _check_command_risk(self, command: str) -> tuple[bool, str]:
+        blacklist = self.settings.execution_command_blacklist or []
+        whitelist = self.settings.execution_command_whitelist or []
+
+        logger.info(f"Checking command risk: {command}")
+        logger.info(f"Blacklist: {blacklist}")
+        logger.info(f"Whitelist: {whitelist}")
+
+        command_lower = command.lower()
+
+        for whitelisted in whitelist:
+            if whitelisted.lower() in command_lower:
+                logger.info(f"Command matched whitelist: {whitelisted}")
+                return False, ""
+
+        for blacklisted in blacklist:
+            if blacklisted.lower() in command_lower:
+                logger.info(f"Command matched blacklist: {blacklisted}")
+                return True, f"命令包含高风险操作：{blacklisted.strip()}"
+
+        logger.info("Command did not match any blacklist/whitelist rules")
+        return False, ""
 
     async def execute_task(
         self,
-        task_id: str
+        task_id: str,
+        conversation_id: str
     ) -> AsyncGenerator[Dict[str, Any], None]:
         task = await self.task_repo.get_task(task_id)
         if not task:
@@ -531,8 +534,7 @@ class TaskService:
             task.summary = "未配置模型，请先在设置页添加模型配置。"
             task.updated_at = now
             await self.task_repo.update_task(task_id, task)
-            yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
-            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stderr", "content": "未配置模型，请先在设置页添加模型配置。"}}
+            yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "error", "content": "未配置模型，请先在设置页添加模型配置。"}}
             return
 
         llm_settings = self._build_llm_settings(model_config)
@@ -552,7 +554,9 @@ class TaskService:
             task.summary = "命令已确认，开始执行。"
             task.updated_at = now
             await self.task_repo.update_task(task_id, task)
-            yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
+
+            confirm_msg = f"已批准\n命令：\n{task.pending_command}"
+            yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "approval_confirmed", "content": confirm_msg}}
         else:
             now = datetime.utcnow().isoformat()
             task.status = TaskStatus.ANALYZING
@@ -561,28 +565,20 @@ class TaskService:
             task.updated_at = now
             await self.task_repo.update_task(task_id, task)
 
-            yield {
-                "event": "task.status",
-                "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}
-            }
-
             if self._is_cancelled(task_id):
                 return
 
-            history = await self.conversation_repo.get_conversation_messages(task.conversation_id)
-
-            planning_msg = f"正在结合节点 {node_label} 分析任务并生成执行计划..."
-            await self.conversation_repo.append_message(ConversationMessage(
-                id="0", conversation_id=task.conversation_id, role="assistant",
-                content=planning_msg, created_at=datetime.utcnow().isoformat()
-            ))
-            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stdout", "content": planning_msg}}
+            history = await self.message_repo.get_all_messages(task.conversation_id)
 
             try:
                 planner = TaskPlanner(llm_settings)
+                logger.info(
+                    f"Calling planner.generate_plan for task {task_id}")
                 plan = await planner.generate_plan(node, task.request, history)
+                logger.info(
+                    f"Plan generated: needs_user_input={plan.needs_user_input}, steps={len(plan.steps)}")
             except Exception as e:
-                logger.error(f"Task planning failed: {e}")
+                logger.error(f"Task planning failed: {e}", exc_info=True)
                 now = datetime.utcnow().isoformat()
                 task.status = TaskStatus.FAILED
                 task.progress = 100
@@ -590,8 +586,7 @@ class TaskService:
                 task.updated_at = now
                 await self.task_repo.update_task(task_id, task)
 
-                yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
-                yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stderr", "content": f"任务规划失败: {str(e)}"}}
+                yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "error", "content": f"任务规划失败: {str(e)}"}}
                 return
 
             if self._is_cancelled(task_id):
@@ -610,18 +605,13 @@ class TaskService:
                 task.updated_at = now
                 await self.task_repo.update_task(task_id, task)
 
-                yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
-
                 input_msg = f"需要您的输入：{plan.input_request.question}"
                 if plan.input_request.options:
                     input_msg += f"\n选项：{', '.join(plan.input_request.options)}"
-                await self.conversation_repo.append_message(ConversationMessage(
-                    id="0", conversation_id=task.conversation_id, role="assistant",
-                    content=input_msg, created_at=datetime.utcnow().isoformat()
-                ))
-                yield {"event": "task.output", "data": {"task_id": task_id, "stream": "input.request", "content": input_msg}}
-                yield {"event": "task.input", "data": {
-                    "task_id": task_id,
+                await self._save_message(task.conversation_id, "assistant", input_msg, "input")
+                yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "input", "content": input_msg}}
+                yield {"event": "conversation.input", "data": {
+                    "conversation_id": conversation_id,
                     "question": plan.input_request.question,
                     "input_type": plan.input_request.input_type,
                     "options": plan.input_request.options,
@@ -643,6 +633,30 @@ class TaskService:
             pending_preview = "\n".join(
                 f"{i+1}. {s.title}: {s.command}" for i, s in enumerate(plan.steps))
 
+            steps_preview = "\n".join(
+                f"{i+1}. {s.title}" for i, s in enumerate(plan.steps))
+
+            blacklist_risks = []
+            for step in steps:
+                is_risky, risk_msg = self._check_command_risk(step.command)
+                logger.info(
+                    f"Step '{step.title}' command '{step.command}' - is_risky: {is_risky}, risk_msg: {risk_msg}")
+                if is_risky:
+                    blacklist_risks.append(risk_msg)
+
+            logger.info(f"Blacklist risks found: {blacklist_risks}")
+
+            if blacklist_risks:
+                if plan.risk_reason:
+                    plan.risk_reason = plan.risk_reason + \
+                        "；" + "；".join(blacklist_risks)
+                else:
+                    plan.risk_reason = "；".join(blacklist_risks)
+
+            logger.info(f"Final plan.risk_reason: {plan.risk_reason}")
+            logger.info(
+                f"plan.requires_confirmation: {plan.requires_confirmation}")
+
             now = datetime.utcnow().isoformat()
             task.title = plan.title or task.title
             task.pending_command = pending_preview
@@ -662,18 +676,13 @@ class TaskService:
 
             await self.task_repo.update_task(task_id, task)
 
-            yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
-
-            planned_msg = f"已生成 {len(task.steps)} 个执行步骤。"
-            await self.conversation_repo.append_message(ConversationMessage(
-                id="0", conversation_id=task.conversation_id, role="assistant",
-                content=planned_msg, created_at=datetime.utcnow().isoformat()
-            ))
-            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "plan.info", "content": planned_msg}}
+            planned_msg = f"步骤规划\n{steps_preview}"
+            await self._save_message(task.conversation_id, "assistant", planned_msg, "plan")
+            yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "plan", "content": planned_msg}}
 
             if task.status == TaskStatus.WAITING_CONFIRM:
-                confirm_msg = f"该任务需要人工确认后执行。\n{pending_preview}"
-                yield {"event": "task.output", "data": {"task_id": task_id, "stream": "approval", "content": confirm_msg}}
+                confirm_msg = f"该操作需要人工确认后执行。\n{pending_preview}"
+                yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "approval", "content": confirm_msg}}
                 return
 
         execution_outputs = []
@@ -694,14 +703,9 @@ class TaskService:
             task.steps[index] = step
             await self.task_repo.update_task(task_id, task)
 
-            yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
-
             start_msg = f"开始执行第 {index+1} 步：{step.title}\n命令：{step.command}"
-            await self.conversation_repo.append_message(ConversationMessage(
-                id="0", conversation_id=task.conversation_id, role="assistant",
-                content=start_msg, created_at=datetime.utcnow().isoformat()
-            ))
-            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "step.start", "content": start_msg}}
+            await self._save_message(task.conversation_id, "assistant", start_msg, "step")
+            yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "step", "content": start_msg}}
 
             result = await execute_command(step.command, task_id=task_id)
             step_outputs = []
@@ -712,11 +716,8 @@ class TaskService:
                     line_text = content
                 execution_outputs.append(line_text)
                 step_outputs.append(line_text)
-                await self.conversation_repo.append_message(ConversationMessage(
-                    id="0", conversation_id=task.conversation_id, role="assistant",
-                    content=line_text, created_at=datetime.utcnow().isoformat()
-                ))
-                yield {"event": "task.output", "data": {"task_id": task_id, "stream": stream, "content": content}}
+                await self._save_message(task.conversation_id, "assistant", line_text, "output")
+                yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "output", "content": content}}
 
             step.result_output = "\n".join(step_outputs)
 
@@ -726,11 +727,8 @@ class TaskService:
             if result.cancelled:
                 step.status = TaskStepStatus.CANCELLED
                 cancel_msg = "进程已被用户终止。"
-                await self.conversation_repo.append_message(ConversationMessage(
-                    id="0", conversation_id=task.conversation_id, role="assistant",
-                    content=cancel_msg, created_at=datetime.utcnow().isoformat()
-                ))
-                yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stdout", "content": cancel_msg}}
+                await self._save_message(task.conversation_id, "assistant", cancel_msg, "output")
+                yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "output", "content": cancel_msg}}
                 continue
 
             if result.exit_code != 0 or result.error:
@@ -740,11 +738,8 @@ class TaskService:
                 elif result.error:
                     error_text = f"命令执行失败: {str(result.error)}"
 
-                await self.conversation_repo.append_message(ConversationMessage(
-                    id="0", conversation_id=task.conversation_id, role="assistant",
-                    content=error_text, created_at=datetime.utcnow().isoformat()
-                ))
-                yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stderr", "content": error_text}}
+                await self._save_message(task.conversation_id, "assistant", error_text, "error")
+                yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "error", "content": error_text}}
 
                 if not result.timed_out and step.repair_count < 2:
                     try:
@@ -755,11 +750,8 @@ class TaskService:
                             analysis = f"失败复盘：原因：{repair_result.reason}"
                             if repair_result.suggestion:
                                 analysis += f"；建议：{repair_result.suggestion}"
-                            await self.conversation_repo.append_message(ConversationMessage(
-                                id="0", conversation_id=task.conversation_id, role="assistant",
-                                content=analysis, created_at=datetime.utcnow().isoformat()
-                            ))
-                            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "repair.analysis", "content": analysis}}
+                            await self._save_message(task.conversation_id, "assistant", analysis, "analysis")
+                            yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "analysis", "content": analysis}}
 
                         if repair_result.corrected_command and repair_result.corrected_command != step.command:
                             step.command = repair_result.corrected_command
@@ -774,11 +766,8 @@ class TaskService:
                             step.repaired_command = repair_result.corrected_command
 
                             retry_msg = f"第 {index+1} 步失败，已自动复盘并修正命令，继续执行：{step.title}\n命令：{step.command}"
-                            await self.conversation_repo.append_message(ConversationMessage(
-                                id="0", conversation_id=task.conversation_id, role="assistant",
-                                content=retry_msg, created_at=datetime.utcnow().isoformat()
-                            ))
-                            yield {"event": "task.output", "data": {"task_id": task_id, "stream": "repair.retry", "content": retry_msg}}
+                            await self._save_message(task.conversation_id, "assistant", retry_msg, "retry")
+                            yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "retry", "content": retry_msg}}
 
                             result = await execute_command(step.command, task_id=task_id)
                             step_outputs = []
@@ -789,20 +778,14 @@ class TaskService:
                                     line_text = content
                                 execution_outputs.append(line_text)
                                 step_outputs.append(line_text)
-                                await self.conversation_repo.append_message(ConversationMessage(
-                                    id="0", conversation_id=task.conversation_id, role="assistant",
-                                    content=line_text, created_at=datetime.utcnow().isoformat()
-                                ))
-                                yield {"event": "task.output", "data": {"task_id": task_id, "stream": stream, "content": content}}
+                                await self._save_message(task.conversation_id, "assistant", line_text, "output")
+                                yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "output", "content": content}}
 
                             step.repaired_output = "\n".join(step_outputs)
 
                             if result.exit_code == 0 and not result.error:
                                 success_msg = f"第 {index+1} 步修复后执行成功。"
-                                await self.conversation_repo.append_message(ConversationMessage(
-                                    id="0", conversation_id=task.conversation_id, role="assistant",
-                                    content=success_msg, created_at=datetime.utcnow().isoformat()
-                                ))
+                                await self._save_message(task.conversation_id, "assistant", success_msg, "output")
                                 step.status = TaskStepStatus.COMPLETED
                                 task.steps[index] = step
                                 task.progress = 55 + \
@@ -814,11 +797,8 @@ class TaskService:
                     except Exception as e:
                         logger.error(f"Task repair failed: {e}")
                         error_msg = f"修复尝试失败: {str(e)}"
-                        await self.conversation_repo.append_message(ConversationMessage(
-                            id="0", conversation_id=task.conversation_id, role="assistant",
-                            content=error_msg, created_at=datetime.utcnow().isoformat()
-                        ))
-                        yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stderr", "content": error_msg}}
+                        await self._save_message(task.conversation_id, "assistant", error_msg, "error")
+                        yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "error", "content": error_msg}}
 
                 step.status = TaskStepStatus.FAILED
                 task.steps[index] = step
@@ -828,7 +808,7 @@ class TaskService:
                 task.updated_at = datetime.utcnow().isoformat()
                 await self.task_repo.update_task(task_id, task)
 
-                yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
+                yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "error", "content": f"第 {index+1} 步执行失败，任务终止。"}}
                 return
 
             step.status = TaskStepStatus.COMPLETED
@@ -853,5 +833,4 @@ class TaskService:
         task.updated_at = now
         await self.task_repo.update_task(task_id, task)
 
-        yield {"event": "task.status", "data": {"task_id": task_id, "status": task.status.value, "progress": task.progress}}
-        yield {"event": "task.output", "data": {"task_id": task_id, "stream": "stdout", "content": task.summary}}
+        yield {"event": "conversation.message", "data": {"conversation_id": conversation_id, "type": "summary", "content": task.summary}}

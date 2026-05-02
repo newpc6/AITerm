@@ -48,13 +48,13 @@ async def stream_task_events(
         return Response(code=4040, message="task not found")
 
     async def event_generator():
-        async for event in service.execute_task(task_id):
+        async for event in service.execute_task(task_id, task.conversation_id):
             yield f"event: {event['event']}\n"
             yield f"data: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         event_generator(),
-        media_type="text/event-stream",
+        media_type="text/event-stream; charset=utf-8",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive"
@@ -96,13 +96,13 @@ async def continue_task_with_input(
         return Response(code=4040, message="task not found")
 
     async def event_generator():
-        async for event in service.continue_with_input(task_id):
+        async for event in service.continue_with_input(task_id, task.conversation_id):
             yield f"event: {event['event']}\n"
             yield f"data: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         event_generator(),
-        media_type="text/event-stream",
+        media_type="text/event-stream; charset=utf-8",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive"

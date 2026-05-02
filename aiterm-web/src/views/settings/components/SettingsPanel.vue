@@ -1,21 +1,65 @@
 <script setup lang="ts">
-import type { LLMSettingsData, LLMSettingsPayload } from '@/types/api'
+import { ref } from 'vue'
+import type { GlobalSettingsData, GlobalSettingsPayload } from '@/types/api'
 
-defineProps<{
-  commandBlacklistText: string
-  commandWhitelistText: string
-  form: LLMSettingsPayload
+const props = defineProps<{
+  form: GlobalSettingsPayload
   loading: boolean
   saving: boolean
-  settings: LLMSettingsData | null
+  settings: GlobalSettingsData | null
 }>()
 
 const emit = defineEmits<{
   reset: []
   save: []
-  'update:commandBlacklistText': [value: string]
-  'update:commandWhitelistText': [value: string]
 }>()
+
+const showBlacklistDialog = ref(false)
+const showWhitelistDialog = ref(false)
+const newBlacklistItem = ref('')
+const newWhitelistItem = ref('')
+
+function removeBlacklistItem(index: number) {
+  props.form.execution_command_blacklist?.splice(index, 1)
+}
+
+function removeWhitelistItem(index: number) {
+  props.form.execution_command_whitelist?.splice(index, 1)
+}
+
+function openBlacklistDialog() {
+  newBlacklistItem.value = ''
+  showBlacklistDialog.value = true
+}
+
+function openWhitelistDialog() {
+  newWhitelistItem.value = ''
+  showWhitelistDialog.value = true
+}
+
+function addBlacklistItem() {
+  const item = newBlacklistItem.value.trim()
+  if (!item) return
+  if (props.form.execution_command_blacklist?.includes(item)) {
+    return
+  }
+  props.form.execution_command_blacklist = props.form.execution_command_blacklist || []
+  props.form.execution_command_blacklist.push(item)
+  showBlacklistDialog.value = false
+  newBlacklistItem.value = ''
+}
+
+function addWhitelistItem() {
+  const item = newWhitelistItem.value.trim()
+  if (!item) return
+  if (props.form.execution_command_whitelist?.includes(item)) {
+    return
+  }
+  props.form.execution_command_whitelist = props.form.execution_command_whitelist || []
+  props.form.execution_command_whitelist.push(item)
+  showWhitelistDialog.value = false
+  newWhitelistItem.value = ''
+}
 </script>
 
 <template>
@@ -25,22 +69,9 @@ const emit = defineEmits<{
       title="当前模型地址指向本地服务，请确认对应的大模型服务正在运行。" type="warning" show-icon :closable="false" />
 
     <el-form label-position="top">
-      <el-form-item label="API 地址">
-        <el-input v-model="form.api_url" placeholder="https://api.openai.com/v1" :disabled="loading || saving" />
-      </el-form-item>
-
-      <el-form-item label="API Key">
-        <el-input v-model="form.api_key" type="password" show-password placeholder="OpenAI / 兼容服务 API Key，可为空"
-          :disabled="loading || saving" />
-      </el-form-item>
-
-      <el-form-item label="模型">
-        <el-input v-model="form.model" placeholder="gpt-4o-mini" :disabled="loading || saving" />
-      </el-form-item>
-
-      <el-form-item label="温度参数">
-        <el-input-number v-model="form.temperature" :min="0" :max="2" :step="0.1" :precision="1"
-          :disabled="loading || saving" />
+      <el-form-item label="意图识别提示词">
+        <el-input v-model="form.intent_detection_prompt" type="textarea" :rows="6" resize="vertical"
+          placeholder="可使用 {{user_message}} 占位符，返回 JSON 格式 {\"intent\": \"chat\"} 或 {\"intent\": \"execute\"}" :disabled="loading || saving" />
       </el-form-item>
 
       <el-form-item label="对话系统提示词">
@@ -48,104 +79,127 @@ const emit = defineEmits<{
           placeholder="可使用 {{node_description}}、{{user_request}} 等占位符" :disabled="loading || saving" />
       </el-form-item>
 
-      <el-form-item label="任务规划提示词">
-        <el-input v-model="form.task_planner_prompt" type="textarea" :rows="8" resize="vertical"
+      <el-form-item label="执行规划提示词">
+        <el-input v-model="form.execution_planner_prompt" type="textarea" :rows="8" resize="vertical"
           placeholder="可使用 {{node_description}}、{{user_request}} 等占位符" :disabled="loading || saving" />
       </el-form-item>
 
-      <el-form-item label="任务规划用户提示词">
-        <el-input v-model="form.task_planner_user_prompt" type="textarea" :rows="10" resize="vertical"
+      <el-form-item label="执行规划用户提示词">
+        <el-input v-model="form.execution_planner_user_prompt" type="textarea" :rows="10" resize="vertical"
           placeholder="可使用 {{user_request}}、{{conversation_history}}、{{platform_name}}、{{platform_tool_prompt}} 等占位符" :disabled="loading || saving" />
       </el-form-item>
 
       <el-form-item label="Windows 工具提示词">
-        <el-input v-model="form.task_windows_tool_prompt" type="textarea" :rows="8" resize="vertical"
+        <el-input v-model="form.execution_windows_tool_prompt" type="textarea" :rows="8" resize="vertical"
           placeholder="告诉模型在 Windows 上下载、删除、移动、查找、查看文件等常见操作优先使用哪些命令"
           :disabled="loading || saving" />
       </el-form-item>
 
       <el-form-item label="Linux 工具提示词">
-        <el-input v-model="form.task_linux_tool_prompt" type="textarea" :rows="8" resize="vertical"
+        <el-input v-model="form.execution_linux_tool_prompt" type="textarea" :rows="8" resize="vertical"
           placeholder="告诉模型在 Linux 上下载、删除、移动、查找、查看文件等常见操作优先使用哪些命令"
           :disabled="loading || saving" />
       </el-form-item>
 
       <el-form-item label="macOS 工具提示词">
-        <el-input v-model="form.task_mac_tool_prompt" type="textarea" :rows="8" resize="vertical"
+        <el-input v-model="form.execution_mac_tool_prompt" type="textarea" :rows="8" resize="vertical"
           placeholder="告诉模型在 macOS 上下载、删除、移动、查找、查看文件等常见操作优先使用哪些命令"
           :disabled="loading || saving" />
       </el-form-item>
 
-      <el-form-item label="任务失败修正提示词">
-        <el-input v-model="form.task_failure_repair_prompt" type="textarea" :rows="10" resize="vertical"
+      <el-form-item label="执行失败修正提示词">
+        <el-input v-model="form.execution_failure_repair_prompt" type="textarea" :rows="10" resize="vertical"
           placeholder="可使用 {{user_request}}、{{step_title}}、{{failed_command}}、{{execution_output}}、{{failure_text}} 等占位符"
           :disabled="loading || saving" />
       </el-form-item>
 
-      <el-form-item label="任务命令风控规则提示词">
-        <el-input v-model="form.task_command_rules_prompt" type="textarea" :rows="5" resize="vertical"
+      <el-form-item label="命令风控规则提示词">
+        <el-input v-model="form.execution_command_rules_prompt" type="textarea" :rows="5" resize="vertical"
           placeholder="可使用 {{command_rules}}、{{blacklist}}、{{whitelist}} 等占位符" :disabled="loading || saving" />
       </el-form-item>
 
-      <el-form-item label="任务命令黑名单">
-        <el-input :model-value="commandBlacklistText" type="textarea" :rows="6" resize="vertical"
-          placeholder="每行一条规则，命中后任务必须人工确认，例如 delete、rm、shutdown" :disabled="loading || saving"
-          @update:model-value="emit('update:commandBlacklistText', $event)" />
+      <el-form-item label="命令黑名单">
+        <div class="tag-container">
+          <el-tag
+            v-for="(item, index) in form.execution_command_blacklist"
+            :key="index"
+            type="danger"
+            closable
+            :disable-transitions="false"
+            @close="removeBlacklistItem(index)"
+            class="rule-tag"
+          >
+            {{ item }}
+          </el-tag>
+          <el-button size="small" type="primary" plain @click="openBlacklistDialog" :disabled="loading || saving">
+            + 添加
+          </el-button>
+        </div>
+        <div class="tag-hint">命中黑名单的命令需要人工确认后才会执行</div>
       </el-form-item>
 
-      <el-form-item label="任务命令白名单">
-        <el-input :model-value="commandWhitelistText" type="textarea" :rows="4" resize="vertical"
-          placeholder="每行一条规则，命中后可跳过黑名单误判，例如安全查询命令" :disabled="loading || saving"
-          @update:model-value="emit('update:commandWhitelistText', $event)" />
+      <el-form-item label="命令白名单">
+        <div class="tag-container">
+          <el-tag
+            v-for="(item, index) in form.execution_command_whitelist"
+            :key="index"
+            type="success"
+            closable
+            :disable-transitions="false"
+            @close="removeWhitelistItem(index)"
+            class="rule-tag"
+          >
+            {{ item }}
+          </el-tag>
+          <el-button size="small" type="primary" plain @click="openWhitelistDialog" :disabled="loading || saving">
+            + 添加
+          </el-button>
+        </div>
+        <div class="tag-hint">命中白名单的命令可跳过黑名单检测</div>
       </el-form-item>
     </el-form>
 
     <el-descriptions v-if="settings" :column="1" border>
-      <el-descriptions-item label="已配置">
-        {{ settings.configured ? "是" : "否" }}
-      </el-descriptions-item>
-      <el-descriptions-item label="当前地址">
-        {{ settings.api_url || '未设置' }}
-      </el-descriptions-item>
-      <el-descriptions-item label="当前模型">
-        {{ settings.model || '未设置' }}
-      </el-descriptions-item>
-      <el-descriptions-item label="API Key">
-        {{ settings.api_key ? '已设置' : '未设置' }}
+      <el-descriptions-item label="意图识别提示词">
+        {{ settings.intent_detection_prompt ? '已设置' : '未设置' }}
       </el-descriptions-item>
       <el-descriptions-item label="对话提示词">
         {{ settings.chat_system_prompt ? '已设置' : '未设置' }}
       </el-descriptions-item>
-      <el-descriptions-item label="任务规划提示词">
-        {{ settings.task_planner_prompt ? '已设置' : '未设置' }}
+      <el-descriptions-item label="执行规划提示词">
+        {{ settings.execution_planner_prompt ? '已设置' : '未设置' }}
       </el-descriptions-item>
-      <el-descriptions-item label="任务规划用户提示词">
-        {{ settings.task_planner_user_prompt ? '已设置' : '未设置' }}
+      <el-descriptions-item label="执行规划用户提示词">
+        {{ settings.execution_planner_user_prompt ? '已设置' : '未设置' }}
       </el-descriptions-item>
       <el-descriptions-item label="Windows 工具提示词">
-        {{ settings.task_windows_tool_prompt ? '已设置' : '未设置' }}
+        {{ settings.execution_windows_tool_prompt ? '已设置' : '未设置' }}
       </el-descriptions-item>
       <el-descriptions-item label="Linux 工具提示词">
-        {{ settings.task_linux_tool_prompt ? '已设置' : '未设置' }}
+        {{ settings.execution_linux_tool_prompt ? '已设置' : '未设置' }}
       </el-descriptions-item>
       <el-descriptions-item label="macOS 工具提示词">
-        {{ settings.task_mac_tool_prompt ? '已设置' : '未设置' }}
+        {{ settings.execution_mac_tool_prompt ? '已设置' : '未设置' }}
       </el-descriptions-item>
-      <el-descriptions-item label="任务失败修正提示词">
-        {{ settings.task_failure_repair_prompt ? '已设置' : '未设置' }}
+      <el-descriptions-item label="执行失败修正提示词">
+        {{ settings.execution_failure_repair_prompt ? '已设置' : '未设置' }}
       </el-descriptions-item>
-      <el-descriptions-item label="任务命令风控规则提示词">
-        {{ settings.task_command_rules_prompt ? '已设置' : '未设置' }}
+      <el-descriptions-item label="命令风控规则提示词">
+        {{ settings.execution_command_rules_prompt ? '已设置' : '未设置' }}
       </el-descriptions-item>
-      <el-descriptions-item label="任务命令黑名单">
-        <div v-if="settings.task_command_blacklist.length" class="settings-panel__rules">
-          <code v-for="item in settings.task_command_blacklist" :key="`black-${item}`">{{ item }}</code>
+      <el-descriptions-item label="命令黑名单">
+        <div v-if="settings.execution_command_blacklist.length" class="tag-container">
+          <el-tag v-for="item in settings.execution_command_blacklist" :key="`black-${item}`" type="danger" size="small">
+            {{ item }}
+          </el-tag>
         </div>
         <span v-else>未设置</span>
       </el-descriptions-item>
-      <el-descriptions-item label="任务命令白名单">
-        <div v-if="settings.task_command_whitelist.length" class="settings-panel__rules">
-          <code v-for="item in settings.task_command_whitelist" :key="`white-${item}`">{{ item }}</code>
+      <el-descriptions-item label="命令白名单">
+        <div v-if="settings.execution_command_whitelist.length" class="tag-container">
+          <el-tag v-for="item in settings.execution_command_whitelist" :key="`white-${item}`" type="success" size="small">
+            {{ item }}
+          </el-tag>
         </div>
         <span v-else>未设置</span>
       </el-descriptions-item>
@@ -156,6 +210,40 @@ const emit = defineEmits<{
       <el-button type="primary" :loading="saving" @click="emit('save')">保存</el-button>
     </div>
   </div>
+
+  <el-dialog v-model="showBlacklistDialog" title="添加黑名单规则" width="400px">
+    <el-form @submit.prevent="addBlacklistItem">
+      <el-form-item label="命令关键词">
+        <el-input
+          v-model="newBlacklistItem"
+          placeholder="例如：rm、del、shutdown"
+          @keyup.enter="addBlacklistItem"
+          autofocus
+        />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showBlacklistDialog = false">取消</el-button>
+      <el-button type="primary" @click="addBlacklistItem">添加</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="showWhitelistDialog" title="添加白名单规则" width="400px">
+    <el-form @submit.prevent="addWhitelistItem">
+      <el-form-item label="命令关键词">
+        <el-input
+          v-model="newWhitelistItem"
+          placeholder="例如：ls、dir、cat"
+          @keyup.enter="addWhitelistItem"
+          autofocus
+        />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showWhitelistDialog = false">取消</el-button>
+      <el-button type="primary" @click="addWhitelistItem">添加</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <style scoped>
@@ -170,18 +258,23 @@ const emit = defineEmits<{
   gap: 12px;
 }
 
-.settings-panel__rules {
+.tag-container {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
 }
 
-.settings-panel__rules code {
-  display: inline-flex;
-  align-items: center;
-  padding: 4px 8px;
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.06);
-  overflow-wrap: anywhere;
+.rule-tag {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tag-hint {
+  margin-top: 8px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
 }
 </style>

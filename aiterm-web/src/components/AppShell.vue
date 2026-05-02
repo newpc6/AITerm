@@ -13,7 +13,6 @@ const router = useRouter()
 const links = [
   { to: '/chat', label: '对话' },
   { to: '/history', label: '历史' },
-  { to: '/tasks', label: '任务' },
   { to: '/terminal', label: '终端' },
   { to: '/nodes', label: '节点' },
   { to: '/users', label: '用户', adminOnly: true },

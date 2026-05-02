@@ -2,7 +2,7 @@
   <div class="hero">
     <p class="label">设置</p>
     <h1>配置中心</h1>
-    <p>LLM 设置已对接后端接口。</p>
+    <p>提示词配置已对接后端接口。</p>
   </div>
 
   <el-alert v-if="errorMessage" :title="errorMessage" type="warning" show-icon :closable="false" />
@@ -12,7 +12,7 @@
   <div class="card">
     <div class="settings-header">
       <div>
-        <p class="label">当前模型</p>
+        <p class="label">提示词配置</p>
         <div class="value">{{ currentModel }}</div>
       </div>
       <el-button :loading="loading" @click="loadSettings">刷新</el-button>

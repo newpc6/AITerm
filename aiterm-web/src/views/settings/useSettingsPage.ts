@@ -1,7 +1,7 @@
 import { computed, onMounted, ref } from 'vue'
 
-import { getAuthSettings, getLLMSettings, updateAuthSettings, updateLLMSettings } from '@/api/aiterm'
-import type { AuthSettingsData, AuthSettingsPayload, LLMSettingsData, LLMSettingsPayload } from '@/types/api'
+import { getAuthSettings, getGlobalSettings, updateAuthSettings, updateGlobalSettings } from '@/api/aiterm'
+import type { AuthSettingsData, AuthSettingsPayload, GlobalSettingsData, GlobalSettingsPayload } from '@/types/api'
 
 export function useSettingsPage() {
   const loading = ref(false)
@@ -9,23 +9,21 @@ export function useSettingsPage() {
   const authSaving = ref(false)
   const errorMessage = ref('')
   const successMessage = ref('')
-  const settings = ref<LLMSettingsData | null>(null)
+  const settings = ref<GlobalSettingsData | null>(null)
   const authSettings = ref<AuthSettingsData | null>(null)
-  const form = ref<LLMSettingsPayload>({
-    api_url: '',
-    api_key: '',
-    model: '',
-    temperature: 0.7,
+  const form = ref<GlobalSettingsPayload>({
+    intent_detection_prompt: '',
     chat_system_prompt: '',
-    task_planner_prompt: '',
-    task_planner_user_prompt: '',
-    task_windows_tool_prompt: '',
-    task_linux_tool_prompt: '',
-    task_mac_tool_prompt: '',
-    task_failure_repair_prompt: '',
-    task_command_rules_prompt: '',
-    task_command_blacklist: [],
-    task_command_whitelist: [],
+    chat_history_limit: 12,
+    execution_planner_prompt: '',
+    execution_planner_user_prompt: '',
+    execution_windows_tool_prompt: '',
+    execution_linux_tool_prompt: '',
+    execution_mac_tool_prompt: '',
+    execution_failure_repair_prompt: '',
+    execution_command_rules_prompt: '',
+    execution_command_blacklist: [],
+    execution_command_whitelist: [],
   })
   const commandBlacklistText = ref('')
   const commandWhitelistText = ref('')
@@ -35,25 +33,23 @@ export function useSettingsPage() {
     session_ttl_hours: 24,
   })
 
-  function syncForm(data: LLMSettingsData) {
+  function syncForm(data: GlobalSettingsData) {
     form.value = {
-      api_url: data.api_url,
-      api_key: data.api_key,
-      model: data.model,
-      temperature: data.temperature,
+      intent_detection_prompt: data.intent_detection_prompt,
       chat_system_prompt: data.chat_system_prompt,
-      task_planner_prompt: data.task_planner_prompt,
-      task_planner_user_prompt: data.task_planner_user_prompt,
-      task_windows_tool_prompt: data.task_windows_tool_prompt,
-      task_linux_tool_prompt: data.task_linux_tool_prompt,
-      task_mac_tool_prompt: data.task_mac_tool_prompt,
-      task_failure_repair_prompt: data.task_failure_repair_prompt,
-      task_command_rules_prompt: data.task_command_rules_prompt,
-      task_command_blacklist: data.task_command_blacklist ?? [],
-      task_command_whitelist: data.task_command_whitelist ?? [],
+      chat_history_limit: data.chat_history_limit,
+      execution_planner_prompt: data.execution_planner_prompt,
+      execution_planner_user_prompt: data.execution_planner_user_prompt,
+      execution_windows_tool_prompt: data.execution_windows_tool_prompt,
+      execution_linux_tool_prompt: data.execution_linux_tool_prompt,
+      execution_mac_tool_prompt: data.execution_mac_tool_prompt,
+      execution_failure_repair_prompt: data.execution_failure_repair_prompt,
+      execution_command_rules_prompt: data.execution_command_rules_prompt,
+      execution_command_blacklist: data.execution_command_blacklist ?? [],
+      execution_command_whitelist: data.execution_command_whitelist ?? [],
     }
-    commandBlacklistText.value = (data.task_command_blacklist ?? []).join('\n')
-    commandWhitelistText.value = (data.task_command_whitelist ?? []).join('\n')
+    commandBlacklistText.value = (data.execution_command_blacklist ?? []).join('\n')
+    commandWhitelistText.value = (data.execution_command_whitelist ?? []).join('\n')
   }
 
   function parseCommandRuleText(value: string) {
@@ -76,7 +72,7 @@ export function useSettingsPage() {
     errorMessage.value = ''
 
     try {
-      settings.value = await getLLMSettings()
+      settings.value = await getGlobalSettings()
       syncForm(settings.value)
       authSettings.value = await getAuthSettings()
       syncAuthForm(authSettings.value)
@@ -93,10 +89,10 @@ export function useSettingsPage() {
     successMessage.value = ''
 
     try {
-      settings.value = await updateLLMSettings({
+      settings.value = await updateGlobalSettings({
         ...form.value,
-        task_command_blacklist: parseCommandRuleText(commandBlacklistText.value),
-        task_command_whitelist: parseCommandRuleText(commandWhitelistText.value),
+        execution_command_blacklist: parseCommandRuleText(commandBlacklistText.value),
+        execution_command_whitelist: parseCommandRuleText(commandWhitelistText.value),
       })
       syncForm(settings.value)
       successMessage.value = '设置保存成功。'
@@ -143,7 +139,7 @@ export function useSettingsPage() {
     errorMessage.value = ''
   }
 
-  const currentModel = computed(() => form.value.model || '未配置')
+  const currentModel = computed(() => '提示词配置')
 
   onMounted(() => {
     void loadSettings()

@@ -17,7 +17,6 @@ class Conversation(BaseModel):
     title: Optional[str] = None
     last_message: Optional[str] = None
     message_count: int = 0
-    latest_task_id: Optional[str] = None
     latest_node_id: Optional[str] = None
     latest_status: Optional[str] = None
     updated_at: Optional[str] = None

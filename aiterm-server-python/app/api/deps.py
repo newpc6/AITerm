@@ -3,12 +3,12 @@ from fastapi import Depends, Header, HTTPException
 
 from app.config import get_settings
 from app.repositories import (
-    NodeRepository, TaskRepository, ConversationRepository,
+    NodeRepository, TaskRepository,
     UserRepository, SessionRepository, ModelConfigRepository,
     GlobalSettingsRepository, AuthSettingsRepository
 )
 from app.services import (
-    NodeService, ConversationService, TaskService,
+    NodeService, TaskService,
     AuthService, UserService, ChatOrchestrator,
     ModelConfigService, GlobalSettingsService
 )
@@ -20,10 +20,6 @@ def get_node_repository() -> NodeRepository:
 
 def get_task_repository() -> TaskRepository:
     return TaskRepository()
-
-
-def get_conversation_repository() -> ConversationRepository:
-    return ConversationRepository()
 
 
 def get_user_repository() -> UserRepository:
@@ -58,26 +54,20 @@ async def get_node_service(
     return NodeService(repo)
 
 
-async def get_conversation_service(
-    repo: ConversationRepository = Depends(get_conversation_repository)
-) -> ConversationService:
-    return ConversationService(repo)
-
-
 async def get_task_service(
     task_repo: TaskRepository = Depends(get_task_repository),
     node_repo: NodeRepository = Depends(get_node_repository),
-    conversation_repo: ConversationRepository = Depends(get_conversation_repository),
     model_repo: ModelConfigRepository = Depends(get_model_config_repository),
-    settings = Depends(get_global_settings)
+    settings=Depends(get_global_settings)
 ) -> TaskService:
-    return TaskService(task_repo, node_repo, conversation_repo, model_repo, settings)
+    return TaskService(task_repo, node_repo, model_repo, settings)
 
 
 async def get_auth_service(
     user_repo: UserRepository = Depends(get_user_repository),
     session_repo: SessionRepository = Depends(get_session_repository),
-    auth_settings_repo: AuthSettingsRepository = Depends(get_auth_settings_repository)
+    auth_settings_repo: AuthSettingsRepository = Depends(
+        get_auth_settings_repository)
 ) -> AuthService:
     return AuthService(user_repo, session_repo, auth_settings_repo)
 
@@ -101,13 +91,13 @@ async def get_global_settings_service(
 
 
 async def get_chat_orchestrator(
-    conversation_repo: ConversationRepository = Depends(get_conversation_repository),
     node_repo: NodeRepository = Depends(get_node_repository),
     model_repo: ModelConfigRepository = Depends(get_model_config_repository),
     task_repo: TaskRepository = Depends(get_task_repository),
-    settings = Depends(get_global_settings)
+    task_service: TaskService = Depends(get_task_service),
+    settings=Depends(get_global_settings)
 ) -> ChatOrchestrator:
-    return ChatOrchestrator(conversation_repo, node_repo, model_repo, task_repo, settings)
+    return ChatOrchestrator(node_repo, model_repo, task_repo, task_service, settings)
 
 
 async def get_current_user_optional(
@@ -122,7 +112,7 @@ async def get_current_user_optional(
 
 
 async def get_current_user(
-    user = Depends(get_current_user_optional)
+    user=Depends(get_current_user_optional)
 ):
     settings = get_settings()
     if not settings.database:
@@ -132,7 +122,7 @@ async def get_current_user(
 
 
 async def require_admin(
-    user = Depends(get_current_user)
+    user=Depends(get_current_user)
 ):
     if user and user.role == "admin":
         return user

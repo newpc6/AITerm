@@ -9,42 +9,40 @@ export function useGlobalSettingsPage() {
   const saving = ref(false)
   const settings = ref<GlobalSettingsData | null>(null)
   const form = ref<GlobalSettingsPayload>({
+    intent_detection_prompt: '',
     chat_system_prompt: '',
-    task_planner_prompt: '',
-    task_planner_user_prompt: '',
-    task_windows_tool_prompt: '',
-    task_linux_tool_prompt: '',
-    task_mac_tool_prompt: '',
-    task_failure_repair_prompt: '',
-    task_command_rules_prompt: '',
-    task_command_blacklist: [],
-    task_command_whitelist: [],
+    chat_history_limit: 12,
+    execution_planner_prompt: '',
+    execution_planner_user_prompt: '',
+    execution_windows_tool_prompt: '',
+    execution_linux_tool_prompt: '',
+    execution_mac_tool_prompt: '',
+    execution_failure_repair_prompt: '',
+    execution_command_rules_prompt: '',
+    execution_command_blacklist: [],
+    execution_command_whitelist: [],
   })
-  const commandBlacklistText = ref('')
-  const commandWhitelistText = ref('')
+
+  const showBlacklistDialog = ref(false)
+  const showWhitelistDialog = ref(false)
+  const newBlacklistItem = ref('')
+  const newWhitelistItem = ref('')
 
   function syncForm(data: GlobalSettingsData) {
     form.value = {
+      intent_detection_prompt: data.intent_detection_prompt,
       chat_system_prompt: data.chat_system_prompt,
-      task_planner_prompt: data.task_planner_prompt,
-      task_planner_user_prompt: data.task_planner_user_prompt,
-      task_windows_tool_prompt: data.task_windows_tool_prompt,
-      task_linux_tool_prompt: data.task_linux_tool_prompt,
-      task_mac_tool_prompt: data.task_mac_tool_prompt,
-      task_failure_repair_prompt: data.task_failure_repair_prompt,
-      task_command_rules_prompt: data.task_command_rules_prompt,
-      task_command_blacklist: data.task_command_blacklist ?? [],
-      task_command_whitelist: data.task_command_whitelist ?? [],
+      chat_history_limit: data.chat_history_limit,
+      execution_planner_prompt: data.execution_planner_prompt,
+      execution_planner_user_prompt: data.execution_planner_user_prompt,
+      execution_windows_tool_prompt: data.execution_windows_tool_prompt,
+      execution_linux_tool_prompt: data.execution_linux_tool_prompt,
+      execution_mac_tool_prompt: data.execution_mac_tool_prompt,
+      execution_failure_repair_prompt: data.execution_failure_repair_prompt,
+      execution_command_rules_prompt: data.execution_command_rules_prompt,
+      execution_command_blacklist: data.execution_command_blacklist ?? [],
+      execution_command_whitelist: data.execution_command_whitelist ?? [],
     }
-    commandBlacklistText.value = (data.task_command_blacklist ?? []).join('\n')
-    commandWhitelistText.value = (data.task_command_whitelist ?? []).join('\n')
-  }
-
-  function parseCommandRuleText(value: string) {
-    return value
-      .split(/\r?\n/)
-      .map((item) => item.trim())
-      .filter(Boolean)
   }
 
   async function loadSettings() {
@@ -62,12 +60,7 @@ export function useGlobalSettingsPage() {
   async function saveSettings() {
     saving.value = true
     try {
-      const payload: GlobalSettingsPayload = {
-        ...form.value,
-        task_command_blacklist: parseCommandRuleText(commandBlacklistText.value),
-        task_command_whitelist: parseCommandRuleText(commandWhitelistText.value),
-      }
-      settings.value = await updateGlobalSettings(payload)
+      settings.value = await updateGlobalSettings(form.value)
       syncForm(settings.value)
       ElMessage.success('全局配置已保存')
     } catch {
@@ -82,6 +75,50 @@ export function useGlobalSettingsPage() {
     syncForm(settings.value)
   }
 
+  function removeBlacklistItem(index: number) {
+    form.value.execution_command_blacklist?.splice(index, 1)
+  }
+
+  function removeWhitelistItem(index: number) {
+    form.value.execution_command_whitelist?.splice(index, 1)
+  }
+
+  function openBlacklistDialog() {
+    newBlacklistItem.value = ''
+    showBlacklistDialog.value = true
+  }
+
+  function openWhitelistDialog() {
+    newWhitelistItem.value = ''
+    showWhitelistDialog.value = true
+  }
+
+  function addBlacklistItem() {
+    const item = newBlacklistItem.value.trim()
+    if (!item) return
+    if (form.value.execution_command_blacklist?.includes(item)) {
+      ElMessage.warning('该规则已存在')
+      return
+    }
+    form.value.execution_command_blacklist = form.value.execution_command_blacklist || []
+    form.value.execution_command_blacklist.push(item)
+    showBlacklistDialog.value = false
+    newBlacklistItem.value = ''
+  }
+
+  function addWhitelistItem() {
+    const item = newWhitelistItem.value.trim()
+    if (!item) return
+    if (form.value.execution_command_whitelist?.includes(item)) {
+      ElMessage.warning('该规则已存在')
+      return
+    }
+    form.value.execution_command_whitelist = form.value.execution_command_whitelist || []
+    form.value.execution_command_whitelist.push(item)
+    showWhitelistDialog.value = false
+    newWhitelistItem.value = ''
+  }
+
   onMounted(() => {
     void loadSettings()
   })
@@ -91,10 +128,18 @@ export function useGlobalSettingsPage() {
     saving,
     settings,
     form,
-    commandBlacklistText,
-    commandWhitelistText,
+    showBlacklistDialog,
+    showWhitelistDialog,
+    newBlacklistItem,
+    newWhitelistItem,
     loadSettings,
     saveSettings,
     resetForm,
+    removeBlacklistItem,
+    removeWhitelistItem,
+    openBlacklistDialog,
+    openWhitelistDialog,
+    addBlacklistItem,
+    addWhitelistItem,
   }
 }

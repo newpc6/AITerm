@@ -5,25 +5,26 @@ from typing import Optional, List
 from datetime import datetime
 import json
 
-from app.models import (
-    Response, ConversationCreate, ConversationMessage,
-    TaskConfirmRequest, TaskStatus
-)
+from app.models import Response, ConversationCreate
 from app.models.common import PaginatedResponse
-from app.services import ConversationService, TaskService, ChatOrchestrator
-from app.api.deps import get_conversation_service, get_task_service, get_chat_orchestrator, get_current_user
+from app.repositories.chat import ChatRepository
+from app.repositories.message import MessageRepository
+from app.services import TaskService, ChatOrchestrator
+from app.api.deps import get_task_service, get_chat_orchestrator, get_current_user
 
 router = APIRouter(prefix="/conversations", tags=["conversations"])
 logger = logging.getLogger("aiterm.conversations")
+
+chat_repo = ChatRepository()
+message_repo = MessageRepository()
 
 
 @router.get("")
 async def list_conversations(
     page: int = Query(1, ge=1, description="页码"),
-    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
-    service: ConversationService = Depends(get_conversation_service)
+    page_size: int = Query(20, ge=1, le=100, description="每页数量")
 ):
-    items, total = await service.list_conversations(page, page_size)
+    items, total = await chat_repo.list_chats(page, page_size)
     paginated = PaginatedResponse.create(
         items=[item.model_dump() for item in items],
         total=total,
@@ -60,9 +61,6 @@ async def stream_conversation(
     if not request.message or not request.message.strip():
         return Response(code=1001, message="message is required")
 
-    if request.mode != "chat":
-        return Response(code=1011, message="streaming is only supported in chat mode")
-
     async def event_generator():
         async for event in orchestrator.stream_chat(
             request.conversation_id,
@@ -75,7 +73,7 @@ async def stream_conversation(
 
     return StreamingResponse(
         event_generator(),
-        media_type="text/event-stream",
+        media_type="text/event-stream; charset=utf-8",
         headers={
             "Cache-Control": "no-cache",
             "Connection": "keep-alive"
@@ -86,31 +84,29 @@ async def stream_conversation(
 @router.get("/{conversation_id}/messages")
 async def get_conversation_messages(
     conversation_id: str,
-    conversation_service: ConversationService = Depends(get_conversation_service),
-    task_service: TaskService = Depends(get_task_service)
+    page: int = Query(1, ge=1, description="页码"),
+    page_size: int = Query(20, ge=1, le=100, description="每页数量")
 ):
-    messages = await conversation_service.get_messages(conversation_id)
+    messages = await message_repo.list_messages(conversation_id, page, page_size)
     if messages is None:
         return Response(code=4041, message="conversation not found")
 
-    latest_task = await task_service.task_repo.get_latest_task_by_conversation(conversation_id)
-    latest_task_id = latest_task.id if latest_task else None
-
+    total = await message_repo.count_messages(conversation_id)
     return Response(
         data={
             "conversation_id": conversation_id,
             "items": [msg.model_dump() for msg in messages],
-            "latest_task_id": latest_task_id
+            "total": total,
+            "page": page,
+            "page_size": page_size
         }
     )
 
 
 @router.delete("/{conversation_id}")
-async def delete_conversation(
-    conversation_id: str,
-    service: ConversationService = Depends(get_conversation_service)
-):
-    success = await service.delete_conversation(conversation_id)
+async def delete_conversation(conversation_id: str):
+    await message_repo.delete_messages_by_chat(conversation_id)
+    success = await chat_repo.delete_chat(conversation_id)
     if not success:
         return Response(code=4041, message="conversation not found")
     return Response(data={"conversation_id": conversation_id, "status": "deleted"})

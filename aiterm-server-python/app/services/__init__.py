@@ -7,6 +7,7 @@ from .task_service import TaskService
 from .user_service import UserService
 from .auth_service import AuthService
 from .chat_orchestrator import ChatOrchestrator
+from .message_service import MessageService
 
 __all__ = [
     "execute_command",
@@ -26,4 +27,5 @@ __all__ = [
     "UserService",
     "AuthService",
     "ChatOrchestrator",
+    "MessageService",
 ]

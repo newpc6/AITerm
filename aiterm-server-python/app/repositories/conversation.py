@@ -48,7 +48,6 @@ class ConversationRepository(IConversationRepository):
                     if first_user_msg:
                         title = first_user_msg.content[:50] if len(first_user_msg.content) > 50 else first_user_msg.content
                 
-                latest_task_id = None
                 latest_node_id = None
                 latest_status = None
                 
@@ -60,7 +59,6 @@ class ConversationRepository(IConversationRepository):
                 )
                 latest_task = task_result.scalar_one_or_none()
                 if latest_task:
-                    latest_task_id = str(latest_task.id)
                     latest_node_id = str(latest_task.node_id)
                     latest_status = latest_task.status
                 
@@ -69,7 +67,6 @@ class ConversationRepository(IConversationRepository):
                     title=title or f"会话 {conv_id}",
                     last_message=last_message,
                     message_count=row.message_count,
-                    latest_task_id=latest_task_id,
                     latest_node_id=latest_node_id,
                     latest_status=latest_status,
                     created_at=row.created_at,
