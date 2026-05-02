@@ -57,6 +57,7 @@ function createMessageFromApi(item: { id: string; role: string; content: string;
           thinking: parsed.thinking,
           reasoning_duration: parsed.reasoning_duration,
           total_duration: parsed.total_duration,
+          tool_calls: parsed.tool_calls,
         }
       } else if (typeof parsed.message === 'string') {
         content = parsed.message
@@ -512,18 +513,32 @@ export function useChatPage() {
     placeholder.content = `<thinking>\n${reasoningBuffer.value}\n</thinking>\n\n${answerBuffer.value}`
   }
 
-  function finalizeAssistantStream(reply: string) {
+  function finalizeAssistantStream(reply: string, toolCalls?: unknown[], thinking?: string) {
     const placeholder = ensureAssistantPlaceholder()
-    if (reasoningBuffer.value) {
+    const thinkingContent = thinking || reasoningBuffer.value
+    if (thinkingContent) {
       placeholder.content = JSON.stringify({
         answer: reply,
-        thinking: reasoningBuffer.value,
+        thinking: thinkingContent,
         reasoning_duration: reasoningDuration.value,
+        tool_calls: toolCalls || null,
       })
+      placeholder.metadata = {
+        ...placeholder.metadata,
+        thinking: thinkingContent,
+        reasoning_duration: reasoningDuration.value,
+      }
     } else {
       placeholder.content = JSON.stringify({
         answer: reply,
+        tool_calls: toolCalls || null,
       })
+    }
+    if (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0) {
+      placeholder.metadata = {
+        ...placeholder.metadata,
+        tool_calls: toolCalls,
+      }
     }
     reasoningBuffer.value = ''
     reasoningStartTime.value = null
@@ -549,27 +564,27 @@ export function useChatPage() {
         },
         {
           onMeta: (data) => {
-            chatId.value = data.conversation_id
+            chatId.value = data.chat_id
             if ((data as { mode?: string }).mode === 'execute') {
               executeStreaming.value = true
             }
-            localStorage.setItem(LAST_CHAT_ID_KEY, data.conversation_id)
+            localStorage.setItem(LAST_CHAT_ID_KEY, data.chat_id)
             void router.replace({
               path: '/chat',
               query: {
-                chat_id: data.conversation_id,
+                chat_id: data.chat_id,
               },
             })
           },
           onDelta: (data) => {
             if (!chatId.value) {
-              chatId.value = data.conversation_id
+              chatId.value = data.chat_id
             }
             appendAssistantDelta(data.delta)
           },
           onReasoning: (data) => {
             if (!chatId.value) {
-              chatId.value = data.conversation_id
+              chatId.value = data.chat_id
             }
             appendReasoningDelta(data.delta)
           },
@@ -578,8 +593,8 @@ export function useChatPage() {
             reasoningDuration.value = data.duration
           },
           onDone: (data) => {
-            chatId.value = data.conversation_id
-            finalizeAssistantStream(data.reply)
+            chatId.value = data.chat_id
+            finalizeAssistantStream(data.reply, data.tool_calls, data.thinking)
           },
           onError: (data) => {
             errorMessage.value = data.error

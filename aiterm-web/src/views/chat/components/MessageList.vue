@@ -161,6 +161,7 @@ onMounted(async () => {
           <ExecuteStepCard v-else-if="getMessageKind(message)?.kind === 'step-start'"
             :step-label="getMessageKind(message)?.stepLabel" :title="getMessageKind(message)?.title"
             :command="getMessageKind(message)?.command" :body="getMessageKind(message)?.body"
+            :output="getMessageKind(message)?.output" :status="getMessageKind(message)?.status"
             :is-streaming="isMsgStreaming" :can-stop-execute="canStopExecute" @stop-execute="handleStopExecute" />
           <ExecuteInfoCard v-else-if="getMessageKind(message)?.kind === 'step-result'" kind="result"
             :title="getMessageKind(message)?.stepLabel" :body="getMessageKind(message)?.body" />

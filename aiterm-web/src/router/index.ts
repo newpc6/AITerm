@@ -15,6 +15,7 @@ const router = createRouter({
     { path: '/users', component: () => import('@/views/users'), meta: { adminOnly: true } },
     { path: '/models', component: () => import('@/views/models'), meta: { adminOnly: true } },
     { path: '/global-settings', component: () => import('@/views/global-settings'), meta: { adminOnly: true } },
+    { path: '/tools', component: () => import('@/views/tools/index.vue'), meta: { adminOnly: true } },
   ],
 })
 

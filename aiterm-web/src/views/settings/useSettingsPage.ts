@@ -24,6 +24,7 @@ export function useSettingsPage() {
     execution_command_rules_prompt: '',
     execution_command_blacklist: [],
     execution_command_whitelist: [],
+    llm_debug_logging: false,
   })
   const commandBlacklistText = ref('')
   const commandWhitelistText = ref('')
@@ -47,6 +48,7 @@ export function useSettingsPage() {
       execution_command_rules_prompt: data.execution_command_rules_prompt,
       execution_command_blacklist: data.execution_command_blacklist ?? [],
       execution_command_whitelist: data.execution_command_whitelist ?? [],
+      llm_debug_logging: data.llm_debug_logging ?? false,
     }
     commandBlacklistText.value = (data.execution_command_blacklist ?? []).join('\n')
     commandWhitelistText.value = (data.execution_command_whitelist ?? []).join('\n')

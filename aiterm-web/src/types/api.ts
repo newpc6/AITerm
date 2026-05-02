@@ -38,19 +38,26 @@ export type ConversationData = {
 }
 
 export type ConversationStreamMetaData = {
-  conversation_id: string
+  chat_id: string
   mode: 'chat'
   node_id: string
 }
 
 export type ConversationStreamDeltaData = {
-  conversation_id: string
+  chat_id: string
   delta: string
 }
 
 export type ConversationStreamDoneData = {
-  conversation_id: string
+  chat_id: string
   reply: string
+  thinking?: string
+  tool_calls?: {
+    name: string
+    arguments: string
+    result: string
+    success: boolean
+  }[]
 }
 
 export type ConversationMessageItem = {
@@ -205,6 +212,7 @@ export type GlobalSettingsData = {
   execution_command_whitelist: string[]
   sandbox_paths: string[]
   sandbox_rules_prompt: string
+  llm_debug_logging: boolean
 }
 
 export type GlobalSettingsPayload = {
@@ -222,6 +230,7 @@ export type GlobalSettingsPayload = {
   execution_command_whitelist?: string[]
   sandbox_paths?: string[]
   sandbox_rules_prompt?: string
+  llm_debug_logging?: boolean
 }
 
 export type AuthSettingsData = {

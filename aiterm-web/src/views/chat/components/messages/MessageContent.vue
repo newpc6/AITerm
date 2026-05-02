@@ -1,12 +1,20 @@
 <script setup lang="ts">
 import { computed, ref, watch, onUnmounted } from 'vue'
-import { Loading, ArrowDown, ArrowUp } from '@element-plus/icons-vue'
+import { Loading, ArrowDown, ArrowUp, Tools } from '@element-plus/icons-vue'
 import MarkdownContent from '@/components/MarkdownContent.vue'
+
+interface ToolCall {
+  name: string
+  arguments: string
+  result: string
+  success: boolean
+}
 
 interface MessageMetadata {
   thinking?: string
   reasoning_duration?: number
   total_duration?: number
+  tool_calls?: ToolCall[]
   [key: string]: unknown
 }
 
@@ -21,12 +29,13 @@ const props = defineProps<{
 const thinkingPattern = /<thinking(?:\s+duration="([\d.]+)")?[^>]*>\n?([\s\S]*?)\n?<\/thinking>\n?\n?/
 
 const parsedContent = computed(() => {
-  if (props.metadata?.thinking) {
+  if (props.metadata?.thinking || props.metadata?.tool_calls) {
     return {
-      thinking: props.metadata.thinking,
+      thinking: props.metadata.thinking || '',
       duration: props.metadata.reasoning_duration || 0,
       content: props.content,
       totalDuration: props.metadata.total_duration || 0,
+      toolCalls: props.metadata.tool_calls || [],
     }
   }
 
@@ -39,6 +48,7 @@ const parsedContent = computed(() => {
           duration: parsed.reasoning_duration || 0,
           content: parsed.answer,
           totalDuration: parsed.total_duration || 0,
+          toolCalls: parsed.tool_calls || [],
         }
       }
       if (typeof parsed.content === 'string' && typeof parsed.type === 'string') {
@@ -47,6 +57,7 @@ const parsedContent = computed(() => {
           duration: 0,
           content: parsed.content,
           totalDuration: 0,
+          toolCalls: [],
         }
       }
     }
@@ -61,6 +72,7 @@ const parsedContent = computed(() => {
       duration: match[1] ? parseFloat(match[1]) : 0,
       content: props.content.replace(thinkingPattern, ''),
       totalDuration: 0,
+      toolCalls: [],
     }
   }
 
@@ -69,11 +81,14 @@ const parsedContent = computed(() => {
     duration: 0,
     content: props.content,
     totalDuration: 0,
+    toolCalls: [],
   }
 })
 
 const showThinking = computed(() => parsedContent.value.thinking.length > 0)
+const showToolCalls = computed(() => parsedContent.value.toolCalls && parsedContent.value.toolCalls.length > 0)
 const isThinkingExpanded = ref(true)
+const isToolCallsExpanded = ref(true)
 const liveDuration = ref(0)
 let durationTimer: ReturnType<typeof setInterval> | null = null
 
@@ -83,11 +98,33 @@ function toggleThinking() {
   isThinkingExpanded.value = !isThinkingExpanded.value
 }
 
+function toggleToolCalls() {
+  isToolCallsExpanded.value = !isToolCallsExpanded.value
+}
+
 function formatDuration(seconds: number): string {
   if (seconds < 1) {
     return '不到 1 秒'
   }
   return `${seconds.toFixed(1)} 秒`
+}
+
+function formatToolArguments(args: string): string {
+  try {
+    const parsed = JSON.parse(args)
+    return JSON.stringify(parsed, null, 2)
+  } catch {
+    return args
+  }
+}
+
+function formatToolResult(result: string): string {
+  try {
+    const parsed = JSON.parse(result)
+    return JSON.stringify(parsed, null, 2)
+  } catch {
+    return result
+  }
 }
 
 watch(isThinkingActive, (active) => {
@@ -131,6 +168,39 @@ onUnmounted(() => {
         </div>
         <div class="thinking-content">
           <MarkdownContent :content="parsedContent.thinking" mode="plain" />
+        </div>
+      </div>
+    </div>
+    <div v-if="showToolCalls" class="tool-calls-block">
+      <div class="tool-calls-header" @click="toggleToolCalls">
+        <el-icon class="tool-calls-icon">
+          <Tools />
+        </el-icon>
+        <span class="tool-calls-label">工具调用 ({{ parsedContent.toolCalls.length }})</span>
+        <el-icon class="tool-calls-toggle">
+          <ArrowUp v-if="isToolCallsExpanded" />
+          <ArrowDown v-else />
+        </el-icon>
+      </div>
+      <div v-show="isToolCallsExpanded" class="tool-calls-body">
+        <div v-for="(tool, index) in parsedContent.toolCalls" :key="index" class="tool-call-item">
+          <div class="tool-call-name">
+            <span class="tool-call-index">{{ index + 1 }}</span>
+            {{ tool.name }}
+            <span :class="['tool-call-status', tool.success ? 'success' : 'error']">
+              {{ tool.success ? '成功' : '失败' }}
+            </span>
+          </div>
+          <div class="tool-call-details">
+            <div class="tool-call-section">
+              <div class="tool-call-section-label">输入参数</div>
+              <pre class="tool-call-code">{{ formatToolArguments(tool.arguments) }}</pre>
+            </div>
+            <div class="tool-call-section">
+              <div class="tool-call-section-label">返回结果</div>
+              <pre class="tool-call-code">{{ formatToolResult(tool.result) }}</pre>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -238,5 +308,131 @@ onUnmounted(() => {
   color: rgba(255, 255, 255, 0.55);
   line-height: 1.6;
   white-space: pre-wrap;
+}
+
+.tool-calls-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.tool-calls-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+}
+
+.tool-calls-header:hover .tool-calls-label {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.tool-calls-icon {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.tool-calls-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 500;
+}
+
+.tool-calls-toggle {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  transition: transform 0.2s;
+}
+
+.tool-calls-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-left: 4px;
+}
+
+.tool-call-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tool-call-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.tool-call-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.tool-call-status {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 400;
+}
+
+.tool-call-status.success {
+  background: rgba(52, 211, 153, 0.15);
+  color: #34d399;
+}
+
+.tool-call-status.error {
+  background: rgba(248, 113, 113, 0.15);
+  color: #f87171;
+}
+
+.tool-call-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tool-call-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-call-section-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tool-call-code {
+  margin: 0;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+  color: rgba(255, 255, 255, 0.75);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  max-height: 200px;
+  overflow-y: auto;
 }
 </style>

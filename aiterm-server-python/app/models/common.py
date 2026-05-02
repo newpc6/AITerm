@@ -1,13 +1,13 @@
 from pydantic import BaseModel
-from typing import Optional, Generic, TypeVar, List
+from typing import Optional, Generic, TypeVar, List, Any
 
 T = TypeVar('T')
 
 
-class Response(BaseModel):
+class Response(BaseModel, Generic[T]):
     code: int = 0
     message: str = "ok"
-    data: Optional[dict] = None
+    data: Optional[T] = None
 
 
 class SSEEvent(BaseModel):
@@ -42,7 +42,8 @@ class PaginatedResponse(BaseModel, Generic[T]):
 
     @classmethod
     def create(cls, items: List[T], total: int, page: int, page_size: int):
-        total_pages = (total + page_size - 1) // page_size if page_size > 0 else 0
+        total_pages = (total + page_size -
+                       1) // page_size if page_size > 0 else 0
         return cls(
             items=items,
             total=total,

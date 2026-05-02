@@ -157,6 +157,16 @@ function addWhitelistItem() {
         </div>
         <div class="tag-hint">命中白名单的命令可跳过黑名单检测</div>
       </el-form-item>
+
+      <el-form-item label="LLM 调试日志">
+        <el-switch
+          v-model="form.llm_debug_logging"
+          :disabled="loading || saving"
+          active-text="开启"
+          inactive-text="关闭"
+        />
+        <div class="tag-hint">开启后会在控制台打印大模型调用的输入输出，方便排查问题</div>
+      </el-form-item>
     </el-form>
 
     <el-descriptions v-if="settings" :column="1" border>

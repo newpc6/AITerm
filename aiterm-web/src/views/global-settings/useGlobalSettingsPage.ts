@@ -23,6 +23,7 @@ export function useGlobalSettingsPage() {
     execution_command_whitelist: [],
     sandbox_paths: [],
     sandbox_rules_prompt: '',
+    llm_debug_logging: false,
   })
 
   const showBlacklistDialog = ref(false)
@@ -48,6 +49,7 @@ export function useGlobalSettingsPage() {
       execution_command_whitelist: data.execution_command_whitelist ?? [],
       sandbox_paths: data.sandbox_paths ?? [],
       sandbox_rules_prompt: data.sandbox_rules_prompt ?? '',
+      llm_debug_logging: data.llm_debug_logging ?? false,
     }
   }
 

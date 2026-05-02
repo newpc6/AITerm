@@ -32,6 +32,7 @@ class ExecuteService:
         self._running_executions: Dict[str, asyncio.Task] = {}
         self._cancelled_executions: set = set()
         self._execution_steps: Dict[str, List[ExecuteStep]] = {}
+        self._step_messages: Dict[str, Dict[int, dict]] = {}
 
     def _parse_message_metadata(self, content: str) -> dict:
         try:
@@ -52,6 +53,57 @@ class ExecuteService:
             role=role,
             content=content,
             type=msg_type
+        )
+
+    async def _save_step_message(self, chat_id: str, index: int, title: str, command: str, status: str = "executing", output: str = ""):
+        structured_content = {
+            "index": index,
+            "title": title,
+            "command": command,
+            "status": status,
+            "output": output
+        }
+        content = json.dumps(structured_content, ensure_ascii=False)
+
+        msg = await self.message_repo.create_message(
+            chat_id=chat_id,
+            role="assistant",
+            content=content,
+            type="step"
+        )
+
+        if chat_id not in self._step_messages:
+            self._step_messages[chat_id] = {}
+        self._step_messages[chat_id][index] = {
+            "id": msg.id,
+            "index": index,
+            "title": title,
+            "command": command,
+            "status": status,
+            "output": output
+        }
+        return msg
+
+    async def _update_step_output(self, chat_id: str, index: int, output: str, status: str = "completed"):
+        if chat_id not in self._step_messages or index not in self._step_messages[chat_id]:
+            return
+
+        step_info = self._step_messages[chat_id][index]
+        step_info["output"] = output
+        step_info["status"] = status
+
+        structured_content = {
+            "index": step_info["index"],
+            "title": step_info["title"],
+            "command": step_info["command"],
+            "status": step_info["status"],
+            "output": step_info["output"]
+        }
+        content = json.dumps(structured_content, ensure_ascii=False)
+
+        await self.message_repo.update_message(
+            message_id=step_info["id"],
+            content=content
         )
 
     def _is_cancelled(self, chat_id: str) -> bool:
@@ -344,10 +396,8 @@ class ExecuteService:
             self._execution_steps[chat_id] = steps
 
             start_msg = f"开始执行第 {index+1} 步：{step.title}\n命令：{step.command}"
-            await self._save_message(
-                chat_id, "assistant", start_msg, "step",
-                metadata={"index": index, "title": step.title,
-                          "command": step.command, "status": "executing"}
+            await self._save_step_message(
+                chat_id, index, step.title, step.command, status="executing"
             )
             yield {"event": "conversation.message", "data": {"chat_id": chat_id, "type": "step", "content": start_msg}}
 
@@ -360,11 +410,6 @@ class ExecuteService:
                     line_text = content
                 execution_outputs.append(line_text)
                 step_outputs.append(line_text)
-                await self._save_message(
-                    chat_id, "assistant", line_text, "output",
-                    metadata={"command": step.command,
-                              "output": content, "stream": stream}
-                )
                 yield {"event": "conversation.message", "data": {"chat_id": chat_id, "type": "output", "content": content}}
 
             step.result_output = "\n".join(step_outputs)
@@ -375,7 +420,7 @@ class ExecuteService:
             if result.cancelled:
                 step.status = "cancelled"
                 cancel_msg = "进程已被用户终止"
-                await self._save_message(chat_id, "assistant", cancel_msg, "output")
+                await self._update_step_output(chat_id, index, cancel_msg, status="cancelled")
                 yield {"event": "conversation.message", "data": {"chat_id": chat_id, "type": "output", "content": cancel_msg}}
                 continue
 
@@ -430,18 +475,13 @@ class ExecuteService:
                                     line_text = content
                                 execution_outputs.append(line_text)
                                 step_outputs.append(line_text)
-                                await self._save_message(
-                                    chat_id, "assistant", line_text, "output",
-                                    metadata={"command": step.command,
-                                              "output": content, "stream": stream}
-                                )
                                 yield {"event": "conversation.message", "data": {"chat_id": chat_id, "type": "output", "content": content}}
 
                             step.repaired_output = "\n".join(step_outputs)
 
                             if result.exit_code == 0 and not result.error:
                                 success_msg = f"第 {index+1} 步修复后执行成功"
-                                await self._save_message(chat_id, "assistant", success_msg, "output")
+                                await self._update_step_output(chat_id, index, step.repaired_output, status="completed")
                                 step.status = "completed"
                                 steps[index] = step
                                 self._execution_steps[chat_id] = steps
@@ -466,6 +506,7 @@ class ExecuteService:
                 yield {"event": "conversation.message", "data": {"chat_id": chat_id, "type": "error", "content": f"第 {index+1} 步执行失败，执行终止"}}
                 return
 
+            await self._update_step_output(chat_id, index, step.result_output, status="completed")
             step.status = "completed"
             steps[index] = step
             self._execution_steps[chat_id] = steps
@@ -662,10 +703,8 @@ class ExecuteService:
             self._execution_steps[chat_id] = steps
 
             start_msg = f"开始执行第 {index+1} 步：{step.title}\n命令：{step.command}"
-            await self._save_message(
-                chat_id, "assistant", start_msg, "step",
-                metadata={"index": index, "title": step.title,
-                          "command": step.command, "status": "executing"}
+            await self._save_step_message(
+                chat_id, index, step.title, step.command, status="executing"
             )
             yield {"event": "conversation.message", "data": {"chat_id": chat_id, "type": "step", "content": start_msg}}
 
@@ -678,11 +717,6 @@ class ExecuteService:
                     line_text = content
                 execution_outputs.append(line_text)
                 step_outputs.append(line_text)
-                await self._save_message(
-                    chat_id, "assistant", line_text, "output",
-                    metadata={"command": step.command,
-                              "output": content, "stream": stream}
-                )
                 yield {"event": "conversation.message", "data": {"chat_id": chat_id, "type": "output", "content": content}}
 
             step.result_output = "\n".join(step_outputs)
@@ -703,6 +737,7 @@ class ExecuteService:
                 )
                 return
 
+            await self._update_step_output(chat_id, index, step.result_output, status="completed")
             step.status = "completed"
             steps[index] = step
             self._execution_steps[chat_id] = steps

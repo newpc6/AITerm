@@ -2,13 +2,14 @@ import json
 import logging
 import re
 from datetime import datetime
-from typing import AsyncGenerator, Optional, Dict, Any
+from typing import AsyncGenerator, Optional, Dict, Any, List
 
 from app.models import Node, ModelConfig, ChatStatus
 from app.repositories import INodeRepository, IModelConfigRepository
 from app.repositories.chat import ChatRepository
 from app.repositories.message import MessageRepository
 from app.services.llm import ChatService, LLMClient
+from app.services.tool_service import ToolService
 from app.utils import now_iso
 
 logger = logging.getLogger("aiterm")
@@ -28,6 +29,7 @@ class ChatOrchestrator:
         self.settings = settings
         self.chat_repo = ChatRepository()
         self.message_repo = MessageRepository()
+        self.tool_service = ToolService()
 
     async def detect_intent(self, message: str, model_config: ModelConfig) -> str:
         response_text = ""
@@ -167,7 +169,7 @@ class ChatOrchestrator:
         yield {
             "event": "conversation.meta",
             "data": {
-                "conversation_id": chat_id,
+                "chat_id": chat_id,
                 "mode": mode,
                 "node_id": node_id
             }
@@ -197,7 +199,7 @@ class ChatOrchestrator:
                 yield {
                     "event": "conversation.message",
                     "data": {
-                        "conversation_id": chat_id,
+                        "chat_id": chat_id,
                         "type": "error",
                         "content": error_msg
                     }
@@ -207,6 +209,15 @@ class ChatOrchestrator:
         node = await self.node_repo.get_node(node_id)
         messages = await self.message_repo.list_messages(chat_id, page=1, page_size=50)
         history = [{"role": m.role, "content": m.content} for m in messages]
+
+        tools = await self.tool_service.get_openai_tools()
+        if tools:
+            logger.info(f"Found {len(tools)} tools, using tool-enabled chat")
+            async for event in self._handle_chat_with_tools(
+                chat_id, model_config, node, history, message, tools
+            ):
+                yield event
+            return
 
         chat_service = ChatService(
             model_config, self.settings.chat_system_prompt, self.settings.chat_history_limit)
@@ -311,6 +322,199 @@ class ChatOrchestrator:
 
         return model_config
 
+    async def _handle_chat_with_tools(
+        self,
+        chat_id: str,
+        model_config: ModelConfig,
+        node: Node,
+        history: List[Dict[str, Any]],
+        message: str,
+        tools: List[Dict[str, Any]]
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        llm_client = LLMClient(
+            model_config, debug_logging=self.settings.llm_debug_logging)
+        chat_service = ChatService(
+            model_config, self.settings.chat_system_prompt, self.settings.chat_history_limit)
+
+        messages = [
+            {"role": "system", "content": chat_service._build_system_prompt(node)}]
+        for msg in history:
+            role = msg.get("role", "")
+            content = msg.get("content", "")
+            if role in ["user", "assistant"]:
+                messages.append({"role": role, "content": content})
+
+        messages.append({"role": "user", "content": message})
+
+        total_start_time = datetime.now()
+        full_response = []
+        tool_calls_info = []
+        reasoning_content = ""
+
+        max_iterations = 5
+        for iteration in range(max_iterations):
+            logger.info(
+                f"Tool calling iteration {iteration + 1}/{max_iterations}")
+
+            response = await llm_client.chat_with_tools(messages, tools)
+            tool_calls = response.get('tool_calls') or []
+            logger.info(
+                f"Tool response: content={response.get('content', '')[:100]}, tool_calls={len(tool_calls)}")
+
+            if response.get("content"):
+                full_response.append(response["content"])
+                yield {
+                    "event": "conversation.delta",
+                    "data": {
+                        "chat_id": chat_id,
+                        "delta": response["content"]
+                    }
+                }
+
+            if response.get("reasoning_content"):
+                reasoning_content = response["reasoning_content"]
+
+            if not tool_calls:
+                break
+
+            assistant_msg = {
+                "role": "assistant",
+                "tool_calls": [
+                    {
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {
+                            "name": tc["name"],
+                            "arguments": tc["arguments"]
+                        }
+                    }
+                    for tc in tool_calls
+                ]
+            }
+            if response.get("content"):
+                assistant_msg["content"] = response["content"]
+            if response.get("reasoning_content"):
+                assistant_msg["reasoning_content"] = response["reasoning_content"]
+            messages.append(assistant_msg)
+
+            tool_results = await self.tool_service.process_tool_calls(tool_calls)
+            logger.info(f"Tool results count: {len(tool_results)}")
+
+            for i, result in enumerate(tool_results):
+                tool_call = tool_calls[i] if i < len(tool_calls) else {}
+                tool_calls_info.append({
+                    "name": result["name"],
+                    "arguments": tool_call.get("arguments", "{}"),
+                    "result": result["content"],
+                    "success": "success" in result.get("content", "") and "true" in result.get("content", "").lower()
+                })
+
+                yield {
+                    "event": "conversation.tool_call",
+                    "data": {
+                        "chat_id": chat_id,
+                        "name": result["name"],
+                        "arguments": tool_call.get("arguments", "{}"),
+                        "result": result["content"]
+                    }
+                }
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": result["tool_call_id"],
+                    "content": result["content"]
+                })
+
+        complete_response = "".join(full_response)
+        total_duration = (datetime.now() - total_start_time).total_seconds()
+
+        message_data = {
+            "answer": complete_response,
+            "total_duration": round(total_duration, 2),
+            "tool_calls": tool_calls_info if tool_calls_info else None
+        }
+        if reasoning_content:
+            message_data["thinking"] = reasoning_content
+
+        message_content = json.dumps(message_data, ensure_ascii=False)
+
+        await self.message_repo.create_message(
+            chat_id=chat_id,
+            role="assistant",
+            content=message_content,
+            type="text"
+        )
+
+        yield {
+            "event": "conversation.done",
+            "data": {
+                "chat_id": chat_id,
+                "reply": complete_response,
+                "model_id": model_config.id,
+                "model_name": model_config.name,
+                "tool_calls": tool_calls_info if tool_calls_info else None,
+                "thinking": reasoning_content if reasoning_content else None
+            }
+        }
+
+    async def _chat_with_tools(
+        self,
+        model_config: ModelConfig,
+        messages: List[Dict[str, Any]],
+        max_iterations: int = 5
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        llm_client = LLMClient(model_config)
+        tools = await self.tool_service.get_openai_tools()
+
+        if not tools:
+            yield {"type": "content", "content": ""}
+            return
+
+        for iteration in range(max_iterations):
+            logger.info(
+                f"Tool calling iteration {iteration + 1}/{max_iterations}")
+
+            response = await llm_client.chat_with_tools(messages, tools)
+
+            if response.get("content"):
+                yield {"type": "content", "content": response["content"]}
+
+            if not response.get("tool_calls"):
+                break
+
+            messages.append({
+                "role": "assistant",
+                "content": response.get("content") or "",
+                "tool_calls": [
+                    {
+                        "id": tc["id"],
+                        "type": "function",
+                        "function": {
+                            "name": tc["name"],
+                            "arguments": tc["arguments"]
+                        }
+                    }
+                    for tc in response["tool_calls"]
+                ]
+            })
+
+            tool_results = await self.tool_service.process_tool_calls(response["tool_calls"])
+
+            for result in tool_results:
+                yield {
+                    "type": "tool_call",
+                    "name": result["name"],
+                    "content": result["content"]
+                }
+
+                messages.append({
+                    "role": "tool",
+                    "tool_call_id": result["tool_call_id"],
+                    "content": result["content"]
+                })
+
+        yield {"type": "done"}
+
     async def create_chat(
         self,
         node_id: str,
@@ -368,7 +572,7 @@ class ChatOrchestrator:
         yield {
             "event": "conversation.meta",
             "data": {
-                "conversation_id": chat_id,
+                "chat_id": chat_id,
                 "mode": mode,
                 "node_id": chat.node_id
             }
@@ -393,7 +597,7 @@ class ChatOrchestrator:
                     yield {
                         "event": "conversation.delta",
                         "data": {
-                            "conversation_id": chat_id,
+                            "chat_id": chat_id,
                             "delta": chunk
                         }
                     }
@@ -416,7 +620,7 @@ class ChatOrchestrator:
             yield {
                 "event": "conversation.done",
                 "data": {
-                    "conversation_id": chat_id,
+                    "chat_id": chat_id,
                     "reply": complete_response,
                     "model_id": model_config.id,
                     "model_name": model_config.name

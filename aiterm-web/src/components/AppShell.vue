@@ -15,6 +15,7 @@ const links = [
   { to: '/history', label: '历史' },
   { to: '/terminal', label: '终端' },
   { to: '/nodes', label: '节点' },
+  { to: '/tools', label: '工具', adminOnly: true },
   { to: '/users', label: '用户', adminOnly: true },
   { to: '/models', label: '模型配置', adminOnly: true },
   { to: '/global-settings', label: '全局配置', adminOnly: true },

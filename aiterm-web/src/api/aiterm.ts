@@ -269,12 +269,12 @@ export async function streamChat(
   handlers: {
     onMeta?: (data: ConversationStreamMetaData) => void
     onDelta?: (data: ConversationStreamDeltaData) => void
-    onReasoning?: (data: { conversation_id: string; delta: string }) => void
-    onReasoningDone?: (data: { conversation_id: string; duration: number }) => void
+    onReasoning?: (data: { chat_id: string; delta: string }) => void
+    onReasoningDone?: (data: { chat_id: string; duration: number }) => void
     onDone?: (data: ConversationStreamDoneData) => void
     onError?: (data: { error: string }) => void
-    onConversationMessage?: (data: { conversation_id: string; type: string; content: string }) => void
-    onConversationInput?: (data: { conversation_id: string; question: string; input_type: string; options?: string[]; placeholder?: string }) => void
+    onConversationMessage?: (data: { chat_id: string; type: string; content: string }) => void
+    onConversationInput?: (data: { chat_id: string; question: string; input_type: string; options?: string[]; placeholder?: string }) => void
   },
   signal?: AbortSignal,
 ) {
@@ -313,17 +313,17 @@ export async function streamChat(
     } else if (currentEvent === 'conversation.delta') {
       handlers.onDelta?.(parsed as ConversationStreamDeltaData)
     } else if (currentEvent === 'conversation.reasoning') {
-      handlers.onReasoning?.(parsed as { conversation_id: string; delta: string })
+      handlers.onReasoning?.(parsed as { chat_id: string; delta: string })
     } else if (currentEvent === 'conversation.reasoning_done') {
-      handlers.onReasoningDone?.(parsed as { conversation_id: string; duration: number })
+      handlers.onReasoningDone?.(parsed as { chat_id: string; duration: number })
     } else if (currentEvent === 'conversation.done') {
       handlers.onDone?.(parsed as ConversationStreamDoneData)
     } else if (currentEvent === 'conversation.error') {
       handlers.onError?.(parsed as { error: string })
     } else if (currentEvent === 'conversation.message') {
-      handlers.onConversationMessage?.(parsed as { conversation_id: string; type: string; content: string })
+      handlers.onConversationMessage?.(parsed as { chat_id: string; type: string; content: string })
     } else if (currentEvent === 'conversation.input') {
-      handlers.onConversationInput?.(parsed as { conversation_id: string; question: string; input_type: string; options?: string[]; placeholder?: string })
+      handlers.onConversationInput?.(parsed as { chat_id: string; question: string; input_type: string; options?: string[]; placeholder?: string })
     }
     currentEvent = ''
   }
@@ -540,5 +540,42 @@ export async function resetUserPassword(userId: string, payload: UserResetPasswo
 
 export async function executeTerminalCommand(payload: TerminalExecutePayload) {
   const { data } = await http.post<ApiResponse<TerminalExecuteData>>('/api/v1/terminal/execute', payload)
+  return data.data
+}
+
+export async function getTools(enabledOnly = false) {
+  const { data } = await http.get<ApiResponse<import('@/types/tool').Tool[]>>('/api/v1/tools', {
+    params: { enabled_only: enabledOnly },
+  })
+  return data.data
+}
+
+export async function getTool(toolId: string) {
+  const { data } = await http.get<ApiResponse<import('@/types/tool').Tool>>(`/api/v1/tools/${toolId}`)
+  return data.data
+}
+
+export async function createTool(payload: import('@/types/tool').ToolCreate) {
+  const { data } = await http.post<ApiResponse<import('@/types/tool').Tool>>('/api/v1/tools', payload)
+  return data.data
+}
+
+export async function updateTool(toolId: string, payload: import('@/types/tool').ToolUpdate) {
+  const { data } = await http.put<ApiResponse<import('@/types/tool').Tool>>(`/api/v1/tools/${toolId}`, payload)
+  return data.data
+}
+
+export async function deleteTool(toolId: string) {
+  const { data } = await http.delete<ApiResponse<boolean>>(`/api/v1/tools/${toolId}`)
+  return data.data
+}
+
+export async function executeTool(toolId: string, arguments_: Record<string, unknown>) {
+  const { data } = await http.post<ApiResponse<import('@/types/tool').ToolExecuteResult>>(`/api/v1/tools/${toolId}/execute`, { arguments: arguments_ })
+  return data.data
+}
+
+export async function getOpenAIToolsSchema() {
+  const { data } = await http.get<ApiResponse<import('@/types/tool').OpenAITool[]>>('/api/v1/tools/schema/openai')
   return data.data
 }

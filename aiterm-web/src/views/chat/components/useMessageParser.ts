@@ -8,6 +8,36 @@ export type ExecuteStructuredMessage = {
   command?: string
   question?: string
   options?: string[]
+  output?: string
+  status?: string
+  index?: number
+}
+
+export type StepMessage = {
+  id: string
+  index: number
+  title: string
+  command: string
+  status: string
+  output?: string
+  createdAt: string
+}
+
+export type MergedMessage = ChatMessage & {
+  mergedType?: 'step-with-output'
+  stepData?: StepMessage
+}
+
+function parseJsonContent(content: string): Record<string, unknown> | null {
+  try {
+    const parsed = JSON.parse(content)
+    if (typeof parsed === 'object' && parsed !== null) {
+      return parsed
+    }
+  } catch {
+    // JSON 解析失败
+  }
+  return null
 }
 
 export type UserInputResponse = {
@@ -28,6 +58,18 @@ export function getMessageKind(message: ChatMessage): ExecuteStructuredMessage |
       case 'plan':
         return { kind: 'plan', title: '步骤规划', body: message.content.replace(/^步骤规划\n?/, '') }
       case 'step':
+        const jsonStep = parseJsonContent(message.content)
+        if (jsonStep && typeof jsonStep.index === 'number' && typeof jsonStep.title === 'string') {
+          return {
+            kind: 'step-start',
+            stepLabel: `第 ${jsonStep.index + 1} 步`,
+            title: jsonStep.title,
+            command: typeof jsonStep.command === 'string' ? jsonStep.command : '',
+            status: typeof jsonStep.status === 'string' ? jsonStep.status : 'executing',
+            output: typeof jsonStep.output === 'string' ? jsonStep.output : '',
+            index: jsonStep.index,
+          }
+        }
         const stepMatch = message.content.match(/^开始执行第\s*(\d+)\s*步[:：]\s*(.+?)\n命令[:：]\s*([\s\S]+)$/)
         if (stepMatch) {
           return {
@@ -41,6 +83,15 @@ export function getMessageKind(message: ChatMessage): ExecuteStructuredMessage |
       case 'step_result':
         return { kind: 'step-result', body: message.content }
       case 'output':
+        const jsonOutput = parseJsonContent(message.content)
+        if (jsonOutput && typeof jsonOutput.output === 'string') {
+          return {
+            kind: 'output',
+            body: jsonOutput.output,
+            command: typeof jsonOutput.command === 'string' ? jsonOutput.command : undefined,
+            output: jsonOutput.output,
+          }
+        }
         return { kind: 'output', body: message.content }
       case 'error':
         return { kind: 'error', title: '错误', body: message.content }

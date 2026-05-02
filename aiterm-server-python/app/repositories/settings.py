@@ -183,6 +183,7 @@ CONFIG_KEYS = [
     "execution_command_whitelist",
     "sandbox_paths",
     "sandbox_rules_prompt",
+    "llm_debug_logging",
 ]
 
 DEFAULT_VALUES = {
@@ -190,6 +191,7 @@ DEFAULT_VALUES = {
     "execution_command_blacklist": "[]",
     "execution_command_whitelist": "[]",
     "sandbox_paths": "[]",
+    "llm_debug_logging": "false",
 }
 
 
@@ -223,6 +225,7 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
                 "execution_command_whitelist": json.dumps(settings.execution_command_whitelist),
                 "sandbox_paths": json.dumps(settings.sandbox_paths),
                 "sandbox_rules_prompt": settings.sandbox_rules_prompt,
+                "llm_debug_logging": "true" if settings.llm_debug_logging else "false",
             }
 
             for key, value in data.items():
@@ -277,6 +280,9 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
         except:
             chat_history_limit = 12
 
+        llm_debug_logging = get_value(
+            "llm_debug_logging", "false").lower() == "true"
+
         return GlobalSettings(
             intent_detection_prompt=get_value("intent_detection_prompt"),
             chat_system_prompt=get_value("chat_system_prompt"),
@@ -297,6 +303,7 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
             execution_command_whitelist=whitelist,
             sandbox_paths=sandbox_paths,
             sandbox_rules_prompt=get_value("sandbox_rules_prompt"),
+            llm_debug_logging=llm_debug_logging,
         )
 
 

@@ -4,6 +4,7 @@ from app.db.chat import ChatModel
 from app.db.session import SessionModel
 from app.db.user import UserModel
 from app.db.node import NodeModel
+from app.db.tool import ToolModel
 import os
 import logging
 from typing import List, Set, Dict, Any, Type
@@ -45,6 +46,7 @@ ALL_MODELS: List[Type[Base]] = [
     ModelConfigModel,
     SystemDictModel,
     AuthSettingsModel,
+    ToolModel,
 ]
 
 
