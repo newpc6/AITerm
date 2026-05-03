@@ -496,10 +496,12 @@ export function useChatPage() {
   function appendAssistantDelta(delta: string) {
     const placeholder = ensureAssistantPlaceholder()
     answerBuffer.value += delta
+    placeholder.content = answerBuffer.value
     if (reasoningBuffer.value) {
-      placeholder.content = `<thinking>\n${reasoningBuffer.value}\n</thinking>\n\n${answerBuffer.value}`
-    } else {
-      placeholder.content = answerBuffer.value
+      placeholder.metadata = {
+        ...placeholder.metadata,
+        thinking: reasoningBuffer.value,
+      }
     }
   }
 
@@ -510,31 +512,26 @@ export function useChatPage() {
     isReasoningActive.value = true
     reasoningBuffer.value += delta
     const placeholder = ensureAssistantPlaceholder()
-    placeholder.content = `<thinking>\n${reasoningBuffer.value}\n</thinking>\n\n${answerBuffer.value}`
+    placeholder.content = answerBuffer.value
+    placeholder.metadata = {
+      ...placeholder.metadata,
+      thinking: reasoningBuffer.value,
+    }
   }
 
   function finalizeAssistantStream(reply: string, toolCalls?: unknown[], thinking?: string) {
     const placeholder = ensureAssistantPlaceholder()
     const thinkingContent = thinking || reasoningBuffer.value
+    const duration = reasoningDuration.value
+    placeholder.content = reply
     if (thinkingContent) {
-      placeholder.content = JSON.stringify({
-        answer: reply,
-        thinking: thinkingContent,
-        reasoning_duration: reasoningDuration.value,
-        tool_calls: toolCalls || null,
-      })
       placeholder.metadata = {
         ...placeholder.metadata,
         thinking: thinkingContent,
-        reasoning_duration: reasoningDuration.value,
-      }
-    } else {
-      placeholder.content = JSON.stringify({
-        answer: reply,
+        reasoning_duration: duration || 0,
         tool_calls: toolCalls || null,
-      })
-    }
-    if (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0) {
+      }
+    } else if (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0) {
       placeholder.metadata = {
         ...placeholder.metadata,
         tool_calls: toolCalls,

@@ -1,6 +1,8 @@
 import json
 import asyncio
 import logging
+import os
+import re
 from typing import List, Dict, Any, Optional
 
 from app.repositories.tool import ToolRepository
@@ -10,8 +12,39 @@ logger = logging.getLogger("aiterm")
 
 
 class ToolService:
-    def __init__(self):
+    def __init__(self, sandbox_paths: List[str] = None):
         self.tool_repo = ToolRepository()
+        self.sandbox_paths = sandbox_paths or []
+
+    def validate_path_in_sandbox(self, path: str) -> bool:
+        if not self.sandbox_paths:
+            return True
+
+        abs_path = os.path.abspath(path).lower()
+        for sandbox_path in self.sandbox_paths:
+            sandbox_abs = os.path.abspath(sandbox_path).lower()
+            if abs_path.startswith(sandbox_abs):
+                return True
+        return False
+
+    async def check_arguments_safety(self, tool: Tool, arguments: Dict[str, Any]) -> tuple[bool, str]:
+        if not tool.sandbox_only:
+            return True, ""
+
+        path_keys = ["path", "file_path", "dir_path",
+                     "directory", "source", "destination", "target", "save_path"]
+
+        for key in path_keys:
+            if key in arguments:
+                path = arguments[key]
+                if not self.validate_path_in_sandbox(path):
+                    return False, f"路径 '{path}' 不在沙盒允许范围内，操作被拒绝。"
+
+        delete_keywords = ["delete", "remove", "unlink", "rmdir"]
+        if any(kw in tool.name.lower() for kw in delete_keywords):
+            return True, "DELETE_CONFIRM_REQUIRED"
+
+        return True, ""
 
     async def get_openai_tools(self) -> List[Dict[str, Any]]:
         tools = await self.tool_repo.list_tools(enabled_only=True)
@@ -37,6 +70,14 @@ class ToolService:
 
         if not tool.enabled:
             raise ValueError(f"Tool '{name}' is disabled")
+
+        is_safe, message = await self.check_arguments_safety(tool, arguments)
+        if not is_safe:
+            raise ValueError(message)
+
+        if message == "DELETE_CONFIRM_REQUIRED":
+            logger.warning(
+                f"Delete operation requires confirmation: {name} with arguments {arguments}")
 
         try:
             result = await self._execute_tool_code(tool, arguments)

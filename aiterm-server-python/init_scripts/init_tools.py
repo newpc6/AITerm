@@ -7,16 +7,15 @@
     python scripts/init_tools.py
 """
 
+from app.db import async_session_maker, engine
+from app.db.base import Base
+from app.db.tool import ToolModel
+from sqlalchemy import select
 import asyncio
 import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from app.db import async_session_maker, engine
-from app.db.tool import ToolModel
-from app.db.base import Base
-from sqlalchemy import select
 
 
 DEFAULT_TOOLS = [
@@ -37,488 +36,554 @@ DEFAULT_TOOLS = [
         "weekday": ["周一", "周二", "周三", "周四", "周五", "周六", "周日"][now.weekday()]
     }
 ''',
-        "enabled": True
+        "enabled": True,
+        "sandbox_only": False
     },
     {
-        "name": "calculate",
-        "display_name": "数学计算",
-        "description": "执行数学表达式计算，支持基本运算和常用数学函数",
+        "name": "read_file",
+        "display_name": "读取文件",
+        "description": "读取指定路径的文件内容，支持文本文件",
         "code": '''def execute(arguments):
     """
-    执行数学计算
+    读取文件内容
     arguments:
-        expression: 数学表达式，如 "2 + 3 * 4"
+        path: 文件路径
+        encoding: 编码格式，默认utf-8
+        lines: 可选，读取指定行数
     """
-    import math
-    expression = arguments.get("expression", "")
-    if not expression:
-        return {"success": False, "error": "请提供数学表达式"}
+    import os
     
-    allowed_names = {
-        "abs": abs, "round": round, "min": min, "max": max,
-        "sum": sum, "pow": pow, "sqrt": math.sqrt,
-        "sin": math.sin, "cos": math.cos, "tan": math.tan,
-        "log": math.log, "log10": math.log10, "exp": math.exp,
-        "pi": math.pi, "e": math.e
-    }
+    path = arguments.get("path", "")
+    encoding = arguments.get("encoding", "utf-8")
+    max_lines = arguments.get("lines", None)
+    
+    if not path:
+        return {"success": False, "error": "请提供文件路径"}
+    
+    if not os.path.exists(path):
+        return {"success": False, "error": f"文件不存在: {path}"}
+    
+    if not os.path.isfile(path):
+        return {"success": False, "error": f"路径不是文件: {path}"}
     
     try:
-        result = eval(expression, {"__builtins__": {}}, allowed_names)
-        return {"success": True, "expression": expression, "result": result}
-    except Exception as e:
-        return {"success": False, "error": f"计算错误: {str(e)}"}
-''',
-        "enabled": True
-    },
-    {
-        "name": "generate_uuid",
-        "display_name": "生成UUID",
-        "description": "生成UUID通用唯一识别码",
-        "code": '''def execute(arguments):
-    """
-    生成UUID
-    arguments:
-        count: 生成数量，默认1个
-    """
-    import uuid
-    count = arguments.get("count", 1)
-    if count < 1:
-        count = 1
-    if count > 100:
-        count = 100
-    
-    uuids = [str(uuid.uuid4()) for _ in range(count)]
-    return {
-        "success": True,
-        "count": len(uuids),
-        "uuids": uuids
-    }
-''',
-        "enabled": True
-    },
-    {
-        "name": "encode_decode",
-        "display_name": "编解码转换",
-        "description": "字符串编解码转换，支持base64、url、html等",
-        "code": '''def execute(arguments):
-    """
-    编解码转换
-    arguments:
-        text: 要转换的文本
-        operation: 操作类型 (base64_encode, base64_decode, url_encode, url_decode, html_escape, html_unescape)
-    """
-    import base64
-    import urllib.parse
-    import html
-    
-    text = arguments.get("text", "")
-    operation = arguments.get("operation", "base64_encode")
-    
-    try:
-        if operation == "base64_encode":
-            result = base64.b64encode(text.encode()).decode()
-        elif operation == "base64_decode":
-            result = base64.b64decode(text.encode()).decode()
-        elif operation == "url_encode":
-            result = urllib.parse.quote(text)
-        elif operation == "url_decode":
-            result = urllib.parse.unquote(text)
-        elif operation == "html_escape":
-            result = html.escape(text)
-        elif operation == "html_unescape":
-            result = html.unescape(text)
-        else:
-            return {"success": False, "error": f"未知操作: {operation}"}
+        with open(path, "r", encoding=encoding) as f:
+            if max_lines:
+                lines = []
+                for i, line in enumerate(f):
+                    if i >= max_lines:
+                        break
+                    lines.append(line)
+                content = "".join(lines)
+            else:
+                content = f.read()
         
-        return {"success": True, "operation": operation, "result": result}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-''',
-        "enabled": True
-    },
-    {
-        "name": "json_format",
-        "display_name": "JSON格式化",
-        "description": "JSON字符串格式化和验证",
-        "code": '''def execute(arguments):
-    """
-    JSON格式化
-    arguments:
-        json_string: JSON字符串
-        indent: 缩进空格数，默认2
-    """
-    import json
-    
-    json_string = arguments.get("json_string", "")
-    indent = arguments.get("indent", 2)
-    
-    try:
-        parsed = json.loads(json_string)
-        formatted = json.dumps(parsed, indent=indent, ensure_ascii=False)
+        file_size = os.path.getsize(path)
+        
         return {
             "success": True,
-            "formatted": formatted,
-            "type": type(parsed).__name__,
-            "size": len(parsed) if isinstance(parsed, (list, dict)) else None
+            "path": path,
+            "content": content,
+            "size": file_size,
+            "lines": content.count("\\n") + 1
         }
-    except json.JSONDecodeError as e:
-        return {"success": False, "error": f"JSON解析错误: {str(e)}"}
-''',
-        "enabled": True
-    },
-    {
-        "name": "generate_password",
-        "display_name": "生成密码",
-        "description": "生成随机密码，可指定长度和字符类型",
-        "code": '''def execute(arguments):
-    """
-    生成随机密码
-    arguments:
-        length: 密码长度，默认16
-        include_uppercase: 包含大写字母，默认True
-        include_lowercase: 包含小写字母，默认True
-        include_digits: 包含数字，默认True
-        include_symbols: 包含特殊符号，默认False
-    """
-    import random
-    import string
-    
-    length = arguments.get("length", 16)
-    if length < 4:
-        length = 4
-    if length > 128:
-        length = 128
-    
-    chars = ""
-    if arguments.get("include_lowercase", True):
-        chars += string.ascii_lowercase
-    if arguments.get("include_uppercase", True):
-        chars += string.ascii_uppercase
-    if arguments.get("include_digits", True):
-        chars += string.digits
-    if arguments.get("include_symbols", False):
-        chars += "!@#$%^&*()_+-=[]{}|;:,.<>?"
-    
-    if not chars:
-        chars = string.ascii_letters + string.digits
-    
-    password = "".join(random.choice(chars) for _ in range(length))
-    return {
-        "success": True,
-        "password": password,
-        "length": length
-    }
-''',
-        "enabled": True
-    },
-    {
-        "name": "text_statistics",
-        "display_name": "文本统计",
-        "description": "统计文本的字符数、单词数、行数等信息",
-        "code": '''def execute(arguments):
-    """
-    文本统计
-    arguments:
-        text: 要统计的文本
-    """
-    import re
-    
-    text = arguments.get("text", "")
-    
-    lines = text.split("\\n") if text else []
-    words = re.findall(r"\\b\\w+\\b", text)
-    
-    char_count = len(text)
-    char_count_no_space = len(text.replace(" ", "").replace("\\n", "").replace("\\t", ""))
-    word_count = len(words)
-    line_count = len(lines)
-    
-    chinese_chars = len(re.findall(r"[\\u4e00-\\u9fff]", text))
-    english_chars = len(re.findall(r"[a-zA-Z]", text))
-    digits = len(re.findall(r"\\d", text))
-    
-    return {
-        "success": True,
-        "statistics": {
-            "characters": char_count,
-            "characters_no_space": char_count_no_space,
-            "words": word_count,
-            "lines": line_count,
-            "chinese_characters": chinese_chars,
-            "english_characters": english_chars,
-            "digits": digits
-        }
-    }
-''',
-        "enabled": True
-    },
-    {
-        "name": "color_converter",
-        "display_name": "颜色转换",
-        "description": "颜色格式转换，支持HEX、RGB、HSL等格式",
-        "code": '''def execute(arguments):
-    """
-    颜色格式转换
-    arguments:
-        color: 颜色值
-        from_format: 源格式 (hex, rgb, hsl)
-        to_format: 目标格式 (hex, rgb, hsl)
-    """
-    import re
-    
-    color = arguments.get("color", "")
-    from_format = arguments.get("from_format", "hex")
-    to_format = arguments.get("to_format", "rgb")
-    
-    def hex_to_rgb(hex_color):
-        hex_color = hex_color.lstrip("#")
-        return tuple(int(hex_color[i:i+2], 16) for i in (0, 2, 4))
-    
-    def rgb_to_hex(r, g, b):
-        return f"#{r:02x}{g:02x}{b:02x}"
-    
-    def rgb_to_hsl(r, g, b):
-        r, g, b = r/255, g/255, b/255
-        max_c, min_c = max(r, g, b), min(r, g, b)
-        l = (max_c + min_c) / 2
-        if max_c == min_c:
-            h = s = 0
-        else:
-            d = max_c - min_c
-            s = d / (2 - max_c - min_c) if l > 0.5 else d / (max_c + min_c)
-            if max_c == r:
-                h = (g - b) / d + (6 if g < b else 0)
-            elif max_c == g:
-                h = (b - r) / d + 2
-            else:
-                h = (r - g) / d + 4
-            h /= 6
-        return round(h * 360), round(s * 100), round(l * 100)
-    
-    try:
-        if from_format == "hex":
-            r, g, b = hex_to_rgb(color)
-        elif from_format == "rgb":
-            match = re.match(r"rgb\\((\\d+),\\s*(\\d+),\\s*(\\d+)\\)", color)
-            if not match:
-                return {"success": False, "error": "无效的RGB格式"}
-            r, g, b = int(match.group(1)), int(match.group(2)), int(match.group(3))
-        else:
-            return {"success": False, "error": f"不支持的源格式: {from_format}"}
-        
-        if to_format == "hex":
-            result = rgb_to_hex(r, g, b)
-        elif to_format == "rgb":
-            result = f"rgb({r}, {g}, {b})"
-        elif to_format == "hsl":
-            h, s, l = rgb_to_hsl(r, g, b)
-            result = f"hsl({h}, {s}%, {l}%)"
-        else:
-            return {"success": False, "error": f"不支持的目标格式: {to_format}"}
-        
-        return {"success": True, "original": color, "converted": result}
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": f"读取文件失败: {str(e)}"}
 ''',
-        "enabled": True
+        "enabled": True,
+        "sandbox_only": True
     },
     {
-        "name": "regex_match",
-        "display_name": "正则匹配",
-        "description": "使用正则表达式匹配文本",
+        "name": "write_file",
+        "display_name": "写入文件",
+        "description": "将内容写入指定路径的文件，支持创建和覆盖",
         "code": '''def execute(arguments):
     """
-    正则表达式匹配
+    写入文件
     arguments:
-        pattern: 正则表达式
-        text: 要匹配的文本
-        flags: 可选标志 (ignore_case, multiline, dotall)
+        path: 文件路径
+        content: 要写入的内容
+        mode: 写入模式，write(覆盖)或append(追加)，默认write
+        encoding: 编码格式，默认utf-8
     """
-    import re
+    import os
     
-    pattern = arguments.get("pattern", "")
-    text = arguments.get("text", "")
-    flags = arguments.get("flags", [])
+    path = arguments.get("path", "")
+    content = arguments.get("content", "")
+    mode = arguments.get("mode", "write")
+    encoding = arguments.get("encoding", "utf-8")
     
-    re_flags = 0
-    if "ignore_case" in flags:
-        re_flags |= re.IGNORECASE
-    if "multiline" in flags:
-        re_flags |= re.MULTILINE
-    if "dotall" in flags:
-        re_flags |= re.DOTALL
+    if not path:
+        return {"success": False, "error": "请提供文件路径"}
     
     try:
-        matches = re.findall(pattern, text, re_flags)
-        groups = []
-        for match in re.finditer(pattern, text, re_flags):
-            groups.append({
-                "match": match.group(),
-                "start": match.start(),
-                "end": match.end(),
-                "groups": match.groups() if match.groups() else None
+        dir_path = os.path.dirname(path)
+        if dir_path and not os.path.exists(dir_path):
+            os.makedirs(dir_path, exist_ok=True)
+        
+        write_mode = "a" if mode == "append" else "w"
+        with open(path, write_mode, encoding=encoding) as f:
+            f.write(content)
+        
+        file_size = os.path.getsize(path)
+        
+        return {
+            "success": True,
+            "path": path,
+            "size": file_size,
+            "mode": mode
+        }
+    except Exception as e:
+        return {"success": False, "error": f"写入文件失败: {str(e)}"}
+''',
+        "enabled": True,
+        "sandbox_only": True
+    },
+    {
+        "name": "list_directory",
+        "display_name": "列出目录",
+        "description": "列出指定目录下的文件和子目录",
+        "code": '''def execute(arguments):
+    """
+    列出目录内容
+    arguments:
+        path: 目录路径
+        pattern: 可选，文件匹配模式，如 *.txt
+        show_hidden: 是否显示隐藏文件，默认False
+    """
+    import os
+    import fnmatch
+    
+    path = arguments.get("path", "")
+    pattern = arguments.get("pattern", "*")
+    show_hidden = arguments.get("show_hidden", False)
+    
+    if not path:
+        return {"success": False, "error": "请提供目录路径"}
+    
+    if not os.path.exists(path):
+        return {"success": False, "error": f"目录不存在: {path}"}
+    
+    if not os.path.isdir(path):
+        return {"success": False, "error": f"路径不是目录: {path}"}
+    
+    try:
+        items = []
+        for item in os.listdir(path):
+            if not show_hidden and item.startswith("."):
+                continue
+            if not fnmatch.fnmatch(item, pattern):
+                continue
+            
+            item_path = os.path.join(path, item)
+            is_dir = os.path.isdir(item_path)
+            size = 0 if is_dir else os.path.getsize(item_path)
+            mtime = os.path.getmtime(item_path)
+            
+            items.append({
+                "name": item,
+                "type": "directory" if is_dir else "file",
+                "size": size,
+                "modified": mtime
             })
         
-        return {
-            "success": True,
-            "match_count": len(matches),
-            "matches": matches[:20],
-            "details": groups[:10]
-        }
-    except re.error as e:
-        return {"success": False, "error": f"正则表达式错误: {str(e)}"}
-''',
-        "enabled": True
-    },
-    {
-        "name": "unit_converter",
-        "display_name": "单位转换",
-        "description": "常用单位转换，支持长度、重量、温度等",
-        "code": '''def execute(arguments):
-    """
-    单位转换
-    arguments:
-        value: 数值
-        from_unit: 源单位
-        to_unit: 目标单位
-        category: 类别 (length, weight, temperature)
-    """
-    value = arguments.get("value", 0)
-    from_unit = arguments.get("from_unit", "").lower()
-    to_unit = arguments.get("to_unit", "").lower()
-    category = arguments.get("category", "length")
-    
-    conversions = {
-        "length": {
-            "m": 1, "meter": 1, "meters": 1,
-            "km": 1000, "kilometer": 1000, "kilometers": 1000,
-            "cm": 0.01, "centimeter": 0.01, "centimeters": 0.01,
-            "mm": 0.001, "millimeter": 0.001, "millimeters": 0.001,
-            "mi": 1609.344, "mile": 1609.344, "miles": 1609.344,
-            "ft": 0.3048, "foot": 0.3048, "feet": 0.3048,
-            "in": 0.0254, "inch": 0.0254, "inches": 0.0254,
-        },
-        "weight": {
-            "kg": 1, "kilogram": 1, "kilograms": 1,
-            "g": 0.001, "gram": 0.001, "grams": 0.001,
-            "mg": 0.000001, "milligram": 0.000001, "milligrams": 0.000001,
-            "lb": 0.453592, "pound": 0.453592, "pounds": 0.453592,
-            "oz": 0.0283495, "ounce": 0.0283495, "ounces": 0.0283495,
-        }
-    }
-    
-    try:
-        if category == "temperature":
-            if from_unit in ["c", "celsius"] and to_unit in ["f", "fahrenheit"]:
-                result = value * 9/5 + 32
-            elif from_unit in ["f", "fahrenheit"] and to_unit in ["c", "celsius"]:
-                result = (value - 32) * 5/9
-            elif from_unit in ["c", "celsius"] and to_unit in ["k", "kelvin"]:
-                result = value + 273.15
-            elif from_unit in ["k", "kelvin"] and to_unit in ["c", "celsius"]:
-                result = value - 273.15
-            else:
-                return {"success": False, "error": "不支持的温度转换"}
-        else:
-            if category not in conversions:
-                return {"success": False, "error": f"不支持的类别: {category}"}
-            
-            units = conversions[category]
-            if from_unit not in units or to_unit not in units:
-                return {"success": False, "error": "不支持的单位"}
-            
-            base_value = value * units[from_unit]
-            result = base_value / units[to_unit]
+        items.sort(key=lambda x: (x["type"] == "file", x["name"].lower()))
         
         return {
             "success": True,
-            "original": f"{value} {from_unit}",
-            "converted": f"{round(result, 6)} {to_unit}"
+            "path": path,
+            "items": items,
+            "count": len(items)
         }
     except Exception as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": f"列出目录失败: {str(e)}"}
 ''',
-        "enabled": True
+        "enabled": True,
+        "sandbox_only": True
     },
     {
-        "name": "hash_generator",
-        "display_name": "哈希生成",
-        "description": "生成字符串的哈希值，支持MD5、SHA1、SHA256等",
+        "name": "delete_file",
+        "display_name": "删除文件",
+        "description": "删除指定的文件",
         "code": '''def execute(arguments):
     """
-    哈希值生成
+    删除文件
     arguments:
-        text: 要哈希的文本
-        algorithm: 算法 (md5, sha1, sha256, sha512)
+        path: 文件路径
     """
-    import hashlib
+    import os
+    import shutil
     
-    text = arguments.get("text", "")
-    algorithm = arguments.get("algorithm", "sha256").lower()
+    path = arguments.get("path", "")
     
-    algorithms = {
-        "md5": hashlib.md5,
-        "sha1": hashlib.sha1,
-        "sha256": hashlib.sha256,
-        "sha512": hashlib.sha512
-    }
+    if not path:
+        return {"success": False, "error": "请提供文件路径"}
     
-    if algorithm not in algorithms:
-        return {"success": False, "error": f"不支持的算法: {algorithm}"}
+    if not os.path.exists(path):
+        return {"success": False, "error": f"文件不存在: {path}"}
     
-    hash_obj = algorithms[algorithm](text.encode())
-    result = hash_obj.hexdigest()
-    
-    return {
-        "success": True,
-        "algorithm": algorithm,
-        "hash": result,
-        "length": len(result)
-    }
+    try:
+        if os.path.isfile(path):
+            os.remove(path)
+            return {"success": True, "path": path, "type": "file", "action": "deleted"}
+        elif os.path.isdir(path):
+            shutil.rmtree(path)
+            return {"success": True, "path": path, "type": "directory", "action": "deleted"}
+        else:
+            return {"success": False, "error": "未知的文件类型"}
+    except Exception as e:
+        return {"success": False, "error": f"删除失败: {str(e)}"}
 ''',
-        "enabled": True
+        "enabled": True,
+        "sandbox_only": True
     },
     {
-        "name": "ip_lookup",
-        "display_name": "IP地址查询",
-        "description": "查询IP地址的基本信息（模拟数据）",
+        "name": "copy_file",
+        "display_name": "复制文件",
+        "description": "复制文件到指定路径",
         "code": '''def execute(arguments):
     """
-    IP地址查询（模拟）
+    复制文件
     arguments:
-        ip: IP地址
+        source: 源文件路径
+        destination: 目标路径
     """
-    import re
+    import os
+    import shutil
     
-    ip = arguments.get("ip", "")
+    source = arguments.get("source", "")
+    destination = arguments.get("destination", "")
     
-    ipv4_pattern = r"^(\\d{1,3}\\.){3}\\d{1,3}$"
-    if not re.match(ipv4_pattern, ip):
-        return {"success": False, "error": "无效的IP地址格式"}
+    if not source or not destination:
+        return {"success": False, "error": "请提供源路径和目标路径"}
     
-    octets = [int(x) for x in ip.split(".")]
-    if any(x > 255 for x in octets):
-        return {"success": False, "error": "无效的IP地址"}
+    if not os.path.exists(source):
+        return {"success": False, "error": f"源文件不存在: {source}"}
     
-    is_private = (
-        octets[0] == 10 or
-        (octets[0] == 172 and 16 <= octets[1] <= 31) or
-        (octets[0] == 192 and octets[1] == 168) or
-        octets[0] == 127
-    )
-    
-    ip_class = "私有IP" if is_private else "公网IP"
-    
-    return {
-        "success": True,
-        "ip": ip,
-        "type": "IPv4",
-        "class": ip_class,
-        "is_private": is_private,
-        "binary": ".".join(format(x, "08b") for x in octets)
-    }
+    try:
+        dest_dir = os.path.dirname(destination)
+        if dest_dir and not os.path.exists(dest_dir):
+            os.makedirs(dest_dir, exist_ok=True)
+        
+        if os.path.isdir(source):
+            shutil.copytree(source, destination)
+        else:
+            shutil.copy2(source, destination)
+        
+        return {
+            "success": True,
+            "source": source,
+            "destination": destination,
+            "size": os.path.getsize(destination) if os.path.isfile(destination) else None
+        }
+    except Exception as e:
+        return {"success": False, "error": f"复制失败: {str(e)}"}
 ''',
-        "enabled": True
+        "enabled": True,
+        "sandbox_only": True
+    },
+    {
+        "name": "move_file",
+        "display_name": "移动文件",
+        "description": "移动或重命名文件",
+        "code": '''def execute(arguments):
+    """
+    移动文件
+    arguments:
+        source: 源文件路径
+        destination: 目标路径
+    """
+    import os
+    import shutil
+    
+    source = arguments.get("source", "")
+    destination = arguments.get("destination", "")
+    
+    if not source or not destination:
+        return {"success": False, "error": "请提供源路径和目标路径"}
+    
+    if not os.path.exists(source):
+        return {"success": False, "error": f"源文件不存在: {source}"}
+    
+    try:
+        dest_dir = os.path.dirname(destination)
+        if dest_dir and not os.path.exists(dest_dir):
+            os.makedirs(dest_dir, exist_ok=True)
+        
+        shutil.move(source, destination)
+        
+        return {
+            "success": True,
+            "source": source,
+            "destination": destination
+        }
+    except Exception as e:
+        return {"success": False, "error": f"移动失败: {str(e)}"}
+''',
+        "enabled": True,
+        "sandbox_only": True
+    },
+    {
+        "name": "http_request",
+        "display_name": "HTTP请求",
+        "description": "发送HTTP请求，支持GET、POST等方法",
+        "code": '''def execute(arguments):
+    """
+    发送HTTP请求
+    arguments:
+        url: 请求URL
+        method: 请求方法，默认GET
+        headers: 请求头，字典格式
+        params: URL参数，字典格式
+        data: 请求体数据
+        json_data: JSON格式的请求体
+        timeout: 超时时间(秒)，默认30
+    """
+    import urllib.request
+    import urllib.parse
+    import json
+    
+    url = arguments.get("url", "")
+    method = arguments.get("method", "GET").upper()
+    headers = arguments.get("headers", {})
+    params = arguments.get("params", {})
+    data = arguments.get("data")
+    json_data = arguments.get("json_data")
+    timeout = arguments.get("timeout", 30)
+    
+    if not url:
+        return {"success": False, "error": "请提供请求URL"}
+    
+    try:
+        if params:
+            url = f"{url}?{urllib.parse.urlencode(params)}"
+        
+        request_data = None
+        if json_data:
+            request_data = json.dumps(json_data).encode("utf-8")
+            headers["Content-Type"] = "application/json"
+        elif data:
+            request_data = data.encode("utf-8") if isinstance(data, str) else data
+        
+        req = urllib.request.Request(url, data=request_data, headers=headers, method=method)
+        
+        with urllib.request.urlopen(req, timeout=timeout) as response:
+            response_body = response.read().decode("utf-8")
+            response_headers = dict(response.headers)
+            status_code = response.status
+            
+            try:
+                response_json = json.loads(response_body)
+            except:
+                response_json = None
+        
+        return {
+            "success": True,
+            "status_code": status_code,
+            "headers": response_headers,
+            "body": response_body,
+            "json": response_json
+        }
+    except urllib.error.HTTPError as e:
+        return {
+            "success": False,
+            "error": f"HTTP错误: {e.code} {e.reason}",
+            "status_code": e.code
+        }
+    except urllib.error.URLError as e:
+        return {"success": False, "error": f"URL错误: {str(e.reason)}"}
+    except Exception as e:
+        return {"success": False, "error": f"请求失败: {str(e)}"}
+''',
+        "enabled": True,
+        "sandbox_only": False
+    },
+    {
+        "name": "download_file",
+        "display_name": "下载文件",
+        "description": "从URL下载文件到本地",
+        "code": '''def execute(arguments):
+    """
+    下载文件
+    arguments:
+        url: 文件URL
+        save_path: 保存路径
+        filename: 可选，文件名，不指定则从URL提取
+        timeout: 超时时间(秒)，默认60
+    """
+    import os
+    import urllib.request
+    import urllib.parse
+    
+    url = arguments.get("url", "")
+    save_path = arguments.get("save_path", "")
+    filename = arguments.get("filename", "")
+    timeout = arguments.get("timeout", 60)
+    
+    if not url:
+        return {"success": False, "error": "请提供文件URL"}
+    
+    if not save_path:
+        return {"success": False, "error": "请提供保存路径"}
+    
+    try:
+        if not filename:
+            parsed = urllib.parse.urlparse(url)
+            filename = os.path.basename(parsed.path) or "downloaded_file"
+        
+        full_path = os.path.join(save_path, filename)
+        
+        if not os.path.exists(save_path):
+            os.makedirs(save_path, exist_ok=True)
+        
+        urllib.request.urlretrieve(url, full_path)
+        
+        file_size = os.path.getsize(full_path)
+        
+        return {
+            "success": True,
+            "url": url,
+            "path": full_path,
+            "filename": filename,
+            "size": file_size
+        }
+    except Exception as e:
+        return {"success": False, "error": f"下载失败: {str(e)}"}
+''',
+        "enabled": True,
+        "sandbox_only": True
+    },
+    {
+        "name": "create_directory",
+        "display_name": "创建目录",
+        "description": "创建目录，支持多级创建",
+        "code": '''def execute(arguments):
+    """
+    创建目录
+    arguments:
+        path: 目录路径
+    """
+    import os
+    
+    path = arguments.get("path", "")
+    
+    if not path:
+        return {"success": False, "error": "请提供目录路径"}
+    
+    try:
+        os.makedirs(path, exist_ok=True)
+        
+        return {
+            "success": True,
+            "path": path,
+            "created": True
+        }
+    except Exception as e:
+        return {"success": False, "error": f"创建目录失败: {str(e)}"}
+''',
+        "enabled": True,
+        "sandbox_only": True
+    },
+    {
+        "name": "get_file_info",
+        "display_name": "获取文件信息",
+        "description": "获取文件的详细信息，包括大小、修改时间等",
+        "code": '''def execute(arguments):
+    """
+    获取文件信息
+    arguments:
+        path: 文件路径
+    """
+    import os
+    from datetime import datetime
+    
+    path = arguments.get("path", "")
+    
+    if not path:
+        return {"success": False, "error": "请提供文件路径"}
+    
+    if not os.path.exists(path):
+        return {"success": False, "error": f"文件不存在: {path}"}
+    
+    try:
+        stat = os.stat(path)
+        
+        return {
+            "success": True,
+            "path": path,
+            "type": "directory" if os.path.isdir(path) else "file",
+            "size": stat.st_size,
+            "created": datetime.fromtimestamp(stat.st_ctime).isoformat(),
+            "modified": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+            "accessed": datetime.fromtimestamp(stat.st_atime).isoformat(),
+            "is_readable": os.access(path, os.R_OK),
+            "is_writable": os.access(path, os.W_OK),
+            "is_executable": os.access(path, os.X_OK)
+        }
+    except Exception as e:
+        return {"success": False, "error": f"获取文件信息失败: {str(e)}"}
+''',
+        "enabled": True,
+        "sandbox_only": True
+    },
+    {
+        "name": "search_files",
+        "display_name": "搜索文件",
+        "description": "在目录中搜索匹配的文件",
+        "code": '''def execute(arguments):
+    """
+    搜索文件
+    arguments:
+        path: 搜索目录
+        pattern: 文件名模式，支持通配符
+        recursive: 是否递归搜索，默认True
+        max_results: 最大结果数，默认100
+    """
+    import os
+    import fnmatch
+    
+    path = arguments.get("path", "")
+    pattern = arguments.get("pattern", "*")
+    recursive = arguments.get("recursive", True)
+    max_results = arguments.get("max_results", 100)
+    
+    if not path:
+        return {"success": False, "error": "请提供搜索目录"}
+    
+    if not os.path.exists(path):
+        return {"success": False, "error": f"目录不存在: {path}"}
+    
+    try:
+        matches = []
+        
+        if recursive:
+            for root, dirs, files in os.walk(path):
+                for name in files + dirs:
+                    if fnmatch.fnmatch(name.lower(), pattern.lower()):
+                        matches.append(os.path.join(root, name))
+                        if len(matches) >= max_results:
+                            break
+                if len(matches) >= max_results:
+                    break
+        else:
+            for name in os.listdir(path):
+                if fnmatch.fnmatch(name.lower(), pattern.lower()):
+                    matches.append(os.path.join(path, name))
+                    if len(matches) >= max_results:
+                        break
+        
+        return {
+            "success": True,
+            "path": path,
+            "pattern": pattern,
+            "matches": matches,
+            "count": len(matches)
+        }
+    except Exception as e:
+        return {"success": False, "error": f"搜索失败: {str(e)}"}
+''',
+        "enabled": True,
+        "sandbox_only": True
     }
 ]
 
@@ -550,7 +615,8 @@ async def init_tools():
                 display_name=tool_data["display_name"],
                 description=tool_data["description"],
                 code=tool_data["code"],
-                enabled=tool_data["enabled"]
+                enabled=tool_data["enabled"],
+                sandbox_only=tool_data.get("sandbox_only", False)
             )
             session.add(tool)
             print(

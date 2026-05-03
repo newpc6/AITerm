@@ -41,7 +41,8 @@ class ToolRepository:
         description: str = None,
         parameters: ToolParameters = None,
         config_schema: ToolConfigSchema = None,
-        enabled: bool = True
+        enabled: bool = True,
+        sandbox_only: bool = False
     ) -> Optional[Tool]:
         async with async_session_maker() as session:
             model = ToolModel(
@@ -51,7 +52,8 @@ class ToolRepository:
                 code=code,
                 parameters=parameters.model_dump_json() if parameters else None,
                 config_schema=config_schema.model_dump_json() if config_schema else None,
-                enabled=enabled
+                enabled=enabled,
+                sandbox_only=sandbox_only
             )
             session.add(model)
             await session.commit()
@@ -67,7 +69,8 @@ class ToolRepository:
         code: str = None,
         parameters: ToolParameters = None,
         config_schema: ToolConfigSchema = None,
-        enabled: bool = None
+        enabled: bool = None,
+        sandbox_only: bool = None
     ) -> Optional[Tool]:
         async with async_session_maker() as session:
             result = await session.execute(
@@ -91,6 +94,8 @@ class ToolRepository:
                 model.config_schema = config_schema.model_dump_json()
             if enabled is not None:
                 model.enabled = enabled
+            if sandbox_only is not None:
+                model.sandbox_only = sandbox_only
 
             await session.commit()
             return self._to_domain(model)
@@ -121,7 +126,8 @@ class ToolRepository:
         config_schema = None
         if model.config_schema:
             try:
-                config_schema = ToolConfigSchema(**json.loads(model.config_schema))
+                config_schema = ToolConfigSchema(
+                    **json.loads(model.config_schema))
             except:
                 pass
 
@@ -134,6 +140,7 @@ class ToolRepository:
             parameters=parameters,
             config_schema=config_schema,
             enabled=model.enabled,
+            sandbox_only=model.sandbox_only,
             created_at=model.created_at.isoformat() if model.created_at else None,
             updated_at=model.updated_at.isoformat() if model.updated_at else None
         )

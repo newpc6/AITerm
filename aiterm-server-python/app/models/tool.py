@@ -38,6 +38,7 @@ class Tool(BaseModel):
     parameters: Optional[ToolParameters] = None
     config_schema: Optional[ToolConfigSchema] = None
     enabled: bool = True
+    sandbox_only: bool = False
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -50,6 +51,7 @@ class ToolCreate(BaseModel):
     parameters: Optional[ToolParameters] = None
     config_schema: Optional[ToolConfigSchema] = None
     enabled: bool = True
+    sandbox_only: bool = False
 
 
 class ToolUpdate(BaseModel):
@@ -60,6 +62,7 @@ class ToolUpdate(BaseModel):
     parameters: Optional[ToolParameters] = None
     config_schema: Optional[ToolConfigSchema] = None
     enabled: Optional[bool] = None
+    sandbox_only: Optional[bool] = None
 
 
 class ToolExecuteRequest(BaseModel):

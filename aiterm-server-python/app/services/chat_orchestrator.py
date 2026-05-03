@@ -29,7 +29,7 @@ class ChatOrchestrator:
         self.settings = settings
         self.chat_repo = ChatRepository()
         self.message_repo = MessageRepository()
-        self.tool_service = ToolService()
+        self.tool_service = ToolService(sandbox_paths=settings.sandbox_paths)
 
     async def detect_intent(self, message: str, model_config: ModelConfig) -> str:
         response_text = ""
@@ -336,17 +336,31 @@ class ChatOrchestrator:
         chat_service = ChatService(
             model_config, self.settings.chat_system_prompt, self.settings.chat_history_limit)
 
+        system_prompt = chat_service._build_system_prompt(node)
+        tool_names = [t["function"]["name"] for t in tools]
+        if tool_names:
+            system_prompt += f"\n\n你可以使用以下工具来获取信息或执行操作：{', '.join(tool_names)}。当用户问题需要使用这些工具时，请直接调用工具，不要只是思考或提及工具。"
+
         messages = [
-            {"role": "system", "content": chat_service._build_system_prompt(node)}]
+            {"role": "system", "content": system_prompt}]
         for msg in history:
             role = msg.get("role", "")
             content = msg.get("content", "")
             if role in ["user", "assistant"]:
+                if role == "assistant" and content:
+                    try:
+                        parsed = json.loads(content)
+                        if isinstance(parsed, dict) and "answer" in parsed:
+                            content = parsed["answer"]
+                    except (json.JSONDecodeError, TypeError):
+                        pass
                 messages.append({"role": role, "content": content})
 
         messages.append({"role": "user", "content": message})
 
         total_start_time = datetime.now()
+        reasoning_start_time = None
+        reasoning_duration = 0
         full_response = []
         tool_calls_info = []
         reasoning_content = ""
@@ -356,23 +370,65 @@ class ChatOrchestrator:
             logger.info(
                 f"Tool calling iteration {iteration + 1}/{max_iterations}")
 
-            response = await llm_client.chat_with_tools(messages, tools)
-            tool_calls = response.get('tool_calls') or []
-            logger.info(
-                f"Tool response: content={response.get('content', '')[:100]}, tool_calls={len(tool_calls)}")
+            iteration_content = ""
+            iteration_reasoning = ""
+            iteration_tool_calls = None
+            iteration_reasoning_started = False
 
-            if response.get("content"):
-                full_response.append(response["content"])
-                yield {
-                    "event": "conversation.delta",
-                    "data": {
-                        "chat_id": chat_id,
-                        "delta": response["content"]
+            async for chunk in llm_client.chat_with_tools_stream(messages, tools):
+                if chunk["type"] == "reasoning":
+                    if not iteration_reasoning_started:
+                        reasoning_start_time = datetime.now()
+                        iteration_reasoning_started = True
+                    iteration_reasoning += chunk["delta"]
+                    reasoning_content += chunk["delta"]
+                    yield {
+                        "event": "conversation.reasoning",
+                        "data": {
+                            "chat_id": chat_id,
+                            "delta": chunk["delta"]
+                        }
                     }
-                }
+                elif chunk["type"] == "content":
+                    if iteration_reasoning_started and reasoning_start_time:
+                        reasoning_duration = (
+                            datetime.now() - reasoning_start_time).total_seconds()
+                        yield {
+                            "event": "conversation.reasoning_done",
+                            "data": {
+                                "chat_id": chat_id,
+                                "duration": round(reasoning_duration, 2)
+                            }
+                        }
+                        iteration_reasoning_started = False
+                    iteration_content += chunk["delta"]
+                    yield {
+                        "event": "conversation.delta",
+                        "data": {
+                            "chat_id": chat_id,
+                            "delta": chunk["delta"]
+                        }
+                    }
+                elif chunk["type"] == "done":
+                    iteration_tool_calls = chunk.get("tool_calls")
+                    if chunk.get("reasoning_content"):
+                        reasoning_content = chunk["reasoning_content"]
+                    if iteration_reasoning_started and reasoning_start_time:
+                        reasoning_duration = (
+                            datetime.now() - reasoning_start_time).total_seconds()
+                        yield {
+                            "event": "conversation.reasoning_done",
+                            "data": {
+                                "chat_id": chat_id,
+                                "duration": round(reasoning_duration, 2)
+                            }
+                        }
+                        iteration_reasoning_started = False
 
-            if response.get("reasoning_content"):
-                reasoning_content = response["reasoning_content"]
+            full_response.append(iteration_content)
+            tool_calls = iteration_tool_calls or []
+            logger.info(
+                f"Tool response: content={iteration_content[:100]}, tool_calls={len(tool_calls)}")
 
             if not tool_calls:
                 break
@@ -391,10 +447,10 @@ class ChatOrchestrator:
                     for tc in tool_calls
                 ]
             }
-            if response.get("content"):
-                assistant_msg["content"] = response["content"]
-            if response.get("reasoning_content"):
-                assistant_msg["reasoning_content"] = response["reasoning_content"]
+            if iteration_content:
+                assistant_msg["content"] = iteration_content
+            if iteration_reasoning:
+                assistant_msg["reasoning_content"] = iteration_reasoning
             messages.append(assistant_msg)
 
             tool_results = await self.tool_service.process_tool_calls(tool_calls)
@@ -435,6 +491,7 @@ class ChatOrchestrator:
         }
         if reasoning_content:
             message_data["thinking"] = reasoning_content
+            message_data["reasoning_duration"] = round(reasoning_duration, 2)
 
         message_content = json.dumps(message_data, ensure_ascii=False)
 

@@ -83,6 +83,10 @@ async function handleSubmit() {
       <el-form-item label="状态">
         <el-switch v-model="localForm.enabled" active-text="启用" inactive-text="禁用" />
       </el-form-item>
+      <el-form-item label="沙盒限制">
+        <el-switch v-model="localForm.sandbox_only" active-text="是" inactive-text="否" />
+        <div class="form-tip">启用后，工具只能在沙盒路径内执行文件操作</div>
+      </el-form-item>
       <el-form-item label="代码">
         <div class="code-editor-container">
           <CodeEditor v-model="localForm.code" />
@@ -193,5 +197,11 @@ async function handleSubmit() {
   margin-top: 20px;
   padding-top: 20px;
   border-top: 1px solid var(--color-border-primary);
+}
+
+.form-tip {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 4px;
 }
 </style>

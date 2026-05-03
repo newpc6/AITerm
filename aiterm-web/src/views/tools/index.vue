@@ -26,7 +26,8 @@ const form = ref<ToolCreate>({
     # 在这里编写你的工具逻辑
     return {"result": "success"}
 `,
-  enabled: true
+  enabled: true,
+  sandbox_only: false
 })
 
 const isEdit = computed(() => !!currentToolId.value)
@@ -59,7 +60,8 @@ function openCreateDialog() {
     # 在这里编写你的工具逻辑
     return {"result": "success"}
 `,
-    enabled: true
+    enabled: true,
+    sandbox_only: false
   }
   successMessage.value = ''
   errorMessage.value = ''
@@ -74,7 +76,8 @@ function openEditDialog(tool: Tool) {
     display_name: tool.display_name || '',
     description: tool.description || '',
     code: tool.code,
-    enabled: tool.enabled
+    enabled: tool.enabled,
+    sandbox_only: tool.sandbox_only
   }
   successMessage.value = ''
   errorMessage.value = ''
@@ -89,7 +92,8 @@ async function handleSubmit(payload: ToolCreate) {
         display_name: payload.display_name || undefined,
         description: payload.description || undefined,
         code: payload.code,
-        enabled: payload.enabled
+        enabled: payload.enabled,
+        sandbox_only: payload.sandbox_only
       }
       await updateTool(currentToolId.value, updatePayload)
       successMessage.value = '更新成功'

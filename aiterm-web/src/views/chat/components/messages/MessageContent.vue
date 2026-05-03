@@ -29,13 +29,13 @@ const props = defineProps<{
 const thinkingPattern = /<thinking(?:\s+duration="([\d.]+)")?[^>]*>\n?([\s\S]*?)\n?<\/thinking>\n?\n?/
 
 const parsedContent = computed(() => {
-  if (props.metadata?.thinking || props.metadata?.tool_calls) {
+  if (props.metadata?.thinking || (props.metadata?.tool_calls && Array.isArray(props.metadata.tool_calls) && props.metadata.tool_calls.length > 0)) {
     return {
       thinking: props.metadata.thinking || '',
       duration: props.metadata.reasoning_duration || 0,
       content: props.content,
       totalDuration: props.metadata.total_duration || 0,
-      toolCalls: props.metadata.tool_calls || [],
+      toolCalls: Array.isArray(props.metadata.tool_calls) ? props.metadata.tool_calls : [],
     }
   }
 
@@ -43,12 +43,13 @@ const parsedContent = computed(() => {
     const parsed = JSON.parse(props.content)
     if (typeof parsed === 'object' && parsed !== null) {
       if (typeof parsed.answer === 'string') {
+        const toolCalls = parsed.tool_calls
         return {
           thinking: parsed.thinking || '',
           duration: parsed.reasoning_duration || 0,
           content: parsed.answer,
           totalDuration: parsed.total_duration || 0,
-          toolCalls: parsed.tool_calls || [],
+          toolCalls: toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0 ? toolCalls : [],
         }
       }
       if (typeof parsed.content === 'string' && typeof parsed.type === 'string') {

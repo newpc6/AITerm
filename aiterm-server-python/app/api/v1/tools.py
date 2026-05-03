@@ -48,7 +48,8 @@ async def create_tool(payload: ToolCreate):
         code=payload.code,
         parameters=payload.parameters,
         config_schema=payload.config_schema,
-        enabled=payload.enabled
+        enabled=payload.enabled,
+        sandbox_only=payload.sandbox_only
     )
     return Response(data=tool)
 
@@ -72,7 +73,8 @@ async def update_tool(tool_id: str, payload: ToolUpdate):
         code=payload.code,
         parameters=payload.parameters,
         config_schema=payload.config_schema,
-        enabled=payload.enabled
+        enabled=payload.enabled,
+        sandbox_only=payload.sandbox_only
     )
     return Response(data=updated_tool)
 

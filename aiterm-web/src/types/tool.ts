@@ -33,6 +33,7 @@ export interface Tool {
   parameters?: ToolParameters
   config_schema?: ToolConfigSchema
   enabled: boolean
+  sandbox_only: boolean
   created_at?: string
   updated_at?: string
 }
@@ -45,6 +46,7 @@ export interface ToolCreate {
   parameters?: ToolParameters
   config_schema?: ToolConfigSchema
   enabled: boolean
+  sandbox_only: boolean
 }
 
 export interface ToolUpdate {
@@ -55,6 +57,7 @@ export interface ToolUpdate {
   parameters?: ToolParameters
   config_schema?: ToolConfigSchema
   enabled?: boolean
+  sandbox_only?: boolean
 }
 
 export interface ToolExecuteResult {
