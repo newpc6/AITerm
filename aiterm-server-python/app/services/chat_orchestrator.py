@@ -341,6 +341,14 @@ class ChatOrchestrator:
         if tool_names:
             system_prompt += f"\n\n你可以使用以下工具来获取信息或执行操作：{', '.join(tool_names)}。当用户问题需要使用这些工具时，请直接调用工具，不要只是思考或提及工具。"
 
+        sandbox_paths = self.settings.sandbox_paths or []
+        if sandbox_paths:
+            sandbox_paths_str = ", ".join(sandbox_paths)
+            sandbox_prompt = self.settings.sandbox_rules_prompt or ""
+            sandbox_prompt = sandbox_prompt.replace(
+                "{{sandbox_paths}}", sandbox_paths_str)
+            system_prompt += f"\n\n{sandbox_prompt}"
+
         messages = [
             {"role": "system", "content": system_prompt}]
         for msg in history:
@@ -355,8 +363,6 @@ class ChatOrchestrator:
                     except (json.JSONDecodeError, TypeError):
                         pass
                 messages.append({"role": role, "content": content})
-
-        messages.append({"role": "user", "content": message})
 
         total_start_time = datetime.now()
         full_response = []

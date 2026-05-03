@@ -272,8 +272,8 @@ class LLMClient:
                             yield {"type": "content", "delta": chunk}
 
                         if delta.get("tool_calls"):
-                            logger.info(
-                                f"Tool calls in delta: {delta.get('tool_calls')}")
+                            # logger.info(
+                            #     f"Tool calls in delta: {delta.get('tool_calls')}")
                             for tc in delta["tool_calls"]:
                                 idx = tc.get("index", 0)
                                 if idx not in tool_calls_data:

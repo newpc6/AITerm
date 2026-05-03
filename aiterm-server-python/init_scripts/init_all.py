@@ -7,14 +7,13 @@
     python init_scripts/init_all.py
 """
 
+from init_scripts.init_settings import init_settings
+from init_scripts.init_tools import init_tools
 import asyncio
 import sys
 import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from init_scripts.init_tools import init_tools
-from scripts.init_settings import init_settings
 
 
 async def init_all():

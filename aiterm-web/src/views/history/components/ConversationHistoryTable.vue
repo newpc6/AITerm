@@ -44,15 +44,15 @@ function getStatusClass(status: string) {
   <div class="data-table">
     <el-table :data="items" :loading="loading" empty-text="暂无历史会话">
       <el-table-column prop="title" label="会话标题" min-width="180" />
-      <el-table-column prop="summary" label="摘要" min-width="200" />
-      <el-table-column label="状态" width="100">
+      <!-- <el-table-column prop="summary" label="摘要" min-width="200" /> -->
+      <!-- <el-table-column label="状态" width="100">
         <template #default="{ row }">
           <span v-if="row.status" class="data-table__tag" :class="getStatusClass(row.status)">
             {{ getStatusLabel(row.status) }}
           </span>
           <span v-else class="data-table__tag">-</span>
         </template>
-      </el-table-column>
+</el-table-column> -->
       <el-table-column label="更新时间" min-width="140">
         <template #default="{ row }">
           {{ formatDateTime(row.updated_at) }}
