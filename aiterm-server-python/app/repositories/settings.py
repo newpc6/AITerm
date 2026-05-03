@@ -172,6 +172,8 @@ CONFIG_KEYS = [
     "intent_detection_prompt",
     "chat_system_prompt",
     "chat_history_limit",
+    "max_iterations",
+    "show_llm_input",
     "execution_planner_prompt",
     "execution_planner_user_prompt",
     "execution_windows_tool_prompt",
@@ -188,6 +190,8 @@ CONFIG_KEYS = [
 
 DEFAULT_VALUES = {
     "chat_history_limit": "12",
+    "max_iterations": "20",
+    "show_llm_input": "false",
     "execution_command_blacklist": "[]",
     "execution_command_whitelist": "[]",
     "sandbox_paths": "[]",
@@ -214,6 +218,8 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
                 "intent_detection_prompt": settings.intent_detection_prompt,
                 "chat_system_prompt": settings.chat_system_prompt,
                 "chat_history_limit": str(settings.chat_history_limit),
+                "max_iterations": str(settings.max_iterations),
+                "show_llm_input": "true" if settings.show_llm_input else "false",
                 "execution_planner_prompt": settings.execution_planner_prompt,
                 "execution_planner_user_prompt": settings.execution_planner_user_prompt,
                 "execution_windows_tool_prompt": settings.execution_windows_tool_prompt,
@@ -280,6 +286,14 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
         except:
             chat_history_limit = 12
 
+        try:
+            max_iterations = int(get_value("max_iterations", "20"))
+        except:
+            max_iterations = 20
+
+        show_llm_input = get_value(
+            "show_llm_input", "false").lower() == "true"
+
         llm_debug_logging = get_value(
             "llm_debug_logging", "false").lower() == "true"
 
@@ -287,6 +301,8 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
             intent_detection_prompt=get_value("intent_detection_prompt"),
             chat_system_prompt=get_value("chat_system_prompt"),
             chat_history_limit=chat_history_limit,
+            max_iterations=max_iterations,
+            show_llm_input=show_llm_input,
             execution_planner_prompt=get_value("execution_planner_prompt"),
             execution_planner_user_prompt=get_value(
                 "execution_planner_user_prompt"),

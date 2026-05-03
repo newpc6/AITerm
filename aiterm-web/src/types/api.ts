@@ -201,6 +201,8 @@ export type GlobalSettingsData = {
   intent_detection_prompt: string
   chat_system_prompt: string
   chat_history_limit: number
+  max_iterations: number
+  show_llm_input: boolean
   execution_planner_prompt: string
   execution_planner_user_prompt: string
   execution_windows_tool_prompt: string
@@ -219,6 +221,8 @@ export type GlobalSettingsPayload = {
   intent_detection_prompt?: string
   chat_system_prompt?: string
   chat_history_limit?: number
+  max_iterations?: number
+  show_llm_input?: boolean
   execution_planner_prompt?: string
   execution_planner_user_prompt?: string
   execution_windows_tool_prompt?: string

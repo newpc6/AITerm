@@ -43,7 +43,7 @@
               <div class="chat-sidebar__item-title">{{ item.title || '新对话' }}</div>
               <el-button text @click.stop="removeChatItem(item.id)">删除</el-button>
             </div>
-            <div class="chat-sidebar__item-text">{{ item.summary || '暂无内容' }}</div>
+            <!-- <div class="chat-sidebar__item-text">{{ item.summary || '暂无内容' }}</div> -->
             <div class="chat-sidebar__item-meta">
               <span>{{ formatDateTime(item.updated_at) }}</span>
             </div>
@@ -79,10 +79,10 @@
           :retryable-message-ids="retryableAssistantMessageIds" :execute-approval-hint="executeRiskReason"
           :execute-approval-loading="confirming" :execute-approval-message-id="executeApprovalMessageId"
           :user-label="userLabel" :user-title="userTitle" :streaming-message-id="streamingMessageId"
-          :is-reasoning-active="isReasoningActive"
-          :can-stop-execute="canStopExecute" :execute-input-request="executeInputRequest"
-          :execute-input-loading="loading" :execute-user-input="executeUserInput" @copy="copyMessage"
-          @retry="retryAssistantMessage" @execute-confirm="confirmActiveExecute" @stop-execute="stopActiveExecute"
+          :is-reasoning-active="isReasoningActive" :can-stop-execute="canStopExecute"
+          :execute-input-request="executeInputRequest" :execute-input-loading="loading"
+          :execute-user-input="executeUserInput" @copy="copyMessage" @retry="retryAssistantMessage"
+          @execute-confirm="confirmActiveExecute" @stop-execute="stopActiveExecute"
           @submit-execute-input="submitExecuteInput" />
       </div>
 

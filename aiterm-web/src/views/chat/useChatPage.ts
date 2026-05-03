@@ -58,6 +58,7 @@ function createMessageFromApi(item: { id: string; role: string; content: string;
           reasoning_duration: parsed.reasoning_duration,
           total_duration: parsed.total_duration,
           tool_calls: parsed.tool_calls,
+          iterations: parsed.iterations,
         }
       } else if (typeof parsed.message === 'string') {
         content = parsed.message
@@ -170,6 +171,17 @@ export function useChatPage() {
   const isReasoningActive = ref(false)
   const reasoningDuration = ref<number | null>(null)
   const answerBuffer = ref('')
+  const currentIteration = ref(0)
+  const iterationsData = ref<
+    Array<{
+      input?: string
+      full_input?: string
+      thinking?: string
+      thinking_duration?: number
+      thinking_start_time?: string
+      tool_calls?: Array<{ name: string; arguments: string; result: string; success: boolean; timestamp?: string }>
+    }>
+  >([])
 
   let executeEventSource: EventSource | null = null
   let chatStreamController: AbortController | null = null
@@ -493,11 +505,16 @@ export function useChatPage() {
     return placeholder
   }
 
-  function appendAssistantDelta(delta: string) {
+  function appendAssistantDelta(delta: string, iteration?: number) {
     const placeholder = ensureAssistantPlaceholder()
     answerBuffer.value += delta
     placeholder.content = answerBuffer.value
-    if (reasoningBuffer.value) {
+    if (iterationsData.value.length > 0) {
+      placeholder.metadata = {
+        ...placeholder.metadata,
+        iterations: iterationsData.value,
+      }
+    } else if (reasoningBuffer.value) {
       placeholder.metadata = {
         ...placeholder.metadata,
         thinking: reasoningBuffer.value,
@@ -505,7 +522,7 @@ export function useChatPage() {
     }
   }
 
-  function appendReasoningDelta(delta: string) {
+  function appendReasoningDelta(delta: string, iteration?: number) {
     if (!reasoningStartTime.value) {
       reasoningStartTime.value = Date.now()
     }
@@ -513,28 +530,103 @@ export function useChatPage() {
     reasoningBuffer.value += delta
     const placeholder = ensureAssistantPlaceholder()
     placeholder.content = answerBuffer.value
-    placeholder.metadata = {
-      ...placeholder.metadata,
-      thinking: reasoningBuffer.value,
+    if (iterationsData.value.length > 0) {
+      const iterIndex = (iteration || 1) - 1
+      if (iterationsData.value[iterIndex]) {
+        iterationsData.value[iterIndex].thinking = reasoningBuffer.value
+      }
+      placeholder.metadata = {
+        ...placeholder.metadata,
+        iterations: iterationsData.value,
+      }
+    } else {
+      placeholder.metadata = {
+        ...placeholder.metadata,
+        thinking: reasoningBuffer.value,
+      }
     }
   }
 
-  function finalizeAssistantStream(reply: string, toolCalls?: unknown[], thinking?: string) {
+  function handleIterationStart(iteration: number, input: string, fullInput?: string) {
+    currentIteration.value = iteration
+    reasoningBuffer.value = ''
+    reasoningStartTime.value = null
+    while (iterationsData.value.length < iteration) {
+      iterationsData.value.push({})
+    }
+    iterationsData.value[iteration - 1] = {
+      input,
+      full_input: fullInput,
+      thinking: '',
+      tool_calls: [],
+    }
     const placeholder = ensureAssistantPlaceholder()
-    const thinkingContent = thinking || reasoningBuffer.value
-    const duration = reasoningDuration.value
+    placeholder.metadata = {
+      ...placeholder.metadata,
+      iterations: iterationsData.value,
+    }
+  }
+
+  function handleReasoningStart(iteration: number | undefined, timestamp: string) {
+    const iterIndex = (iteration || currentIteration.value || 1) - 1
+    while (iterationsData.value.length <= iterIndex) {
+      iterationsData.value.push({})
+    }
+    if (!iterationsData.value[iterIndex]) {
+      iterationsData.value[iterIndex] = {}
+    }
+    iterationsData.value[iterIndex].thinking_start_time = timestamp
+    const placeholder = ensureAssistantPlaceholder()
+    placeholder.metadata = {
+      ...placeholder.metadata,
+      iterations: iterationsData.value,
+      current_thinking: '',
+    }
+  }
+
+  function handleToolCall(iteration: number | undefined, name: string, args: string, result: string, timestamp?: string) {
+    const iterIndex = (iteration || currentIteration.value || 1) - 1
+    while (iterationsData.value.length <= iterIndex) {
+      iterationsData.value.push({})
+    }
+    if (!iterationsData.value[iterIndex]) {
+      iterationsData.value[iterIndex] = { tool_calls: [] }
+    }
+    if (!iterationsData.value[iterIndex].tool_calls) {
+      iterationsData.value[iterIndex].tool_calls = []
+    }
+    iterationsData.value[iterIndex].tool_calls!.push({
+      name,
+      arguments: args,
+      result,
+      success: result.includes('success') && result.toLowerCase().includes('true'),
+      timestamp,
+    })
+    const placeholder = ensureAssistantPlaceholder()
+    placeholder.metadata = {
+      ...placeholder.metadata,
+      iterations: iterationsData.value,
+    }
+  }
+
+  function finalizeAssistantStream(reply: string, iterations?: unknown[]) {
+    const placeholder = ensureAssistantPlaceholder()
     placeholder.content = reply
-    if (thinkingContent) {
+    if (iterations && Array.isArray(iterations) && iterations.length > 0) {
       placeholder.metadata = {
         ...placeholder.metadata,
-        thinking: thinkingContent,
-        reasoning_duration: duration || 0,
-        tool_calls: toolCalls || null,
+        iterations,
       }
-    } else if (toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0) {
+    } else if (iterationsData.value.length > 0) {
       placeholder.metadata = {
         ...placeholder.metadata,
-        tool_calls: toolCalls,
+        iterations: iterationsData.value,
+      }
+    } else if (reasoningBuffer.value) {
+      placeholder.metadata = {
+        ...placeholder.metadata,
+        thinking: reasoningBuffer.value,
+        reasoning_duration: reasoningDuration.value || 0,
       }
     }
     reasoningBuffer.value = ''
@@ -542,6 +634,8 @@ export function useChatPage() {
     reasoningDuration.value = null
     answerBuffer.value = ''
     isReasoningActive.value = false
+    currentIteration.value = 0
+    iterationsData.value = []
   }
 
   async function submitChatMessage(value: string, targetNodeId: string, targetModelId: string) {
@@ -577,21 +671,37 @@ export function useChatPage() {
             if (!chatId.value) {
               chatId.value = data.chat_id
             }
-            appendAssistantDelta(data.delta)
+            appendAssistantDelta(data.delta, (data as { iteration?: number }).iteration)
           },
           onReasoning: (data) => {
             if (!chatId.value) {
               chatId.value = data.chat_id
             }
-            appendReasoningDelta(data.delta)
+            appendReasoningDelta(data.delta, data.iteration)
+          },
+          onReasoningStart: (data) => {
+            isReasoningActive.value = true
+            handleReasoningStart(data.iteration, data.timestamp)
           },
           onReasoningDone: (data) => {
             isReasoningActive.value = false
             reasoningDuration.value = data.duration
+            if (iterationsData.value.length > 0 && data.iteration) {
+              const iterIndex = data.iteration - 1
+              if (iterationsData.value[iterIndex]) {
+                iterationsData.value[iterIndex].thinking_duration = data.duration
+              }
+            }
+          },
+          onIterationStart: (data) => {
+            handleIterationStart(data.iteration, data.input, (data as { full_input?: string }).full_input)
+          },
+          onToolCall: (data) => {
+            handleToolCall(data.iteration, data.name, data.arguments, data.result, (data as { timestamp?: string }).timestamp)
           },
           onDone: (data) => {
             chatId.value = data.chat_id
-            finalizeAssistantStream(data.reply, data.tool_calls, data.thinking)
+            finalizeAssistantStream(data.reply, (data as { iterations?: unknown[] }).iterations)
           },
           onError: (data) => {
             errorMessage.value = data.error

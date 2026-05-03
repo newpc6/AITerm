@@ -269,8 +269,11 @@ export async function streamChat(
   handlers: {
     onMeta?: (data: ConversationStreamMetaData) => void
     onDelta?: (data: ConversationStreamDeltaData) => void
-    onReasoning?: (data: { chat_id: string; delta: string }) => void
-    onReasoningDone?: (data: { chat_id: string; duration: number }) => void
+    onReasoningStart?: (data: { chat_id: string; iteration?: number; timestamp: string }) => void
+    onReasoning?: (data: { chat_id: string; iteration?: number; delta: string }) => void
+    onReasoningDone?: (data: { chat_id: string; iteration?: number; duration: number }) => void
+    onIterationStart?: (data: { chat_id: string; iteration: number; input: string; full_input?: string }) => void
+    onToolCall?: (data: { chat_id: string; iteration?: number; name: string; arguments: string; result: string; timestamp?: string }) => void
     onDone?: (data: ConversationStreamDoneData) => void
     onError?: (data: { error: string }) => void
     onConversationMessage?: (data: { chat_id: string; type: string; content: string }) => void
@@ -312,10 +315,16 @@ export async function streamChat(
       handlers.onMeta?.(parsed as ConversationStreamMetaData)
     } else if (currentEvent === 'conversation.delta') {
       handlers.onDelta?.(parsed as ConversationStreamDeltaData)
+    } else if (currentEvent === 'conversation.reasoning_start') {
+      handlers.onReasoningStart?.(parsed as { chat_id: string; iteration?: number; timestamp: string })
     } else if (currentEvent === 'conversation.reasoning') {
-      handlers.onReasoning?.(parsed as { chat_id: string; delta: string })
+      handlers.onReasoning?.(parsed as { chat_id: string; iteration?: number; delta: string })
     } else if (currentEvent === 'conversation.reasoning_done') {
-      handlers.onReasoningDone?.(parsed as { chat_id: string; duration: number })
+      handlers.onReasoningDone?.(parsed as { chat_id: string; iteration?: number; duration: number })
+    } else if (currentEvent === 'conversation.iteration_start') {
+      handlers.onIterationStart?.(parsed as { chat_id: string; iteration: number; input: string })
+    } else if (currentEvent === 'conversation.tool_call') {
+      handlers.onToolCall?.(parsed as { chat_id: string; iteration?: number; name: string; arguments: string; result: string; timestamp?: string })
     } else if (currentEvent === 'conversation.done') {
       handlers.onDone?.(parsed as ConversationStreamDoneData)
     } else if (currentEvent === 'conversation.error') {

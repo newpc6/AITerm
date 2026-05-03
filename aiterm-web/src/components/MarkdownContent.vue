@@ -62,11 +62,8 @@ watch(() => props.content, () => {
   overflow-wrap: anywhere;
 }
 
-.md-editor {
-  color: unset;
-}
-
 .markdown-content :deep(.md-editor) {
+  --md-color: rgba(255, 255, 255, 0.85);
   background: var(--color-border-secondary);
 }
 
@@ -76,6 +73,8 @@ watch(() => props.content, () => {
 }
 
 .markdown-content :deep(.md-editor-preview) {
+  --md-color: rgba(255, 255, 255, 0.85);
+  color: rgba(255, 255, 255, 0.85) !important;
   background: var(--color-border-secondary) !important;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
   padding: var(--spacing-lg) !important;
@@ -89,10 +88,6 @@ watch(() => props.content, () => {
   padding: 0 !important;
 }
 
-.markdown-content :deep(.md-editor-preview *) {
-  max-width: 100%;
-}
-
 .markdown-content :deep(.md-editor-preview p),
 .markdown-content :deep(.md-editor-preview ul),
 .markdown-content :deep(.md-editor-preview ol),
@@ -102,6 +97,7 @@ watch(() => props.content, () => {
 .markdown-content :deep(.md-editor-preview div) {
   margin: 0;
   background: transparent !important;
+  max-width: 100%;
 }
 
 .markdown-content :deep(.md-editor-preview p+p),
@@ -156,6 +152,12 @@ watch(() => props.content, () => {
 .markdown-content :deep(.md-editor-preview pre code) {
   padding: 0;
   background: transparent !important;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.markdown-content :deep(.md-editor-preview .md-editor-code [rn-wrapper]) {
+  inset-block-start: 0 !important;
 }
 
 .markdown-content :deep(.md-editor-preview blockquote) {

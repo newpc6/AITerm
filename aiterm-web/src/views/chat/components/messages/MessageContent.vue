@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch, onUnmounted } from 'vue'
-import { Loading, ArrowDown, ArrowUp, Tools } from '@element-plus/icons-vue'
+import { Loading, ArrowDown, ArrowUp, Tools, Document, CircleCheck } from '@element-plus/icons-vue'
 import MarkdownContent from '@/components/MarkdownContent.vue'
 
 interface ToolCall {
@@ -8,6 +8,16 @@ interface ToolCall {
   arguments: string
   result: string
   success: boolean
+  timestamp?: string
+}
+
+interface IterationInfo {
+  thinking?: string
+  thinking_duration?: number
+  thinking_start_time?: string
+  tool_calls?: ToolCall[]
+  input?: string
+  full_input?: string
 }
 
 interface MessageMetadata {
@@ -15,6 +25,8 @@ interface MessageMetadata {
   reasoning_duration?: number
   total_duration?: number
   tool_calls?: ToolCall[]
+  iterations?: IterationInfo[]
+  current_thinking?: string
   [key: string]: unknown
 }
 
@@ -28,14 +40,54 @@ const props = defineProps<{
 
 const thinkingPattern = /<thinking(?:\s+duration="([\d.]+)")?[^>]*>\n?([\s\S]*?)\n?<\/thinking>\n?\n?/
 
-const parsedContent = computed(() => {
-  if (props.metadata?.thinking || (props.metadata?.tool_calls && Array.isArray(props.metadata.tool_calls) && props.metadata.tool_calls.length > 0)) {
+interface ParsedIteration {
+  thinking: string
+  thinkingDuration: number
+  thinkingStartTime: string
+  toolCalls: ToolCall[]
+  input: string
+  fullInput: string
+}
+
+interface ParsedContent {
+  content: string
+  totalDuration: number
+  iterations: ParsedIteration[]
+  legacyThinking: string
+  legacyThinkingDuration: number
+  legacyToolCalls: ToolCall[]
+  currentThinking: string
+}
+
+const parsedContent = computed<ParsedContent>(() => {
+  if (props.metadata?.iterations && Array.isArray(props.metadata.iterations) && props.metadata.iterations.length > 0) {
     return {
-      thinking: props.metadata.thinking || '',
-      duration: props.metadata.reasoning_duration || 0,
       content: props.content,
       totalDuration: props.metadata.total_duration || 0,
-      toolCalls: Array.isArray(props.metadata.tool_calls) ? props.metadata.tool_calls : [],
+      iterations: props.metadata.iterations.map(iter => ({
+        thinking: iter.thinking || '',
+        thinkingDuration: iter.thinking_duration || 0,
+        thinkingStartTime: iter.thinking_start_time || '',
+        toolCalls: iter.tool_calls || [],
+        input: iter.input || '',
+        fullInput: iter.full_input || '',
+      })),
+      legacyThinking: '',
+      legacyThinkingDuration: 0,
+      legacyToolCalls: [],
+      currentThinking: props.metadata.current_thinking || '',
+    }
+  }
+
+  if (props.metadata?.thinking || (props.metadata?.tool_calls && Array.isArray(props.metadata.tool_calls) && props.metadata.tool_calls.length > 0)) {
+    return {
+      content: props.content,
+      totalDuration: props.metadata.total_duration || 0,
+      iterations: [],
+      legacyThinking: props.metadata.thinking || '',
+      legacyThinkingDuration: props.metadata.reasoning_duration || 0,
+      legacyToolCalls: Array.isArray(props.metadata.tool_calls) ? props.metadata.tool_calls : [],
+      currentThinking: props.metadata.current_thinking || '',
     }
   }
 
@@ -43,22 +95,45 @@ const parsedContent = computed(() => {
     const parsed = JSON.parse(props.content)
     if (typeof parsed === 'object' && parsed !== null) {
       if (typeof parsed.answer === 'string') {
+        if (parsed.iterations && Array.isArray(parsed.iterations) && parsed.iterations.length > 0) {
+          return {
+            content: parsed.answer,
+            totalDuration: parsed.total_duration || 0,
+            iterations: parsed.iterations.map((iter: IterationInfo) => ({
+              thinking: iter.thinking || '',
+              thinkingDuration: iter.thinking_duration || 0,
+              thinkingStartTime: iter.thinking_start_time || '',
+              toolCalls: iter.tool_calls || [],
+              input: iter.input || '',
+              fullInput: iter.full_input || '',
+            })),
+            legacyThinking: '',
+            legacyThinkingDuration: 0,
+            legacyToolCalls: [],
+            currentThinking: '',
+          }
+        }
+
         const toolCalls = parsed.tool_calls
         return {
-          thinking: parsed.thinking || '',
-          duration: parsed.reasoning_duration || 0,
           content: parsed.answer,
           totalDuration: parsed.total_duration || 0,
-          toolCalls: toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0 ? toolCalls : [],
+          iterations: [],
+          legacyThinking: parsed.thinking || '',
+          legacyThinkingDuration: parsed.reasoning_duration || 0,
+          legacyToolCalls: toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0 ? toolCalls : [],
+          currentThinking: '',
         }
       }
       if (typeof parsed.content === 'string' && typeof parsed.type === 'string') {
         return {
-          thinking: '',
-          duration: 0,
           content: parsed.content,
           totalDuration: 0,
-          toolCalls: [],
+          iterations: [],
+          legacyThinking: '',
+          legacyThinkingDuration: 0,
+          legacyToolCalls: [],
+          currentThinking: '',
         }
       }
     }
@@ -69,38 +144,71 @@ const parsedContent = computed(() => {
   const match = props.content.match(thinkingPattern)
   if (match) {
     return {
-      thinking: match[2].trim(),
-      duration: match[1] ? parseFloat(match[1]) : 0,
       content: props.content.replace(thinkingPattern, ''),
       totalDuration: 0,
-      toolCalls: [],
+      iterations: [],
+      legacyThinking: match[2].trim(),
+      legacyThinkingDuration: match[1] ? parseFloat(match[1]) : 0,
+      legacyToolCalls: [],
+      currentThinking: '',
     }
   }
 
   return {
-    thinking: '',
-    duration: 0,
     content: props.content,
     totalDuration: 0,
-    toolCalls: [],
+    iterations: [],
+    legacyThinking: '',
+    legacyThinkingDuration: 0,
+    legacyToolCalls: [],
+    currentThinking: '',
   }
 })
 
-const showThinking = computed(() => parsedContent.value.thinking.length > 0)
-const showToolCalls = computed(() => parsedContent.value.toolCalls && parsedContent.value.toolCalls.length > 0)
-const isThinkingExpanded = ref(true)
-const isToolCallsExpanded = ref(true)
+const hasIterations = computed(() => parsedContent.value.iterations.length > 0)
+const hasLegacyThinking = computed(() => parsedContent.value.legacyThinking.length > 0)
+const hasLegacyToolCalls = computed(() => parsedContent.value.legacyToolCalls.length > 0)
+const hasCurrentThinking = computed(() => parsedContent.value.currentThinking.length > 0)
+
+const collapsedThinking = ref<Set<number>>(new Set())
+const collapsedToolCalls = ref<Set<number>>(new Set())
+const isLegacyThinkingExpanded = ref(true)
+const isLegacyToolCallsExpanded = ref(true)
 const liveDuration = ref(0)
 let durationTimer: ReturnType<typeof setInterval> | null = null
 
-const isThinkingActive = computed(() => props.isReasoningActive && parsedContent.value.thinking.length > 0 && parsedContent.value.duration === 0)
+const isThinkingActive = computed(() => props.isReasoningActive && (hasLegacyThinking.value || hasCurrentThinking.value))
 
-function toggleThinking() {
-  isThinkingExpanded.value = !isThinkingExpanded.value
+function isThinkingExpanded(index: number): boolean {
+  return !collapsedThinking.value.has(index)
 }
 
-function toggleToolCalls() {
-  isToolCallsExpanded.value = !isToolCallsExpanded.value
+function isToolCallsExpanded(index: number): boolean {
+  return !collapsedToolCalls.value.has(index)
+}
+
+function toggleThinking(index: number) {
+  if (collapsedThinking.value.has(index)) {
+    collapsedThinking.value.delete(index)
+  } else {
+    collapsedThinking.value.add(index)
+  }
+}
+
+function toggleToolCalls(index: number) {
+  if (collapsedToolCalls.value.has(index)) {
+    collapsedToolCalls.value.delete(index)
+  } else {
+    collapsedToolCalls.value.add(index)
+  }
+}
+
+function toggleLegacyThinking() {
+  isLegacyThinkingExpanded.value = !isLegacyThinkingExpanded.value
+}
+
+function toggleLegacyToolCalls() {
+  isLegacyToolCallsExpanded.value = !isLegacyToolCallsExpanded.value
 }
 
 function formatDuration(seconds: number): string {
@@ -110,22 +218,42 @@ function formatDuration(seconds: number): string {
   return `${seconds.toFixed(1)} 秒`
 }
 
+function formatTime(timestamp: string): string {
+  if (!timestamp) return ''
+  try {
+    const date = new Date(timestamp)
+    return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  } catch {
+    return ''
+  }
+}
+
 function formatToolArguments(args: string): string {
   try {
     const parsed = JSON.parse(args)
-    return JSON.stringify(parsed, null, 2)
+    return '```json\n' + JSON.stringify(parsed, null, 2) + '\n```'
   } catch {
-    return args
+    return '```\n' + args + '\n```'
   }
 }
 
 function formatToolResult(result: string): string {
   try {
     const parsed = JSON.parse(result)
-    return JSON.stringify(parsed, null, 2)
+    return '```json\n' + JSON.stringify(parsed, null, 2) + '\n```'
   } catch {
-    return result
+    if (result.length > 500) {
+      return '```\n' + result.slice(0, 500) + '...\n```'
+    }
+    return '```\n' + result + '\n```'
   }
+}
+
+function getFirstToolName(iteration: ParsedIteration): string {
+  if (iteration.toolCalls && iteration.toolCalls.length > 0) {
+    return iteration.toolCalls[0].name
+  }
+  return '工具'
 }
 
 watch(isThinkingActive, (active) => {
@@ -151,60 +279,197 @@ onUnmounted(() => {
 
 <template>
   <div class="message-content-wrapper">
-    <div v-if="showThinking" class="thinking-block">
-      <div class="thinking-header" @click="toggleThinking">
-        <span class="thinking-label">
-          <template v-if="isThinkingActive">思考中 {{ formatDuration(liveDuration) }}</template>
-          <template v-else>已思考 {{ formatDuration(parsedContent.duration || liveDuration) }}</template>
-        </span>
-        <el-icon class="thinking-toggle">
-          <ArrowUp v-if="isThinkingExpanded" />
-          <ArrowDown v-else />
-        </el-icon>
-      </div>
-      <div v-show="isThinkingExpanded" class="thinking-body">
-        <div class="thinking-line">
-          <div class="thinking-dot"></div>
-          <div class="thinking-line-vertical"></div>
+    <template v-if="hasIterations">
+      <div v-for="(iteration, index) in parsedContent.iterations" :key="index" class="iteration-block">
+        <div v-if="iteration.input" class="input-block">
+          <div class="input-header" @click="toggleThinking(index)">
+            <el-icon class="input-icon">
+              <Document />
+            </el-icon>
+            <span class="input-label">用户输入</span>
+            <el-icon class="input-toggle">
+              <ArrowUp v-if="isThinkingExpanded(index)" />
+              <ArrowDown v-else />
+            </el-icon>
+          </div>
+          <div v-show="isThinkingExpanded(index)" class="input-body">
+            <MarkdownContent :content="'```json\n' + iteration.input + '\n```'" mode="markdown" />
+          </div>
         </div>
-        <div class="thinking-content">
-          <MarkdownContent :content="parsedContent.thinking" mode="plain" />
+
+        <div v-if="iteration.fullInput" class="input-block full-input-block">
+          <div class="input-header" @click="toggleToolCalls(index)">
+            <el-icon class="input-icon">
+              <Document />
+            </el-icon>
+            <span class="input-label">完整输入（含提示词）</span>
+            <el-icon class="input-toggle">
+              <ArrowUp v-if="isToolCallsExpanded(index)" />
+              <ArrowDown v-else />
+            </el-icon>
+          </div>
+          <div v-show="isToolCallsExpanded(index)" class="input-body">
+            <MarkdownContent :content="'```json\n' + iteration.fullInput + '\n```'" mode="markdown" />
+          </div>
         </div>
-      </div>
-    </div>
-    <div v-if="showToolCalls" class="tool-calls-block">
-      <div class="tool-calls-header" @click="toggleToolCalls">
-        <el-icon class="tool-calls-icon">
-          <Tools />
-        </el-icon>
-        <span class="tool-calls-label">工具调用 ({{ parsedContent.toolCalls.length }})</span>
-        <el-icon class="tool-calls-toggle">
-          <ArrowUp v-if="isToolCallsExpanded" />
-          <ArrowDown v-else />
-        </el-icon>
-      </div>
-      <div v-show="isToolCallsExpanded" class="tool-calls-body">
-        <div v-for="(tool, index) in parsedContent.toolCalls" :key="index" class="tool-call-item">
-          <div class="tool-call-name">
-            <span class="tool-call-index">{{ index + 1 }}</span>
-            {{ tool.name }}
-            <span :class="['tool-call-status', tool.success ? 'success' : 'error']">
-              {{ tool.success ? '成功' : '失败' }}
+
+        <div v-if="iteration.thinking" class="thinking-block"
+          :class="{ 'thinking-active': !iteration.thinkingDuration && props.isReasoningActive }">
+          <div class="thinking-header" @click="toggleThinking(index)">
+            <el-icon v-if="!iteration.thinkingDuration && props.isReasoningActive"
+              class="thinking-status-icon is-spinning">
+              <Loading />
+            </el-icon>
+            <el-icon v-else class="thinking-status-icon is-completed">
+              <CircleCheck />
+            </el-icon>
+            <span class="thinking-label">
+              <template v-if="!iteration.thinkingDuration && props.isReasoningActive">思考中</template>
+              <template v-else>已思考</template>
+              <span v-if="iteration.thinkingDuration" class="thinking-duration">耗时 {{
+                formatDuration(iteration.thinkingDuration)
+                }}</span>
             </span>
+            <span v-if="iteration.thinkingStartTime" class="thinking-time">{{ formatTime(iteration.thinkingStartTime)
+              }}</span>
+            <el-icon class="thinking-toggle">
+              <ArrowUp v-if="isThinkingExpanded(index)" />
+              <ArrowDown v-else />
+            </el-icon>
           </div>
-          <div class="tool-call-details">
-            <div class="tool-call-section">
-              <div class="tool-call-section-label">输入参数</div>
-              <pre class="tool-call-code">{{ formatToolArguments(tool.arguments) }}</pre>
+          <div v-show="isThinkingExpanded(index)" class="thinking-body">
+            <div class="thinking-line">
+              <div class="thinking-dot"></div>
+              <div class="thinking-line-vertical"></div>
             </div>
-            <div class="tool-call-section">
-              <div class="tool-call-section-label">返回结果</div>
-              <pre class="tool-call-code">{{ formatToolResult(tool.result) }}</pre>
+            <div class="thinking-content">
+              <MarkdownContent :content="iteration.thinking" mode="plain" />
+            </div>
+          </div>
+        </div>
+
+        <div v-if="iteration.toolCalls && iteration.toolCalls.length > 0" class="tool-calls-block">
+          <div class="tool-calls-header" @click="toggleToolCalls(index)">
+            <el-icon class="tool-calls-icon">
+              <Tools />
+            </el-icon>
+            <span class="tool-calls-label">
+              调用工具 {{ getFirstToolName(iteration) }}
+              <span v-if="iteration.toolCalls.length > 1">等 {{ iteration.toolCalls.length }} 个</span>
+            </span>
+            <span v-if="iteration.toolCalls[0]?.timestamp" class="tool-calls-time">{{
+              formatTime(iteration.toolCalls[0].timestamp) }}</span>
+            <el-icon class="tool-calls-toggle">
+              <ArrowUp v-if="isToolCallsExpanded(index)" />
+              <ArrowDown v-else />
+            </el-icon>
+          </div>
+          <div v-show="isToolCallsExpanded(index)" class="tool-calls-body">
+            <div v-for="(tool, toolIndex) in iteration.toolCalls" :key="toolIndex" class="tool-call-item">
+              <div class="tool-call-name">
+                {{ tool.name }}
+                <span :class="['tool-call-status', tool.success ? 'success' : 'error']">
+                  {{ tool.success ? '成功' : '失败' }}
+                </span>
+              </div>
+              <div class="tool-call-details">
+                <div class="tool-call-section">
+                  <div class="tool-call-section-label">输入参数</div>
+                  <MarkdownContent :content="formatToolArguments(tool.arguments)" mode="markdown" />
+                </div>
+                <div class="tool-call-section">
+                  <div class="tool-call-section-label">返回结果</div>
+                  <MarkdownContent :content="formatToolResult(tool.result)" mode="markdown" />
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
-    </div>
+    </template>
+
+    <template v-else>
+      <div v-if="isThinkingActive && (hasLegacyThinking || hasCurrentThinking)" class="thinking-block thinking-active">
+        <div class="thinking-header" @click="toggleLegacyThinking">
+          <span class="thinking-label">
+            思考中 {{ liveDuration > 0 ? formatDuration(liveDuration) : '' }}
+          </span>
+          <el-icon class="thinking-toggle">
+            <ArrowUp v-if="isLegacyThinkingExpanded" />
+            <ArrowDown v-else />
+          </el-icon>
+        </div>
+        <div v-show="isLegacyThinkingExpanded" class="thinking-body">
+          <div class="thinking-line">
+            <div class="thinking-dot thinking-dot-active"></div>
+            <div class="thinking-line-vertical"></div>
+          </div>
+          <div class="thinking-content">
+            <MarkdownContent :content="parsedContent.currentThinking || parsedContent.legacyThinking" mode="plain" />
+          </div>
+        </div>
+      </div>
+      <div v-else-if="hasLegacyThinking" class="thinking-block">
+        <div class="thinking-header" @click="toggleLegacyThinking">
+          <span class="thinking-label">
+            已思考
+            <span v-if="parsedContent.legacyThinkingDuration" class="thinking-duration">耗时 {{
+              formatDuration(parsedContent.legacyThinkingDuration) }}</span>
+          </span>
+          <el-icon class="thinking-toggle">
+            <ArrowUp v-if="isLegacyThinkingExpanded" />
+            <ArrowDown v-else />
+          </el-icon>
+        </div>
+        <div v-show="isLegacyThinkingExpanded" class="thinking-body">
+          <div class="thinking-line">
+            <div class="thinking-dot"></div>
+            <div class="thinking-line-vertical"></div>
+          </div>
+          <div class="thinking-content">
+            <MarkdownContent :content="parsedContent.legacyThinking" mode="plain" />
+          </div>
+        </div>
+      </div>
+      <div v-if="hasLegacyToolCalls" class="tool-calls-block">
+        <div class="tool-calls-header" @click="toggleLegacyToolCalls">
+          <el-icon class="tool-calls-icon">
+            <Tools />
+          </el-icon>
+          <span class="tool-calls-label">
+            调用工具 {{ parsedContent.legacyToolCalls[0]?.name || '工具' }}
+            <span v-if="parsedContent.legacyToolCalls.length > 1">等 {{ parsedContent.legacyToolCalls.length }} 个</span>
+          </span>
+          <span v-if="parsedContent.legacyToolCalls[0]?.timestamp" class="tool-calls-time">{{
+            formatTime(parsedContent.legacyToolCalls[0].timestamp) }}</span>
+          <el-icon class="tool-calls-toggle">
+            <ArrowUp v-if="isLegacyToolCallsExpanded" />
+            <ArrowDown v-else />
+          </el-icon>
+        </div>
+        <div v-show="isLegacyToolCallsExpanded" class="tool-calls-body">
+          <div v-for="(tool, index) in parsedContent.legacyToolCalls" :key="index" class="tool-call-item">
+            <div class="tool-call-name">
+              {{ tool.name }}
+              <span :class="['tool-call-status', tool.success ? 'success' : 'error']">
+                {{ tool.success ? '成功' : '失败' }}
+              </span>
+            </div>
+            <div class="tool-call-details">
+              <div class="tool-call-section">
+                <div class="tool-call-section-label">输入参数</div>
+                <MarkdownContent :content="formatToolArguments(tool.arguments)" mode="markdown" />
+              </div>
+              <div class="tool-call-section">
+                <div class="tool-call-section-label">返回结果</div>
+                <MarkdownContent :content="formatToolResult(tool.result)" mode="markdown" />
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
     <MarkdownContent class="message-content" :mode="role === 'assistant' ? 'markdown' : 'auto'"
       :content="parsedContent.content" />
     <el-icon v-if="isStreaming" class="message-content__loading is-loading">
@@ -241,16 +506,107 @@ onUnmounted(() => {
   }
 }
 
+.iteration-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  padding: 4px 0;
+}
+
+.input-header:hover .input-label {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.input-icon {
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.input-label {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.6);
+  font-weight: 500;
+}
+
+.input-toggle {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+  transition: transform 0.2s;
+}
+
+.input-body {
+  padding-left: 4px;
+}
+
+.full-input-block {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.1);
+}
+
 .thinking-block {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
 
+.thinking-status-icon {
+  font-size: 14px;
+}
+
+.thinking-status-icon.is-spinning {
+  color: #409eff;
+  animation: spin 1s linear infinite;
+}
+
+.thinking-status-icon.is-completed {
+  color: #67c23a;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.thinking-active .thinking-dot-active {
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
 .thinking-header {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   cursor: pointer;
   user-select: none;
   padding: 4px 0;
@@ -264,6 +620,19 @@ onUnmounted(() => {
   font-size: 13px;
   color: rgba(255, 255, 255, 0.6);
   font-weight: 500;
+}
+
+.thinking-duration {
+  color: rgba(255, 255, 255, 0.45);
+  font-weight: 400;
+  margin-left: 4px;
+}
+
+.thinking-time {
+  font-size: 12px;
+  margin-top: 4px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-left: 8px;
 }
 
 .thinking-toggle {
@@ -342,6 +711,12 @@ onUnmounted(() => {
   font-weight: 500;
 }
 
+.tool-calls-time {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.4);
+  margin-left: 8px;
+}
+
 .tool-calls-toggle {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.5);
@@ -372,18 +747,6 @@ onUnmounted(() => {
   font-size: 13px;
   font-weight: 500;
   color: rgba(255, 255, 255, 0.85);
-}
-
-.tool-call-index {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.1);
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.7);
 }
 
 .tool-call-status {
@@ -420,20 +783,5 @@ onUnmounted(() => {
   color: rgba(255, 255, 255, 0.4);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-}
-
-.tool-call-code {
-  margin: 0;
-  padding: 8px 10px;
-  background: rgba(0, 0, 0, 0.3);
-  border-radius: 6px;
-  font-size: 12px;
-  font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
-  color: rgba(255, 255, 255, 0.75);
-  overflow-x: auto;
-  white-space: pre-wrap;
-  word-break: break-all;
-  max-height: 200px;
-  overflow-y: auto;
 }
 </style>

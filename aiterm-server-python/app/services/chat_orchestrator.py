@@ -359,45 +359,72 @@ class ChatOrchestrator:
         messages.append({"role": "user", "content": message})
 
         total_start_time = datetime.now()
-        reasoning_start_time = None
-        reasoning_duration = 0
         full_response = []
-        tool_calls_info = []
-        reasoning_content = ""
+        iterations_info = []
 
-        max_iterations = 5
+        max_iterations = self.settings.max_iterations or 20
         for iteration in range(max_iterations):
             logger.info(
                 f"Tool calling iteration {iteration + 1}/{max_iterations}")
+
+            iteration_input = None
+            iteration_full_input = None
+            if self.settings.show_llm_input:
+                iteration_input = json.dumps(
+                    messages[-1], ensure_ascii=False, indent=2)
+                iteration_full_input = json.dumps(
+                    messages, ensure_ascii=False, indent=2)
+                yield {
+                    "event": "conversation.iteration_start",
+                    "data": {
+                        "chat_id": chat_id,
+                        "iteration": iteration + 1,
+                        "input": iteration_input,
+                        "full_input": iteration_full_input
+                    }
+                }
 
             iteration_content = ""
             iteration_reasoning = ""
             iteration_tool_calls = None
             iteration_reasoning_started = False
+            iteration_reasoning_duration = 0
+            iteration_start_time = datetime.now()
+            iteration_reasoning_start_time = None
+            iteration_tool_calls_info = []
 
             async for chunk in llm_client.chat_with_tools_stream(messages, tools):
                 if chunk["type"] == "reasoning":
                     if not iteration_reasoning_started:
-                        reasoning_start_time = datetime.now()
+                        iteration_reasoning_start_time = datetime.now()
                         iteration_reasoning_started = True
+                        yield {
+                            "event": "conversation.reasoning_start",
+                            "data": {
+                                "chat_id": chat_id,
+                                "iteration": iteration + 1,
+                                "timestamp": iteration_reasoning_start_time.isoformat()
+                            }
+                        }
                     iteration_reasoning += chunk["delta"]
-                    reasoning_content += chunk["delta"]
                     yield {
                         "event": "conversation.reasoning",
                         "data": {
                             "chat_id": chat_id,
+                            "iteration": iteration + 1,
                             "delta": chunk["delta"]
                         }
                     }
                 elif chunk["type"] == "content":
-                    if iteration_reasoning_started and reasoning_start_time:
-                        reasoning_duration = (
-                            datetime.now() - reasoning_start_time).total_seconds()
+                    if iteration_reasoning_started:
+                        iteration_reasoning_duration = (
+                            datetime.now() - iteration_reasoning_start_time).total_seconds()
                         yield {
                             "event": "conversation.reasoning_done",
                             "data": {
                                 "chat_id": chat_id,
-                                "duration": round(reasoning_duration, 2)
+                                "iteration": iteration + 1,
+                                "duration": round(iteration_reasoning_duration, 2)
                             }
                         }
                         iteration_reasoning_started = False
@@ -406,21 +433,21 @@ class ChatOrchestrator:
                         "event": "conversation.delta",
                         "data": {
                             "chat_id": chat_id,
+                            "iteration": iteration + 1,
                             "delta": chunk["delta"]
                         }
                     }
                 elif chunk["type"] == "done":
                     iteration_tool_calls = chunk.get("tool_calls")
-                    if chunk.get("reasoning_content"):
-                        reasoning_content = chunk["reasoning_content"]
-                    if iteration_reasoning_started and reasoning_start_time:
-                        reasoning_duration = (
-                            datetime.now() - reasoning_start_time).total_seconds()
+                    if iteration_reasoning_started:
+                        iteration_reasoning_duration = (
+                            datetime.now() - iteration_reasoning_start_time).total_seconds()
                         yield {
                             "event": "conversation.reasoning_done",
                             "data": {
                                 "chat_id": chat_id,
-                                "duration": round(reasoning_duration, 2)
+                                "iteration": iteration + 1,
+                                "duration": round(iteration_reasoning_duration, 2)
                             }
                         }
                         iteration_reasoning_started = False
@@ -431,6 +458,14 @@ class ChatOrchestrator:
                 f"Tool response: content={iteration_content[:100]}, tool_calls={len(tool_calls)}")
 
             if not tool_calls:
+                iterations_info.append({
+                    "thinking": iteration_reasoning,
+                    "thinking_duration": round(iteration_reasoning_duration, 2) if iteration_reasoning_duration > 0 else None,
+                    "thinking_start_time": iteration_reasoning_start_time.isoformat() if iteration_reasoning_start_time else None,
+                    "tool_calls": [],
+                    "input": iteration_input,
+                    "full_input": iteration_full_input
+                })
                 break
 
             assistant_msg = {
@@ -458,20 +493,24 @@ class ChatOrchestrator:
 
             for i, result in enumerate(tool_results):
                 tool_call = tool_calls[i] if i < len(tool_calls) else {}
-                tool_calls_info.append({
+                tool_timestamp = datetime.now().isoformat()
+                iteration_tool_calls_info.append({
                     "name": result["name"],
                     "arguments": tool_call.get("arguments", "{}"),
                     "result": result["content"],
-                    "success": "success" in result.get("content", "") and "true" in result.get("content", "").lower()
+                    "success": "success" in result.get("content", "") and "true" in result.get("content", "").lower(),
+                    "timestamp": tool_timestamp
                 })
 
                 yield {
                     "event": "conversation.tool_call",
                     "data": {
                         "chat_id": chat_id,
+                        "iteration": iteration + 1,
                         "name": result["name"],
                         "arguments": tool_call.get("arguments", "{}"),
-                        "result": result["content"]
+                        "result": result["content"],
+                        "timestamp": tool_timestamp
                     }
                 }
 
@@ -481,17 +520,23 @@ class ChatOrchestrator:
                     "content": result["content"]
                 })
 
+            iterations_info.append({
+                "thinking": iteration_reasoning,
+                "thinking_duration": round(iteration_reasoning_duration, 2) if iteration_reasoning_duration > 0 else None,
+                "thinking_start_time": iteration_reasoning_start_time.isoformat() if iteration_reasoning_start_time else None,
+                "tool_calls": iteration_tool_calls_info,
+                "input": iteration_input,
+                "full_input": iteration_full_input
+            })
+
         complete_response = "".join(full_response)
         total_duration = (datetime.now() - total_start_time).total_seconds()
 
         message_data = {
             "answer": complete_response,
             "total_duration": round(total_duration, 2),
-            "tool_calls": tool_calls_info if tool_calls_info else None
+            "iterations": iterations_info if iterations_info else None
         }
-        if reasoning_content:
-            message_data["thinking"] = reasoning_content
-            message_data["reasoning_duration"] = round(reasoning_duration, 2)
 
         message_content = json.dumps(message_data, ensure_ascii=False)
 
@@ -509,8 +554,7 @@ class ChatOrchestrator:
                 "reply": complete_response,
                 "model_id": model_config.id,
                 "model_name": model_config.name,
-                "tool_calls": tool_calls_info if tool_calls_info else None,
-                "thinking": reasoning_content if reasoning_content else None
+                "iterations": iterations_info if iterations_info else None
             }
         }
 
