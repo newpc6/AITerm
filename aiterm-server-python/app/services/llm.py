@@ -472,9 +472,13 @@ class ExecutePlanner:
         command_rules = self._build_command_rules()
         sandbox_info = self._build_sandbox_info()
         node_desc = describe_node(node)
+        sandbox_paths = self.settings.sandbox_paths or []
+        sandbox_paths_str = ", ".join(
+            sandbox_paths) if sandbox_paths else "未配置"
 
         prompt = template.replace("{{node_description}}", node_desc)
         prompt = prompt.replace("{{user_request}}", request)
+        prompt = prompt.replace("{{sandbox_paths}}", sandbox_paths_str)
         prompt += command_rules
         prompt += sandbox_info
         prompt += """
