@@ -25,6 +25,9 @@ aiterm-server/cmd/aiterm-server/data/
 aiterm-web/node_modules/
 aiterm-web/dist/
 
+frontend/node_modules/
+frontend/dist/
+
 *.log
 
 .env
