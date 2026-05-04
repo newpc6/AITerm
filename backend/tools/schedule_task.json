@@ -1,0 +1,40 @@
+{
+  "name": "schedule_task",
+  "display_name": "计划任务",
+  "description": "创建定时任务或延迟执行任务。用于自动化工作流、定时提醒等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "task_name": {
+        "type": "string",
+        "description": "任务名称"
+      },
+      "task_type": {
+        "type": "string",
+        "description": "任务类型: delay(延迟执行)、scheduled(定时执行)",
+        "enum": ["delay", "scheduled"],
+        "default": "delay"
+      },
+      "delay_seconds": {
+        "type": "integer",
+        "description": "延迟秒数，task_type为delay时必填"
+      },
+      "scheduled_time": {
+        "type": "string",
+        "description": "计划执行时间，ISO格式，task_type为scheduled时必填"
+      },
+      "action": {
+        "type": "string",
+        "description": "要执行的动作/命令"
+      },
+      "action_params": {
+        "type": "object",
+        "description": "动作参数"
+      }
+    },
+    "required": ["task_name", "action"]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    创建计划任务\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - task_name (str): 任务名称，必填\n            - task_type (str): 任务类型，\"delay\"（延迟执行）或 \"scheduled\"（定时执行）\n            - delay_seconds (int): 延迟秒数，task_type 为 \"delay\" 时必填\n            - scheduled_time (str): 计划执行时间，ISO格式，task_type 为 \"scheduled\" 时必填\n            - action (str): 要执行的动作/命令，必填\n            - action_params (dict): 动作参数，可选\n    \n    返回:\n        dict: 包含任务信息的字典\n            - success (bool): 是否成功\n            - task_name (str): 任务名称\n            - task_type (str): 任务类型\n            - execute_at (str): 计划执行时间（ISO格式）\n            - action (str): 执行动作\n            - action_params (dict): 动作参数\n            - message (str): 提示信息\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import json\n    from datetime import datetime, timedelta\n    \n    task_name = arguments.get(\"task_name\", \"\")\n    task_type = arguments.get(\"task_type\", \"delay\")\n    delay_seconds = arguments.get(\"delay_seconds\", 0)\n    scheduled_time = arguments.get(\"scheduled_time\", \"\")\n    action = arguments.get(\"action\", \"\")\n    action_params = arguments.get(\"action_params\", {})\n    \n    if not task_name:\n        return {\"success\": False, \"error\": \"请提供任务名称\"}\n    \n    if not action:\n        return {\"success\": False, \"error\": \"请提供任务动作\"}\n    \n    try:\n        if task_type == \"delay\":\n            if delay_seconds <= 0:\n                return {\"success\": False, \"error\": \"延迟时间必须大于0\"}\n            \n            execute_at = datetime.now() + timedelta(seconds=delay_seconds)\n            \n            return {\n                \"success\": True,\n                \"task_name\": task_name,\n                \"task_type\": task_type,\n                \"execute_at\": execute_at.isoformat(),\n                \"action\": action,\n                \"action_params\": action_params,\n                \"message\": f\"任务将在 {delay_seconds} 秒后执行\"\n            }\n        \n        elif task_type == \"scheduled\":\n            if not scheduled_time:\n                return {\"success\": False, \"error\": \"请提供计划执行时间\"}\n            \n            try:\n                execute_at = datetime.fromisoformat(scheduled_time)\n            except ValueError:\n                return {\"success\": False, \"error\": \"时间格式无效，请使用ISO格式 (YYYY-MM-DD HH:MM:SS)\"}\n            \n            if execute_at < datetime.now():\n                return {\"success\": False, \"error\": \"计划时间不能早于当前时间\"}\n            \n            return {\n                \"success\": True,\n                \"task_name\": task_name,\n                \"task_type\": task_type,\n                \"execute_at\": execute_at.isoformat(),\n                \"action\": action,\n                \"action_params\": action_params,\n                \"message\": f\"任务已计划在 {scheduled_time} 执行\"\n            }\n        \n        else:\n            return {\"success\": False, \"error\": f\"未知的任务类型: {task_type}\"}\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"创建任务失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": false
+}

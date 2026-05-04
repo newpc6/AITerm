@@ -1,0 +1,45 @@
+{
+  "name": "network_check",
+  "display_name": "网络检测",
+  "description": "检测网络连接状态、DNS解析、端口扫描等。用于网络诊断、服务监控等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "operation": {
+        "type": "string",
+        "description": "操作类型: ping(Ping测试)、dns(DNS解析)、port(端口检测)、http(HTTP检测)",
+        "enum": [
+          "ping",
+          "dns",
+          "port",
+          "http"
+        ],
+        "default": "ping"
+      },
+      "host": {
+        "type": "string",
+        "description": "目标主机"
+      },
+      "port": {
+        "type": "integer",
+        "description": "端口号，port操作时必填"
+      },
+      "timeout": {
+        "type": "integer",
+        "description": "超时时间（秒）",
+        "default": 5
+      },
+      "count": {
+        "type": "integer",
+        "description": "Ping次数",
+        "default": 4
+      }
+    },
+    "required": [
+      "host"
+    ]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    网络检测工具\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - operation (str): 操作类型\n                - \"ping\": Ping测试\n                - \"dns\": DNS解析\n                - \"port\": 端口检测\n                - \"http\": HTTP检测\n            - host (str): 目标主机，必填\n            - port (int): 端口号，port操作必填\n            - timeout (int): 超时时间（秒），默认 5\n            - count (int): Ping次数，ping操作时使用，默认 4\n    \n    返回:\n        dict: 包含检测结果的字典\n            - success (bool): 是否成功\n            - host (str): 目标主机\n            - reachable (bool): 是否可达（ping操作）\n            - ip (str): 解析的IP地址（dns操作）\n            - open (bool): 端口是否开放（port操作）\n            - response_time (float): 响应时间（毫秒）\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import socket\n    import subprocess\n    import platform\n    import time\n    \n    operation = arguments.get(\"operation\", \"ping\")\n    host = arguments.get(\"host\", \"\")\n    port = arguments.get(\"port\")\n    timeout = arguments.get(\"timeout\", 5)\n    count = arguments.get(\"count\", 4)\n    \n    if not host:\n        return {\"success\": False, \"error\": \"请提供目标主机\"}\n    \n    try:\n        if operation == \"ping\":\n            is_windows = platform.system() == \"Windows\"\n            cmd = [\"ping\", \"-n\" if is_windows else \"-c\", str(count), host]\n            \n            result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout * count + 5)\n            \n            return {\n                \"success\": result.returncode == 0,\n                \"host\": host,\n                \"reachable\": result.returncode == 0,\n                \"output\": result.stdout\n            }\n        \n        elif operation == \"dns\":\n            start = time.time()\n            ip = socket.gethostbyname(host)\n            elapsed = (time.time() - start) * 1000\n            \n            return {\n                \"success\": True,\n                \"host\": host,\n                \"ip\": ip,\n                \"response_time\": round(elapsed, 2)\n            }\n        \n        elif operation == \"port\":\n            if not port:\n                return {\"success\": False, \"error\": \"请提供端口号\"}\n            \n            start = time.time()\n            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)\n            sock.settimeout(timeout)\n            \n            result = sock.connect_ex((host, port))\n            elapsed = (time.time() - start) * 1000\n            sock.close()\n            \n            return {\n                \"success\": True,\n                \"host\": host,\n                \"port\": port,\n                \"open\": result == 0,\n                \"response_time\": round(elapsed, 2)\n            }\n        \n        elif operation == \"http\":\n            import urllib.request\n            \n            url = host if host.startswith(\"http\") else f\"http://{host}\"\n            start = time.time()\n            \n            req = urllib.request.Request(url, headers={\"User-Agent\": \"Mozilla/5.0\"})\n            response = urllib.request.urlopen(req, timeout=timeout)\n            elapsed = (time.time() - start) * 1000\n            \n            return {\n                \"success\": True,\n                \"host\": host,\n                \"url\": url,\n                \"status_code\": response.status,\n                \"response_time\": round(elapsed, 2)\n            }\n        \n        else:\n            return {\"success\": False, \"error\": f\"未知的操作: {operation}\"}\n    except socket.gaierror:\n        return {\"success\": False, \"error\": \"无法解析主机名\"}\n    except socket.timeout:\n        return {\"success\": True, \"host\": host, \"reachable\": False, \"open\": False, \"error\": \"连接超时\"}\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"检测失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": false
+}

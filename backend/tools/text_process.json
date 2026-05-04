@@ -1,0 +1,37 @@
+{
+  "name": "text_process",
+  "display_name": "文本处理",
+  "description": "对文本进行处理，支持分割、替换、正则匹配等操作。用于文本分析、数据清洗等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "要处理的文本"
+      },
+      "operation": {
+        "type": "string",
+        "description": "操作类型",
+        "enum": ["split", "replace", "findall", "match"],
+        "default": "split"
+      },
+      "pattern": {
+        "type": "string",
+        "description": "正则表达式模式"
+      },
+      "replacement": {
+        "type": "string",
+        "description": "替换内容（replace 操作时使用）"
+      },
+      "flags": {
+        "type": "array",
+        "description": "正则标志，如 [\"ignore_case\", \"multiline\", \"dotall\"]",
+        "items": { "type": "string" }
+      }
+    },
+    "required": ["text", "operation"]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    文本处理工具\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - text (str): 要处理的文本，必填\n            - operation (str): 操作类型，\"split\"（分割）、\"replace\"（替换）、\"findall\"（查找所有）、\"match\"（匹配）\n            - pattern (str): 正则表达式模式，split/replace/findall/match 操作必填\n            - replacement (str): 替换内容，replace 操作时使用\n            - flags (list): 正则标志，如 [\"ignore_case\", \"multiline\", \"dotall\"]\n    \n    返回:\n        dict: 包含处理结果的字典\n            - success (bool): 是否成功\n            - result (any): 处理结果\n            - count (int): 结果数量（split/findall时）\n            - matched (bool): 是否匹配（match时）\n            - groups (tuple): 匹配组（match时）\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import re\n    \n    text = arguments.get(\"text\", \"\")\n    operation = arguments.get(\"operation\", \"split\")\n    pattern = arguments.get(\"pattern\", \"\")\n    replacement = arguments.get(\"replacement\", \"\")\n    flags = arguments.get(\"flags\", [])\n    \n    if not text:\n        return {\"success\": False, \"error\": \"请提供要处理的文本\"}\n    \n    try:\n        re_flags = 0\n        if \"ignore_case\" in flags:\n            re_flags |= re.IGNORECASE\n        if \"multiline\" in flags:\n            re_flags |= re.MULTILINE\n        if \"dotall\" in flags:\n            re_flags |= re.DOTALL\n        \n        if operation == \"split\":\n            if not pattern:\n                return {\"success\": False, \"error\": \"请提供分割模式\"}\n            result = re.split(pattern, text, flags=re_flags)\n            return {\"success\": True, \"result\": result, \"count\": len(result)}\n        \n        elif operation == \"replace\":\n            if not pattern:\n                return {\"success\": False, \"error\": \"请提供匹配模式\"}\n            result = re.sub(pattern, replacement, text, flags=re_flags)\n            return {\"success\": True, \"result\": result}\n        \n        elif operation == \"findall\":\n            if not pattern:\n                return {\"success\": False, \"error\": \"请提供匹配模式\"}\n            result = re.findall(pattern, text, flags=re_flags)\n            return {\"success\": True, \"result\": result, \"count\": len(result)}\n        \n        elif operation == \"match\":\n            if not pattern:\n                return {\"success\": False, \"error\": \"请提供匹配模式\"}\n            match = re.search(pattern, text, flags=re_flags)\n            if match:\n                return {\n                    \"success\": True,\n                    \"matched\": True,\n                    \"result\": match.group(),\n                    \"groups\": match.groups(),\n                    \"start\": match.start(),\n                    \"end\": match.end()\n                }\n            else:\n                return {\"success\": True, \"matched\": False}\n        \n        else:\n            return {\"success\": False, \"error\": f\"未知的操作: {operation}\"}\n    except re.error as e:\n        return {\"success\": False, \"error\": f\"正则表达式错误: {str(e)}\"}\n    except Exception as e:\n        return {\"success\": False, \"error\": str(e)}",
+  "enabled": true,
+  "sandbox_only": false
+}

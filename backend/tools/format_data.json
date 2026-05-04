@@ -1,0 +1,28 @@
+{
+  "name": "format_data",
+  "display_name": "格式化数据",
+  "description": "将数据格式化为指定格式，支持JSON、CSV、表格等格式。用于数据展示、报告生成等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "data": {
+        "description": "要格式化的数据，可以是字典、列表或JSON字符串"
+      },
+      "format": {
+        "type": "string",
+        "description": "输出格式: json、csv、table",
+        "enum": ["json", "csv", "table"],
+        "default": "json"
+      },
+      "indent": {
+        "type": "integer",
+        "description": "JSON缩进空格数",
+        "default": 2
+      }
+    },
+    "required": ["data"]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    格式化数据\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - data (any): 要格式化的数据，必填，可以是字典、列表或JSON字符串\n            - format (str): 输出格式，\"json\"（默认）、\"csv\"、\"table\"\n            - indent (int): JSON缩进空格数，默认 2\n    \n    返回:\n        dict: 包含格式化结果的字典\n            - success (bool): 是否成功\n            - result (str): 格式化后的字符串\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import json\n    \n    data = arguments.get(\"data\")\n    format_type = arguments.get(\"format\", \"json\")\n    indent = arguments.get(\"indent\", 2)\n    \n    if data is None:\n        return {\"success\": False, \"error\": \"请提供要格式化的数据\"}\n    \n    try:\n        if format_type == \"json\":\n            if isinstance(data, str):\n                data = json.loads(data)\n            result = json.dumps(data, ensure_ascii=False, indent=indent)\n        elif format_type == \"csv\":\n            if not isinstance(data, list):\n                return {\"success\": False, \"error\": \"CSV格式需要列表数据\"}\n            \n            if not data:\n                result = \"\"\n            elif isinstance(data[0], dict):\n                headers = list(data[0].keys())\n                lines = [\",\".join(headers)]\n                for item in data:\n                    row = [str(item.get(h, \"\")) for h in headers]\n                    lines.append(\",\".join(row))\n                result = \"\\n\".join(lines)\n            else:\n                result = \"\\n\".join([str(item) for item in data])\n        elif format_type == \"table\":\n            if not isinstance(data, list):\n                return {\"success\": False, \"error\": \"表格格式需要列表数据\"}\n            \n            if not data:\n                result = \"空表格\"\n            elif isinstance(data[0], dict):\n                headers = list(data[0].keys())\n                col_widths = [len(h) for h in headers]\n                \n                for item in data:\n                    for i, h in enumerate(headers):\n                        col_widths[i] = max(col_widths[i], len(str(item.get(h, \"\"))))\n                \n                separator = \"+\" + \"+\".join([\"-\" * (w + 2) for w in col_widths]) + \"+\"\n                header_row = \"|\" + \"|\".join([f\" {h:<{col_widths[i]}} \" for i, h in enumerate(headers)]) + \"|\"\n                \n                lines = [separator, header_row, separator]\n                for item in data:\n                    row = \"|\" + \"|\".join([f\" {str(item.get(h, '')):<{col_widths[i]}} \" for i, h in enumerate(headers)]) + \"|\"\n                    lines.append(row)\n                lines.append(separator)\n                result = \"\\n\".join(lines)\n            else:\n                result = \"\\n\".join([str(item) for item in data])\n        else:\n            return {\"success\": False, \"error\": f\"不支持的格式: {format_type}\"}\n        \n        return {\"success\": True, \"result\": result}\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"格式化失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": false
+}

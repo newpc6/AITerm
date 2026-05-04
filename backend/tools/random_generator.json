@@ -1,0 +1,46 @@
+{
+  "name": "random_generator",
+  "display_name": "随机生成器",
+  "description": "生成随机数、随机字符串、UUID等。用于测试数据生成、密码生成等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "type": {
+        "type": "string",
+        "description": "生成类型: number(随机数)、float(随机浮点数)、string(随机字符串)、secure_string(安全随机字符串)、uuid(UUID)、password(密码)",
+        "enum": ["number", "float", "string", "secure_string", "uuid", "password"],
+        "default": "number"
+      },
+      "min": {
+        "type": "integer",
+        "description": "最小值，number/float类型时使用",
+        "default": 0
+      },
+      "max": {
+        "type": "integer",
+        "description": "最大值，number/float类型时使用",
+        "default": 100
+      },
+      "length": {
+        "type": "integer",
+        "description": "字符串长度，string/secure_string/password类型时使用",
+        "default": 16
+      },
+      "count": {
+        "type": "integer",
+        "description": "生成数量",
+        "default": 1
+      },
+      "charset": {
+        "type": "string",
+        "description": "字符集类型: alphanumeric(字母数字)、letters(仅字母)、digits(仅数字)、hex(十六进制)、password(包含特殊字符)",
+        "enum": ["alphanumeric", "letters", "digits", "hex", "password"],
+        "default": "alphanumeric"
+      }
+    },
+    "required": []
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    生成随机数据\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - type (str): 生成类型，\"number\"（随机数，默认）、\"float\"（随机浮点数）、\"string\"（随机字符串）、\"secure_string\"（安全随机字符串）、\"uuid\"（UUID）、\"password\"（密码）\n            - min (int): 最小值，number/float类型时使用，默认 0\n            - max (int): 最大值，number/float类型时使用，默认 100\n            - length (int): 字符串长度，string/secure_string/password类型时使用，默认 16\n            - count (int): 生成数量，默认 1\n            - charset (str): 字符集类型，string/secure_string类型时使用\n                - \"alphanumeric\": 字母数字（默认）\n                - \"letters\": 仅字母\n                - \"digits\": 仅数字\n                - \"hex\": 十六进制\n                - \"password\": 包含特殊字符\n    \n    返回:\n        dict: 包含生成结果的字典\n            - success (bool): 是否成功\n            - results (list): 生成的结果列表\n            - count (int): 生成数量\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import random\n    import string\n    import uuid as uuid_module\n    import secrets\n    \n    generator_type = arguments.get(\"type\", \"number\")\n    min_val = arguments.get(\"min\", 0)\n    max_val = arguments.get(\"max\", 100)\n    length = arguments.get(\"length\", 16)\n    count = arguments.get(\"count\", 1)\n    charset = arguments.get(\"charset\", \"alphanumeric\")\n    \n    try:\n        results = []\n        \n        for _ in range(count):\n            if generator_type == \"number\":\n                result = random.randint(min_val, max_val)\n            \n            elif generator_type == \"float\":\n                result = random.uniform(min_val, max_val)\n            \n            elif generator_type == \"string\":\n                if charset == \"alphanumeric\":\n                    chars = string.ascii_letters + string.digits\n                elif charset == \"letters\":\n                    chars = string.ascii_letters\n                elif charset == \"digits\":\n                    chars = string.digits\n                elif charset == \"hex\":\n                    chars = string.hexdigits.lower()\n                elif charset == \"password\":\n                    chars = string.ascii_letters + string.digits + \"!@#$%^&*()_+-=[]{}|;:,.<>?\"\n                else:\n                    chars = charset\n                result = ''.join(random.choice(chars) for _ in range(length))\n            \n            elif generator_type == \"secure_string\":\n                if charset == \"alphanumeric\":\n                    chars = string.ascii_letters + string.digits\n                elif charset == \"hex\":\n                    chars = string.hexdigits.lower()\n                else:\n                    chars = string.ascii_letters + string.digits\n                result = ''.join(secrets.choice(chars) for _ in range(length))\n            \n            elif generator_type == \"uuid\":\n                result = str(uuid_module.uuid4())\n            \n            elif generator_type == \"password\":\n                chars = string.ascii_letters + string.digits + \"!@#$%^&*\"\n                result = ''.join(secrets.choice(chars) for _ in range(length))\n            \n            else:\n                return {\"success\": False, \"error\": f\"未知的生成类型: {generator_type}\"}\n            \n            results.append(result)\n        \n        return {\n            \"success\": True,\n            \"results\": results if count > 1 else results[0],\n            \"count\": len(results)\n        }\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"生成失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": false
+}

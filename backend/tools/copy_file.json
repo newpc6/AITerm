@@ -1,0 +1,22 @@
+{
+  "name": "copy_file",
+  "display_name": "复制文件",
+  "description": "复制文件到指定路径",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "source": {
+        "type": "string",
+        "description": "源文件路径"
+      },
+      "destination": {
+        "type": "string",
+        "description": "目标路径"
+      }
+    },
+    "required": ["source", "destination"]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    复制文件或目录\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - source (str): 源文件路径，必填\n            - destination (str): 目标路径，必填\n    \n    返回:\n        dict: 包含复制结果的字典\n            - success (bool): 是否成功\n            - source (str): 源路径\n            - destination (str): 目标路径\n            - size (int): 文件大小（字节）\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import os\n    import shutil\n    \n    source = arguments.get(\"source\", \"\")\n    destination = arguments.get(\"destination\", \"\")\n    \n    if not source or not destination:\n        return {\"success\": False, \"error\": \"请提供源路径和目标路径\"}\n    \n    if not os.path.exists(source):\n        return {\"success\": False, \"error\": f\"源文件不存在: {source}\"}\n    \n    try:\n        dest_dir = os.path.dirname(destination)\n        if dest_dir and not os.path.exists(dest_dir):\n            os.makedirs(dest_dir, exist_ok=True)\n        \n        if os.path.isdir(source):\n            shutil.copytree(source, destination)\n        else:\n            shutil.copy2(source, destination)\n        \n        return {\n            \"success\": True,\n            \"source\": source,\n            \"destination\": destination,\n            \"size\": os.path.getsize(destination) if os.path.isfile(destination) else None\n        }\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"复制失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": true
+}

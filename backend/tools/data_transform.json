@@ -1,0 +1,29 @@
+{
+  "name": "data_transform",
+  "display_name": "数据转换",
+  "description": "在不同数据格式之间转换，支持JSON、XML、YAML等格式。用于数据处理、系统集成等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "data": {
+        "description": "要转换的数据，可以是字典、列表或JSON字符串"
+      },
+      "from_format": {
+        "type": "string",
+        "description": "源格式: json、xml、yaml",
+        "enum": ["json", "xml", "yaml"],
+        "default": "json"
+      },
+      "to_format": {
+        "type": "string",
+        "description": "目标格式: json、xml、yaml",
+        "enum": ["json", "xml", "yaml"],
+        "default": "json"
+      }
+    },
+    "required": ["data"]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    数据格式转换\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - data (any): 要转换的数据，必填\n            - from_format (str): 源格式，\"json\"（默认）、\"xml\"、\"yaml\"\n            - to_format (str): 目标格式，\"json\"（默认）、\"xml\"、\"yaml\"\n    \n    返回:\n        dict: 包含转换结果的字典\n            - success (bool): 是否成功\n            - result (str): 转换后的数据\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import json\n    \n    data = arguments.get(\"data\")\n    from_format = arguments.get(\"from_format\", \"json\")\n    to_format = arguments.get(\"to_format\", \"json\")\n    \n    if data is None:\n        return {\"success\": False, \"error\": \"请提供要转换的数据\"}\n    \n    try:\n        if from_format == \"json\":\n            if isinstance(data, str):\n                parsed_data = json.loads(data)\n            else:\n                parsed_data = data\n        elif from_format == \"xml\":\n            return {\"success\": False, \"error\": \"XML解析需要xmltodict库支持\"}\n        elif from_format == \"yaml\":\n            return {\"success\": False, \"error\": \"YAML解析需要pyyaml库支持\"}\n        else:\n            return {\"success\": False, \"error\": f\"不支持的源格式: {from_format}\"}\n        \n        if to_format == \"json\":\n            result = json.dumps(parsed_data, ensure_ascii=False, indent=2)\n        elif to_format == \"xml\":\n            def dict_to_xml(data, root=\"root\"):\n                xml_parts = [f\"<{root}>\"]\n                \n                def to_xml(value, key):\n                    if isinstance(value, dict):\n                        xml_parts.append(f\"<{key}>\")\n                        for k, v in value.items():\n                            to_xml(v, k)\n                        xml_parts.append(f\"</{key}>\")\n                    elif isinstance(value, list):\n                        for item in value:\n                            to_xml(item, key)\n                    else:\n                        xml_parts.append(f\"<{key}>{value}</{key}>\")\n                \n                if isinstance(parsed_data, dict):\n                    for k, v in parsed_data.items():\n                        to_xml(v, k)\n                else:\n                    to_xml(parsed_data, \"item\")\n                \n                xml_parts.append(f\"</{root}>\")\n                return \"\\n\".join(xml_parts)\n            \n            result = dict_to_xml(parsed_data)\n        elif to_format == \"yaml\":\n            return {\"success\": False, \"error\": \"YAML输出需要pyyaml库支持\"}\n        else:\n            return {\"success\": False, \"error\": f\"不支持的目标格式: {to_format}\"}\n        \n        return {\"success\": True, \"result\": result}\n    except json.JSONDecodeError as e:\n        return {\"success\": False, \"error\": f\"JSON解析失败: {str(e)}\"}\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"转换失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": false
+}

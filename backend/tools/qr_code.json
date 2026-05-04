@@ -1,0 +1,33 @@
+{
+  "name": "qr_code",
+  "display_name": "二维码生成",
+  "description": "生成二维码图片。用于信息编码、快捷分享等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "要编码的文本"
+      },
+      "output_path": {
+        "type": "string",
+        "description": "输出图片路径，可选，默认临时目录"
+      },
+      "size": {
+        "type": "integer",
+        "description": "二维码大小（像素）",
+        "default": 300
+      },
+      "error_correction": {
+        "type": "string",
+        "description": "纠错级别: L(7%)、M(15%)、Q(25%)、H(30%)",
+        "enum": ["L", "M", "Q", "H"],
+        "default": "M"
+      }
+    },
+    "required": ["text"]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    生成二维码\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - text (str): 要编码的文本，必填\n            - output_path (str): 输出图片路径，可选，默认临时目录\n            - size (int): 二维码大小（像素），默认 300\n            - error_correction (str): 纠错级别，\"L\"（7%）、\"M\"（15%，默认）、\"Q\"（25%）、\"H\"（30%）\n    \n    返回:\n        dict: 包含生成结果的字典\n            - success (bool): 是否成功\n            - output_path (str): 生成的图片路径\n            - text (str): 编码的文本\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import os\n    import tempfile\n    \n    text = arguments.get(\"text\", \"\")\n    output_path = arguments.get(\"output_path\", \"\")\n    size = arguments.get(\"size\", 300)\n    error_correction = arguments.get(\"error_correction\", \"M\")\n    \n    if not text:\n        return {\"success\": False, \"error\": \"请提供要编码的文本\"}\n    \n    try:\n        import qrcode\n        from qrcode.constants import ERROR_CORRECT_L, ERROR_CORRECT_M, ERROR_CORRECT_Q, ERROR_CORRECT_H\n        \n        error_levels = {\n            \"L\": ERROR_CORRECT_L,\n            \"M\": ERROR_CORRECT_M,\n            \"Q\": ERROR_CORRECT_Q,\n            \"H\": ERROR_CORRECT_H\n        }\n        \n        qr = qrcode.QRCode(\n            version=1,\n            error_correction=error_levels.get(error_correction, ERROR_CORRECT_M),\n            box_size=10,\n            border=4\n        )\n        qr.add_data(text)\n        qr.make(fit=True)\n        \n        img = qr.make_image(fill_color=\"black\", back_color=\"white\")\n        img = img.resize((size, size))\n        \n        if not output_path:\n            output_path = os.path.join(tempfile.gettempdir(), f\"qrcode_{hash(text) % 100000}.png\")\n        \n        img.save(output_path)\n        \n        return {\n            \"success\": True,\n            \"output_path\": output_path,\n            \"text\": text,\n            \"size\": size\n        }\n    except ImportError:\n        return {\"success\": False, \"error\": \"需要安装 qrcode 库: pip install qrcode[pil]\"}\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"生成失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": false
+}

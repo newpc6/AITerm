@@ -1,0 +1,28 @@
+{
+  "name": "env_variable",
+  "display_name": "环境变量",
+  "description": "读取或设置环境变量。用于配置管理、系统集成等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "operation": {
+        "type": "string",
+        "description": "操作类型: get(获取)、set(设置)、delete(删除)",
+        "enum": ["get", "set", "delete"],
+        "default": "get"
+      },
+      "name": {
+        "type": "string",
+        "description": "环境变量名"
+      },
+      "value": {
+        "type": "string",
+        "description": "环境变量值，set操作时必填"
+      }
+    },
+    "required": []
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    环境变量操作\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - operation (str): 操作类型，\"get\"（获取，默认）、\"set\"（设置）、\"delete\"（删除）\n            - name (str): 环境变量名，get/set/delete 操作必填\n            - value (str): 环境变量值，set 操作必填\n    \n    返回:\n        dict: 包含操作结果的字典\n            - success (bool): 是否成功\n            - exists (bool): 变量是否存在（get单个变量时）\n            - name (str): 变量名\n            - value (str): 变量值\n            - variables (dict): 所有环境变量（get未指定name时）\n            - action (str): 执行的操作\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import os\n    \n    operation = arguments.get(\"operation\", \"get\")\n    name = arguments.get(\"name\", \"\")\n    value = arguments.get(\"value\", \"\")\n    \n    try:\n        if operation == \"get\":\n            if name:\n                val = os.environ.get(name)\n                if val is None:\n                    return {\"success\": True, \"exists\": False, \"name\": name, \"value\": None}\n                return {\"success\": True, \"exists\": True, \"name\": name, \"value\": val}\n            else:\n                return {\"success\": True, \"variables\": dict(os.environ)}\n        \n        elif operation == \"set\":\n            if not name:\n                return {\"success\": False, \"error\": \"请提供环境变量名称\"}\n            os.environ[name] = str(value)\n            return {\"success\": True, \"name\": name, \"value\": str(value), \"action\": \"set\"}\n        \n        elif operation == \"delete\":\n            if not name:\n                return {\"success\": False, \"error\": \"请提供环境变量名称\"}\n            if name in os.environ:\n                del os.environ[name]\n                return {\"success\": True, \"name\": name, \"action\": \"deleted\"}\n            else:\n                return {\"success\": False, \"error\": f\"环境变量不存在: {name}\"}\n        \n        else:\n            return {\"success\": False, \"error\": f\"未知的操作: {operation}\"}\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"操作失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": false
+}

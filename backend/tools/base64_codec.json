@@ -1,0 +1,34 @@
+{
+  "name": "base64_codec",
+  "display_name": "Base64编解码",
+  "description": "对字符串进行Base64编码或解码。用于数据编码、简单加密等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "要处理的文本"
+      },
+      "operation": {
+        "type": "string",
+        "description": "操作类型",
+        "enum": [
+          "encode",
+          "decode"
+        ],
+        "default": "encode"
+      },
+      "encoding": {
+        "type": "string",
+        "description": "字符编码",
+        "default": "utf-8"
+      }
+    },
+    "required": [
+      "text"
+    ]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    Base64编码/解码\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - text (str): 要处理的文本，必填\n            - operation (str): 操作类型，\"encode\"（编码）或 \"decode\"（解码），默认 \"encode\"\n            - encoding (str): 字符编码，默认 \"utf-8\"\n    \n    返回:\n        dict: 包含处理结果的字典\n            - success (bool): 是否成功\n            - result (str): 编码/解码后的结果\n            - original (str): 原始文本\n            - operation (str): 执行的操作\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import base64\n    \n    text = arguments.get(\"text\", \"\")\n    operation = arguments.get(\"operation\", \"encode\")\n    encoding = arguments.get(\"encoding\", \"utf-8\")\n    \n    if not text:\n        return {\"success\": False, \"error\": \"请提供要处理的文本\"}\n    \n    try:\n        if operation == \"encode\":\n            encoded = base64.b64encode(text.encode(encoding)).decode(encoding)\n            return {\n                \"success\": True,\n                \"result\": encoded,\n                \"original\": text,\n                \"operation\": \"encode\"\n            }\n        elif operation == \"decode\":\n            decoded = base64.b64decode(text.encode(encoding)).decode(encoding)\n            return {\n                \"success\": True,\n                \"result\": decoded,\n                \"original\": text,\n                \"operation\": \"decode\"\n            }\n        else:\n            return {\"success\": False, \"error\": f\"未知的操作: {operation}\"}\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"处理失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": false
+}

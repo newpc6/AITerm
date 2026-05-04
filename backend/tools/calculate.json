@@ -1,0 +1,18 @@
+{
+  "name": "calculate",
+  "display_name": "数学计算",
+  "description": "执行数学计算，支持基本运算、三角函数、对数等。用于数据分析、科学计算等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "expression": {
+        "type": "string",
+        "description": "数学表达式，如 \"2 + 3 * 4\"、\"sin(pi/2)\"、\"sqrt(16)\""
+      }
+    },
+    "required": ["expression"]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    执行数学计算\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - expression (str): 数学表达式，必填，如 \"2 + 3 * 4\"、\"sin(pi/2)\"、\"sqrt(16)\"\n    \n    支持的函数和常量:\n        - 基本运算: abs, round, min, max, sum, pow, len\n        - 数学常量: pi, e\n        - 三角函数: sin, cos, tan, asin, acos, atan, sinh, cosh, tanh\n        - 对数函数: log, log10, log2, exp\n        - 其他: sqrt, ceil, floor, degrees, radians, factorial\n    \n    返回:\n        dict: 包含计算结果的字典\n            - success (bool): 是否成功\n            - expression (str): 原始表达式\n            - result (any): 计算结果\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import math\n    \n    expression = arguments.get(\"expression\", \"\")\n    \n    if not expression:\n        return {\"success\": False, \"error\": \"请提供计算表达式\"}\n    \n    allowed_names = {\n        \"abs\": abs, \"round\": round, \"min\": min, \"max\": max,\n        \"sum\": sum, \"pow\": pow, \"len\": len,\n        \"pi\": math.pi, \"e\": math.e,\n        \"sin\": math.sin, \"cos\": math.cos, \"tan\": math.tan,\n        \"asin\": math.asin, \"acos\": math.acos, \"atan\": math.atan,\n        \"sinh\": math.sinh, \"cosh\": math.cosh, \"tanh\": math.tanh,\n        \"log\": math.log, \"log10\": math.log10, \"log2\": math.log2,\n        \"exp\": math.exp, \"sqrt\": math.sqrt,\n        \"ceil\": math.ceil, \"floor\": math.floor,\n        \"degrees\": math.degrees, \"radians\": math.radians,\n        \"factorial\": math.factorial\n    }\n    \n    try:\n        result = eval(expression, {\"__builtins__\": {}}, allowed_names)\n        \n        return {\n            \"success\": True,\n            \"expression\": expression,\n            \"result\": result\n        }\n    except NameError as e:\n        return {\"success\": False, \"error\": f\"未知的函数或变量: {str(e)}\"}\n    except SyntaxError as e:\n        return {\"success\": False, \"error\": f\"表达式语法错误: {str(e)}\"}\n    except Exception as e:\n        return {\"success\": False, \"error\": str(e)}",
+  "enabled": true,
+  "sandbox_only": false
+}

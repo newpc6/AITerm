@@ -1,0 +1,38 @@
+{
+  "name": "hash_generator",
+  "display_name": "哈希生成器",
+  "description": "生成字符串或文件的哈希值，支持MD5、SHA1、SHA256等算法。用于数据校验、密码哈希等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "要哈希的文本，与file_path二选一"
+      },
+      "file_path": {
+        "type": "string",
+        "description": "文件路径，与text二选一"
+      },
+      "algorithm": {
+        "type": "string",
+        "description": "哈希算法: md5、sha1、sha256、sha512",
+        "enum": [
+          "md5",
+          "sha1",
+          "sha256",
+          "sha512"
+        ],
+        "default": "sha256"
+      },
+      "encoding": {
+        "type": "string",
+        "description": "文本编码",
+        "default": "utf-8"
+      }
+    },
+    "required": []
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    生成哈希值\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - text (str): 要哈希的文本，与 file_path 二选一\n            - file_path (str): 文件路径，与 text 二选一\n            - algorithm (str): 哈希算法，\"md5\"、\"sha1\"、\"sha256\"（默认）、\"sha512\"\n            - encoding (str): 文本编码，默认 \"utf-8\"\n    \n    返回:\n        dict: 包含哈希结果的字典\n            - success (bool): 是否成功\n            - hash (str): 哈希值\n            - algorithm (str): 使用的算法\n            - input_type (str): 输入类型 \"text\" 或 \"file\"\n            - input (str): 输入内容（文本或文件路径）\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import hashlib\n    import os\n    \n    text = arguments.get(\"text\", \"\")\n    file_path = arguments.get(\"file_path\", \"\")\n    algorithm = arguments.get(\"algorithm\", \"sha256\").lower()\n    encoding = arguments.get(\"encoding\", \"utf-8\")\n    \n    if not text and not file_path:\n        return {\"success\": False, \"error\": \"请提供文本或文件路径\"}\n    \n    algorithms = {\n        \"md5\": hashlib.md5,\n        \"sha1\": hashlib.sha1,\n        \"sha256\": hashlib.sha256,\n        \"sha512\": hashlib.sha512\n    }\n    \n    if algorithm not in algorithms:\n        return {\"success\": False, \"error\": f\"不支持的算法: {algorithm}，支持: {list(algorithms.keys())}\"}\n    \n    try:\n        hasher = algorithms[algorithm]()\n        \n        if file_path:\n            if not os.path.exists(file_path):\n                return {\"success\": False, \"error\": f\"文件不存在: {file_path}\"}\n            \n            with open(file_path, \"rb\") as f:\n                for chunk in iter(lambda: f.read(8192), b\"\"):\n                    hasher.update(chunk)\n            \n            return {\n                \"success\": True,\n                \"hash\": hasher.hexdigest(),\n                \"algorithm\": algorithm,\n                \"input_type\": \"file\",\n                \"input\": file_path\n            }\n        else:\n            hasher.update(text.encode(encoding))\n            return {\n                \"success\": True,\n                \"hash\": hasher.hexdigest(),\n                \"algorithm\": algorithm,\n                \"input_type\": \"text\",\n                \"input\": text[:100] + \"...\" if len(text) > 100 else text\n            }\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"哈希生成失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": false
+}

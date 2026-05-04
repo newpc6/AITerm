@@ -76,7 +76,7 @@ AI 驱动的智能终端管理工具，通过自然语言指令远程管理服�
 ### 后端启动
 
 ```bash
-cd aiterm-server-python
+cd backend
 pip install -r requirements.txt
 python main.py
 ```
@@ -86,12 +86,24 @@ python main.py
 ### 前端启动
 
 ```bash
-cd aiterm-web
+cd frontend
 yarn install
 yarn dev
 ```
 
-前端开发服务器默认运行在 `http://localhost:18085
+前端开发服务器默认运行在 `http://localhost:18085`
+
+### 生产部署
+
+```bash
+# 构建前端，自动输出到 backend/dist 目录
+cd frontend
+yarn build
+
+# 启动后端，访问 http://localhost:18084 即可看到前端页面
+cd ../backend
+python main.py
+```
 
 ## 工具系统
 
@@ -100,7 +112,7 @@ yarn dev
 运行以下脚本导入预设工具和默认配置提示词
 
 ```bash
-cd aiterm-server-python
+cd backend
 python init_scripts/init_tools.py
 python init_scripts/init_settings.py
 ```
@@ -269,19 +281,20 @@ def execute(arguments):
 
 ```
 AITerm/
-├── aiterm-server-python/  # 后端服务
+├── backend/               # 后端服务
 │   ├── app/               # 应用模块
 │   │   ├── api/           # API 路由
 │   │   ├── db/            # 数据库模型
 │   │   ├── models/        # Pydantic 模型
 │   │   ├── repositories/  # 数据访问层
 │   │   └── services/      # 业务逻辑层
-│   ├── scripts/           # 脚本
-│   │   └── init_tools.py  # 工具初始化脚本
+│   ├── init_scripts/      # 初始化脚本
+│   ├── dist/              # 前端构建输出（自动生成）
 │   └── main.py            # 入口文件
-├── aiterm-web/            # 前端应用
+├── frontend/              # 前端应用
 │   ├── src/               # 源代码
 │   └── public/            # 静态资源
+├── assets/                # 文档图片
 └── README.md
 ```
 

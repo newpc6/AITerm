@@ -1,0 +1,34 @@
+{
+  "name": "text_template",
+  "display_name": "文本模板",
+  "description": "使用模板和数据生成文本。用于报告生成、邮件模板等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "template": {
+        "type": "string",
+        "description": "模板文本，使用 {{variable_name}} 作为占位符"
+      },
+      "variables": {
+        "type": "object",
+        "description": "变量字典，用于替换模板中的占位符"
+      },
+      "delimiter": {
+        "type": "string",
+        "description": "变量分隔符，默认 {{ 和 }}",
+        "default": "{{"
+      },
+      "default": {
+        "type": "string",
+        "description": "变量不存在时的默认值",
+        "default": ""
+      }
+    },
+    "required": [
+      "template"
+    ]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    文本模板渲染\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - template (str): 模板文本，必填\n            - variables (dict): 变量字典，用于替换模板中的占位符\n            - delimiter (str): 变量分隔符，默认 \"{{\" 和 \"}}\"\n            - default (str): 变量不存在时的默认值，默认空字符串\n    \n    返回:\n        dict: 包含渲染结果的字典\n            - success (bool): 是否成功\n            - result (str): 渲染后的文本\n            - variables_used (list): 使用的变量列表\n            - error (str): 错误信息（失败时）\n    \n    模板语法:\n        使用 {{variable_name}} 作为占位符\n        支持嵌套属性: {{user.name}}\n        支持默认值: {{variable|default_value}}\n    \"\"\"\n    import re\n    \n    template = arguments.get(\"template\", \"\")\n    variables = arguments.get(\"variables\", {})\n    delimiter = arguments.get(\"delimiter\", \"{{\")\n    default = arguments.get(\"default\", \"\")\n    \n    if not template:\n        return {\"success\": False, \"error\": \"请提供模板文本\"}\n    \n    try:\n        end_delimiter = \"}}\" if delimiter == \"{{\" else delimiter.replace(\"{\", \"}\")\n        pattern = re.escape(delimiter) + r\"(.*??)\" + re.escape(end_delimiter)\n        \n        variables_used = []\n        \n        def replace(match):\n            expr = match.group(1).strip()\n            variables_used.append(expr)\n            \n            if \"|\" in expr:\n                var_name, default_val = expr.split(\"|\", 1)\n                var_name = var_name.strip()\n                default_val = default_val.strip()\n            else:\n                var_name = expr\n                default_val = default\n            \n            value = variables\n            for key in var_name.split(\".\"):\n                if isinstance(value, dict):\n                    value = value.get(key)\n                else:\n                    return default_val\n            \n            if value is None:\n                return default_val\n            \n            return str(value)\n        \n        result = re.sub(pattern, replace, template)\n        \n        return {\n            \"success\": True,\n            \"result\": result,\n            \"variables_used\": list(set(variables_used))\n        }\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"渲染失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": false
+}

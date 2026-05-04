@@ -1,0 +1,33 @@
+{
+  "name": "write_file",
+  "display_name": "写入文件",
+  "description": "将内容写入指定路径的文件，支持创建和覆盖",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "文件路径"
+      },
+      "content": {
+        "type": "string",
+        "description": "要写入的内容"
+      },
+      "mode": {
+        "type": "string",
+        "description": "写入模式：write 覆盖写入（默认），append 追加写入",
+        "enum": ["write", "append"],
+        "default": "write"
+      },
+      "encoding": {
+        "type": "string",
+        "description": "文件编码",
+        "default": "utf-8"
+      }
+    },
+    "required": ["path", "content"]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    写入文件内容\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - path (str): 文件路径，必填\n            - content (str): 要写入的内容，必填\n            - mode (str): 写入模式，\"write\" 覆盖写入（默认），\"append\" 追加写入\n            - encoding (str): 文件编码，默认 \"utf-8\"\n    \n    返回:\n        dict: 包含写入结果的字典\n            - success (bool): 是否成功\n            - path (str): 文件路径\n            - size (int): 文件大小（字节）\n            - mode (str): 写入模式\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import os\n    \n    path = arguments.get(\"path\", \"\")\n    content = arguments.get(\"content\", \"\")\n    mode = arguments.get(\"mode\", \"write\")\n    encoding = arguments.get(\"encoding\", \"utf-8\")\n    \n    if not path:\n        return {\"success\": False, \"error\": \"请提供文件路径\"}\n    \n    try:\n        dir_path = os.path.dirname(path)\n        if dir_path and not os.path.exists(dir_path):\n            os.makedirs(dir_path, exist_ok=True)\n        \n        write_mode = \"a\" if mode == \"append\" else \"w\"\n        with open(path, write_mode, encoding=encoding) as f:\n            f.write(content)\n        \n        file_size = os.path.getsize(path)\n        \n        return {\n            \"success\": True,\n            \"path\": path,\n            \"size\": file_size,\n            \"mode\": mode\n        }\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"写入文件失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": true
+}

@@ -103,14 +103,14 @@ dmypy.json
 
 cython_debug/
 
-aiterm-server-python/data/
-aiterm-server-python/__pycache__/
-aiterm-server-python/app/__pycache__/
-aiterm-server-python/app/*/__pycache__/
-aiterm-server-python/app/*/*/__pycache__/
-aiterm-server-python/.venv/
-aiterm-server-python/venv/
-aiterm-server-python/scripts/
+backend/data/
+backend/__pycache__/
+backend/app/__pycache__/
+backend/app/*/__pycache__/
+backend/app/*/*/__pycache__/
+backend/.venv/
+backend/venv/
+backend/scripts/
 docs
 chat.md
 assets/pic

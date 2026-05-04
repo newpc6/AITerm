@@ -1,0 +1,13 @@
+{
+  "name": "get_current_time",
+  "display_name": "获取当前时间",
+  "description": "获取当前的日期、时间和星期。当用户询问现在几点、今天日期、当前时间等问题时，必须调用此工具获取准确的实时时间。模型本身无法获取实时时间，必须通过此工具才能获得准确的时间信息。",
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    获取当前时间工具\n    \n    参数:\n        arguments (dict): 空字典，无需参数\n    \n    返回:\n        dict: 包含时间信息的字典\n            - success (bool): 是否成功\n            - time (str): 当前时间，格式 \"YYYY-MM-DD HH:MM:SS\"\n            - date (str): 当前日期，格式 \"YYYY-MM-DD\"\n            - weekday (str): 星期几，如 \"周一\"\n    \"\"\"\n    from datetime import datetime\n    now = datetime.now()\n    return {\n        \"success\": True,\n        \"time\": now.strftime(\"%Y-%m-%d %H:%M:%S\"),\n        \"date\": now.strftime(\"%Y-%m-%d\"),\n        \"weekday\": [\"周一\", \"周二\", \"周三\", \"周四\", \"周五\", \"周六\", \"周日\"][now.weekday()]\n    }",
+  "enabled": true,
+  "sandbox_only": false
+}

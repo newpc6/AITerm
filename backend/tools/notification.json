@@ -1,0 +1,34 @@
+{
+  "name": "notification",
+  "display_name": "系统通知",
+  "description": "发送系统桌面通知。用于提醒、报警等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "title": {
+        "type": "string",
+        "description": "通知标题"
+      },
+      "message": {
+        "type": "string",
+        "description": "通知内容"
+      },
+      "icon": {
+        "type": "string",
+        "description": "图标路径（可选）"
+      },
+      "timeout": {
+        "type": "integer",
+        "description": "显示时间（秒）",
+        "default": 5
+      }
+    },
+    "required": [
+      "title",
+      "message"
+    ]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    发送系统通知\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - title (str): 通知标题，必填\n            - message (str): 通知内容，必填\n            - icon (str): 图标路径，可选\n            - timeout (int): 显示时间（秒），默认 5\n    \n    返回:\n        dict: 包含执行结果的字典\n            - success (bool): 是否成功\n            - title (str): 通知标题\n            - message (str): 通知内容\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import subprocess\n    import platform\n    \n    title = arguments.get(\"title\", \"\")\n    message = arguments.get(\"message\", \"\")\n    icon = arguments.get(\"icon\", \"\")\n    timeout = arguments.get(\"timeout\", 5)\n    \n    if not title or not message:\n        return {\"success\": False, \"error\": \"请提供通知标题和内容\"}\n    \n    try:\n        is_windows = platform.system() == \"Windows\"\n        \n        if is_windows:\n            ps_script = f'''\n            [Windows.UI.Notifications.ToastNotificationManager, Windows.UI.Notifications, ContentType = WindowsRuntime] | Out-Null\n            [Windows.Data.Xml.Dom.XmlDocument, Windows.Data.Xml.Dom.XmlDocument, ContentType = WindowsRuntime] | Out-Null\n            \n            $template = @\"\n            <toast duration=\"short\">\n                <visual>\n                    <binding template=\"ToastText02\">\n                        <text id=\"1\">{title}</text>\n                        <text id=\"2\">{message}</text>\n                    </binding>\n                </visual>\n            </toast>\n            \"@\n            \n            $xml = New-Object Windows.Data.Xml.Dom.XmlDocument\n            $xml.LoadXml($template)\n            $toast = [Windows.UI.Notifications.ToastNotification]::new($xml)\n            [Windows.UI.Notifications.ToastNotificationManager]::CreateToastNotifier(\"AITerm\").Show($toast)\n            '''\n            \n            result = subprocess.run(\n                [\"powershell\", \"-command\", ps_script],\n                capture_output=True,\n                text=True,\n                timeout=timeout\n            )\n            \n            if result.returncode == 0:\n                return {\n                    \"success\": True,\n                    \"title\": title,\n                    \"message\": message\n                }\n            else:\n                return {\n                    \"success\": False,\n                    \"error\": f\"PowerShell error: {result.stderr}\"\n                }\n        else:\n            try:\n                subprocess.run(\n                    [\"notify-send\", \"-t\", str(timeout * 1000), title, message],\n                    check=True,\n                    timeout=timeout\n                )\n                return {\n                    \"success\": True,\n                    \"title\": title,\n                    \"message\": message\n                }\n            except FileNotFoundError:\n                return {\n                    \"success\": False,\n                    \"error\": \"notify-send not found. Please install libnotify-bin.\"\n                }\n    except subprocess.TimeoutExpired:\n        return {\"success\": False, \"error\": \"Notification timeout\"}\n    except Exception as e:\n        return {\"success\": False, \"error\": str(e)}",
+  "enabled": true,
+  "sandbox_only": false
+}

@@ -1,0 +1,18 @@
+{
+  "name": "create_directory",
+  "display_name": "创建目录",
+  "description": "创建目录，支持多级创建",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "目录路径"
+      }
+    },
+    "required": ["path"]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    创建目录\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - path (str): 目录路径，必填\n    \n    返回:\n        dict: 包含创建结果的字典\n            - success (bool): 是否成功\n            - path (str): 创建的目录路径\n            - created (bool): 是否创建成功\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import os\n    \n    path = arguments.get(\"path\", \"\")\n    \n    if not path:\n        return {\"success\": False, \"error\": \"请提供目录路径\"}\n    \n    try:\n        os.makedirs(path, exist_ok=True)\n        \n        return {\n            \"success\": True,\n            \"path\": path,\n            \"created\": True\n        }\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"创建目录失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": true
+}

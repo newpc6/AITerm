@@ -1,0 +1,38 @@
+{
+  "name": "archive_manager",
+  "display_name": "压缩文件管理",
+  "description": "创建和解压ZIP压缩文件。用于文件打包、备份等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "operation": {
+        "type": "string",
+        "description": "操作类型: create(创建压缩文件)、extract(解压文件)、list(列出压缩文件内容)",
+        "enum": [
+          "create",
+          "extract",
+          "list"
+        ],
+        "default": "list"
+      },
+      "archive_path": {
+        "type": "string",
+        "description": "压缩文件路径"
+      },
+      "source_path": {
+        "type": "string",
+        "description": "源文件/目录路径，create操作时必填"
+      },
+      "extract_path": {
+        "type": "string",
+        "description": "解压目标目录，extract操作时可选"
+      }
+    },
+    "required": [
+      "archive_path"
+    ]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    压缩文件管理\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - operation (str): 操作类型\n                - \"create\": 创建压缩文件\n                - \"extract\": 解压文件\n                - \"list\": 列出压缩文件内容\n            - archive_path (str): 压缩文件路径，必填\n            - source_path (str): 源文件/目录路径，create操作必填\n            - extract_path (str): 解压目标目录，extract操作可选，默认当前目录\n    \n    返回:\n        dict: 包含操作结果的字典\n            - success (bool): 是否成功\n            - archive_path (str): 压缩文件路径\n            - files (list): 文件列表（list操作）\n            - count (int): 文件数量\n            - extracted_path (str): 解压目录（extract操作）\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import os\n    import zipfile\n    \n    operation = arguments.get(\"operation\", \"list\")\n    archive_path = arguments.get(\"archive_path\", \"\")\n    source_path = arguments.get(\"source_path\", \"\")\n    extract_path = arguments.get(\"extract_path\", \"\")\n    \n    if not archive_path:\n        return {\"success\": False, \"error\": \"请提供压缩文件路径\"}\n    \n    try:\n        if operation == \"create\":\n            if not source_path:\n                return {\"success\": False, \"error\": \"请提供源文件/目录路径\"}\n            \n            if not os.path.exists(source_path):\n                return {\"success\": False, \"error\": f\"源路径不存在: {source_path}\"}\n            \n            file_count = 0\n            with zipfile.ZipFile(archive_path, 'w', zipfile.ZIP_DEFLATED) as zf:\n                if os.path.isfile(source_path):\n                    zf.write(source_path, os.path.basename(source_path))\n                    file_count = 1\n                else:\n                    for root, dirs, files in os.walk(source_path):\n                        for file in files:\n                            file_path = os.path.join(root, file)\n                            arcname = os.path.relpath(file_path, source_path)\n                            zf.write(file_path, arcname)\n                            file_count += 1\n            \n            return {\n                \"success\": True,\n                \"archive_path\": archive_path,\n                \"source_path\": source_path,\n                \"count\": file_count\n            }\n        \n        elif operation == \"extract\":\n            if not os.path.exists(archive_path):\n                return {\"success\": False, \"error\": f\"压缩文件不存在: {archive_path}\"}\n            \n            if not extract_path:\n                extract_path = os.path.dirname(archive_path)\n            \n            with zipfile.ZipFile(archive_path, 'r') as zf:\n                zf.extractall(extract_path)\n                file_count = len(zf.namelist())\n            \n            return {\n                \"success\": True,\n                \"archive_path\": archive_path,\n                \"extracted_path\": extract_path,\n                \"count\": file_count\n            }\n        \n        elif operation == \"list\":\n            if not os.path.exists(archive_path):\n                return {\"success\": False, \"error\": f\"压缩文件不存在: {archive_path}\"}\n            \n            with zipfile.ZipFile(archive_path, 'r') as zf:\n                files = []\n                for info in zf.infolist():\n                    files.append({\n                        \"name\": info.filename,\n                        \"size\": info.file_size,\n                        \"compressed_size\": info.compress_size,\n                        \"is_dir\": info.is_dir()\n                    })\n            \n            return {\n                \"success\": True,\n                \"archive_path\": archive_path,\n                \"files\": files,\n                \"count\": len(files)\n            }\n        \n        else:\n            return {\"success\": False, \"error\": f\"未知的操作: {operation}\"}\n    except zipfile.BadZipFile:\n        return {\"success\": False, \"error\": \"无效的ZIP文件\"}\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"操作失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": true
+}

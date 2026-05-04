@@ -1,0 +1,45 @@
+{
+  "name": "http_request",
+  "display_name": "HTTP请求",
+  "description": "发送HTTP请求，支持GET、POST等方法",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "请求URL"
+      },
+      "method": {
+        "type": "string",
+        "description": "请求方法",
+        "enum": ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+        "default": "GET"
+      },
+      "headers": {
+        "type": "object",
+        "description": "请求头（键值对）"
+      },
+      "params": {
+        "type": "object",
+        "description": "URL查询参数（键值对）"
+      },
+      "data": {
+        "type": "string",
+        "description": "请求体数据（字符串格式）"
+      },
+      "json_data": {
+        "type": "object",
+        "description": "JSON请求体数据"
+      },
+      "timeout": {
+        "type": "integer",
+        "description": "超时时间（秒）",
+        "default": 30
+      }
+    },
+    "required": ["url"]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    发送HTTP请求\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - url (str): 请求URL，必填\n            - method (str): 请求方法，默认 \"GET\"，支持 GET/POST/PUT/DELETE 等\n            - headers (dict): 请求头，可选\n            - params (dict): URL查询参数，可选\n            - data (str): 请求体数据（字符串），可选\n            - json_data (dict): JSON请求体数据，可选\n            - timeout (int): 超时时间（秒），默认 30\n    \n    返回:\n        dict: 包含响应信息的字典\n            - success (bool): 是否成功\n            - status_code (int): HTTP状态码\n            - headers (dict): 响应头\n            - body (str): 响应体\n            - json (dict): 解析后的JSON响应（如果响应是JSON）\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import urllib.request\n    import urllib.parse\n    import json\n    \n    url = arguments.get(\"url\", \"\")\n    method = arguments.get(\"method\", \"GET\").upper()\n    headers = arguments.get(\"headers\", {})\n    params = arguments.get(\"params\", {})\n    data = arguments.get(\"data\")\n    json_data = arguments.get(\"json_data\")\n    timeout = arguments.get(\"timeout\", 30)\n    \n    if not url:\n        return {\"success\": False, \"error\": \"请提供请求URL\"}\n    \n    try:\n        if params:\n            url = f\"{url}?{urllib.parse.urlencode(params)}\"\n        \n        request_data = None\n        if json_data:\n            request_data = json.dumps(json_data).encode(\"utf-8\")\n            headers[\"Content-Type\"] = \"application/json\"\n        elif data:\n            request_data = data.encode(\"utf-8\") if isinstance(data, str) else data\n        \n        req = urllib.request.Request(url, data=request_data, headers=headers, method=method)\n        \n        with urllib.request.urlopen(req, timeout=timeout) as response:\n            response_body = response.read().decode(\"utf-8\")\n            response_headers = dict(response.headers)\n            status_code = response.status\n            \n            try:\n                response_json = json.loads(response_body)\n            except:\n                response_json = None\n            \n            return {\n                \"success\": True,\n                \"status_code\": status_code,\n                \"headers\": response_headers,\n                \"body\": response_body,\n                \"json\": response_json\n            }\n    except urllib.error.HTTPError as e:\n        return {\n            \"success\": False,\n            \"error\": f\"HTTP Error {e.code}: {e.reason}\",\n            \"status_code\": e.code\n        }\n    except urllib.error.URLError as e:\n        return {\"success\": False, \"error\": f\"URL Error: {e.reason}\"}\n    except Exception as e:\n        return {\"success\": False, \"error\": str(e)}",
+  "enabled": true,
+  "sandbox_only": false
+}

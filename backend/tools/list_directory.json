@@ -1,0 +1,28 @@
+{
+  "name": "list_directory",
+  "display_name": "列出目录",
+  "description": "列出指定目录下的文件和子目录",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "path": {
+        "type": "string",
+        "description": "目录路径"
+      },
+      "pattern": {
+        "type": "string",
+        "description": "文件名匹配模式，支持通配符",
+        "default": "*"
+      },
+      "show_hidden": {
+        "type": "boolean",
+        "description": "是否显示隐藏文件",
+        "default": false
+      }
+    },
+    "required": ["path"]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    列出目录内容\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - path (str): 目录路径，必填\n            - pattern (str): 文件名匹配模式，支持通配符，默认 \"*\"\n            - show_hidden (bool): 是否显示隐藏文件，默认 False\n    \n    返回:\n        dict: 包含目录信息的字典\n            - success (bool): 是否成功\n            - path (str): 目录路径\n            - items (list): 文件/目录列表，每项包含 name, type, size, modified\n            - count (int): 项目数量\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import os\n    import fnmatch\n    \n    path = arguments.get(\"path\", \"\")\n    pattern = arguments.get(\"pattern\", \"*\")\n    show_hidden = arguments.get(\"show_hidden\", False)\n    \n    if not path:\n        return {\"success\": False, \"error\": \"请提供目录路径\"}\n    \n    if not os.path.exists(path):\n        return {\"success\": False, \"error\": f\"目录不存在: {path}\"}\n    \n    if not os.path.isdir(path):\n        return {\"success\": False, \"error\": f\"路径不是目录: {path}\"}\n    \n    try:\n        items = []\n        for item in os.listdir(path):\n            if not show_hidden and item.startswith(\".\"):\n                continue\n            if not fnmatch.fnmatch(item, pattern):\n                continue\n            \n            item_path = os.path.join(path, item)\n            is_dir = os.path.isdir(item_path)\n            size = 0 if is_dir else os.path.getsize(item_path)\n            mtime = os.path.getmtime(item_path)\n            \n            items.append({\n                \"name\": item,\n                \"type\": \"directory\" if is_dir else \"file\",\n                \"size\": size,\n                \"modified\": mtime\n            })\n        \n        items.sort(key=lambda x: (x[\"type\"] == \"file\", x[\"name\"].lower()))\n        \n        return {\n            \"success\": True,\n            \"path\": path,\n            \"items\": items,\n            \"count\": len(items)\n        }\n    except Exception as e:\n        return {\"success\": False, \"error\": str(e)}",
+  "enabled": true,
+  "sandbox_only": true
+}

@@ -1,0 +1,24 @@
+{
+  "name": "sleep_timer",
+  "display_name": "延时器",
+  "description": "暂停执行指定时间。用于流程控制、等待操作等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "seconds": {
+        "type": "number",
+        "description": "暂停秒数"
+      },
+      "message": {
+        "type": "string",
+        "description": "暂停期间的提示消息"
+      }
+    },
+    "required": [
+      "seconds"
+    ]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    延时暂停\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - seconds (float): 暂停秒数，必填\n            - message (str): 暂停期间的提示消息，可选\n    \n    返回:\n        dict: 包含执行结果的字典\n            - success (bool): 是否成功\n            - seconds (float): 暂停的秒数\n            - message (str): 提示消息\n    \"\"\"\n    import time\n    \n    seconds = arguments.get(\"seconds\", 0)\n    message = arguments.get(\"message\", \"\")\n    \n    if seconds <= 0:\n        return {\"success\": False, \"error\": \"暂停时间必须大于0\"}\n    \n    if seconds > 300:\n        return {\"success\": False, \"error\": \"暂停时间不能超过300秒\"}\n    \n    try:\n        time.sleep(seconds)\n        \n        return {\n            \"success\": True,\n            \"seconds\": seconds,\n            \"message\": message or f\"已暂停 {seconds} 秒\"\n        }\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"暂停失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": false
+}

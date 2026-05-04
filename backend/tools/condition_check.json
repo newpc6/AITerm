@@ -1,0 +1,32 @@
+{
+  "name": "condition_check",
+  "display_name": "条件检查",
+  "description": "检查条件是否满足，支持多种比较操作。用于流程控制、条件判断等场景。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "value": {
+        "description": "要检查的值"
+      },
+      "operator": {
+        "type": "string",
+        "description": "比较操作符: ==(等于)、!=(不等于)、>(大于)、>=(大于等于)、<(小于)、<=(小于等于)、contains(包含)、not_contains(不包含)、starts_with(以...开头)、ends_with(以...结尾)、is_empty(为空)、is_not_empty(不为空)、is_type(类型检查)、in(在列表中)、not_in(不在列表中)、matches(正则匹配)"
+      },
+      "expected": {
+        "description": "期望值，部分操作符必填"
+      },
+      "case_sensitive": {
+        "type": "boolean",
+        "description": "是否区分大小写",
+        "default": true
+      }
+    },
+    "required": [
+      "value",
+      "operator"
+    ]
+  },
+  "code": "def execute(arguments):\n    \"\"\"\n    条件检查\n    \n    参数:\n        arguments (dict): 包含以下字段\n            - value (any): 要检查的值，必填\n            - operator (str): 比较操作符，必填\n                - \"==\": 等于\n                - \"!=\": 不等于\n                - \">\": 大于\n                - \">=\": 大于等于\n                - \"<\": 小于\n                - \"<=\": 小于等于\n                - \"contains\": 包含（字符串/列表）\n                - \"not_contains\": 不包含\n                - \"starts_with\": 以...开头\n                - \"ends_with\": 以...结尾\n                - \"is_empty\": 为空\n                - \"is_not_empty\": 不为空\n                - \"is_type\": 类型检查\n                - \"in\": 在列表中\n                - \"not_in\": 不在列表中\n                - \"matches\": 正则匹配\n            - expected (any): 期望值，部分操作符必填\n            - case_sensitive (bool): 是否区分大小写，默认 True\n    \n    返回:\n        dict: 包含检查结果的字典\n            - success (bool): 是否成功\n            - result (bool): 条件是否满足\n            - value (any): 实际值\n            - expected (any): 期望值\n            - operator (str): 使用的操作符\n            - error (str): 错误信息（失败时）\n    \"\"\"\n    import re\n    \n    value = arguments.get(\"value\")\n    operator = arguments.get(\"operator\", \"\")\n    expected = arguments.get(\"expected\")\n    case_sensitive = arguments.get(\"case_sensitive\", True)\n    \n    if not operator:\n        return {\"success\": False, \"error\": \"请提供比较操作符\"}\n    \n    try:\n        def compare(v, e):\n            if not case_sensitive:\n                if isinstance(v, str):\n                    v = v.lower()\n                if isinstance(e, str):\n                    e = e.lower()\n            return v, e\n        \n        result = False\n        \n        if operator == \"==\":\n            result = value == expected\n        elif operator == \"!=\":\n            result = value != expected\n        elif operator == \">\":\n            result = value > expected\n        elif operator == \">=\":\n            result = value >= expected\n        elif operator == \"<\":\n            result = value < expected\n        elif operator == \"<=\":\n            result = value <= expected\n        elif operator == \"contains\":\n            v, e = compare(str(value), str(expected))\n            result = e in v\n        elif operator == \"not_contains\":\n            v, e = compare(str(value), str(expected))\n            result = e not in v\n        elif operator == \"starts_with\":\n            v, e = compare(str(value), str(expected))\n            result = v.startswith(e)\n        elif operator == \"ends_with\":\n            v, e = compare(str(value), str(expected))\n            result = v.endswith(e)\n        elif operator == \"is_empty\":\n            if value is None:\n                result = True\n            elif isinstance(value, (str, list, dict)):\n                result = len(value) == 0\n            else:\n                result = False\n        elif operator == \"is_not_empty\":\n            if value is None:\n                result = False\n            elif isinstance(value, (str, list, dict)):\n                result = len(value) > 0\n            else:\n                result = True\n        elif operator == \"is_type\":\n            type_map = {\n                \"string\": str, \"int\": int, \"float\": float,\n                \"bool\": bool, \"list\": list, \"dict\": dict,\n                \"none\": type(None)\n            }\n            expected_type = type_map.get(expected, type(None))\n            result = isinstance(value, expected_type)\n        elif operator == \"in\":\n            if isinstance(expected, (list, tuple)):\n                result = value in expected\n            else:\n                return {\"success\": False, \"error\": \"'in'操作符期望expected为列表\"}\n        elif operator == \"not_in\":\n            if isinstance(expected, (list, tuple)):\n                result = value not in expected\n            else:\n                return {\"success\": False, \"error\": \"'not_in'操作符期望expected为列表\"}\n        elif operator == \"matches\":\n            pattern = re.compile(expected, 0 if case_sensitive else re.IGNORECASE)\n            result = bool(pattern.search(str(value)))\n        else:\n            return {\"success\": False, \"error\": f\"未知的操作符: {operator}\"}\n        \n        return {\n            \"success\": True,\n            \"result\": result,\n            \"value\": value,\n            \"expected\": expected,\n            \"operator\": operator\n        }\n    except Exception as e:\n        return {\"success\": False, \"error\": f\"检查失败: {str(e)}\"}",
+  "enabled": true,
+  "sandbox_only": false
+}
