@@ -78,7 +78,7 @@ class ToolService:
             openai_tools.append(openai_tool)
         return openai_tools
 
-    async def execute_tool(self, name: str, arguments: Dict[str, Any]) -> Dict[str, Any]:
+    async def execute_tool(self, name: str, arguments: Dict[str, Any], chat_id: str = None, message_id: str = None) -> Dict[str, Any]:
         tool = await self.tool_repo.get_tool_by_name(name)
         if not tool:
             raise ValueError(f"Tool '{name}' not found")
@@ -96,6 +96,29 @@ class ToolService:
 
         try:
             result = await self._execute_tool_code(tool, arguments)
+
+            if isinstance(result, dict) and result.get("_register_file") and result.get("success"):
+                try:
+                    from app.services.file_service import FileService
+                    file_service = FileService()
+                    registered_file = await file_service.register_file(
+                        file_path=result.get("file_path"),
+                        original_filename=result.get("filename"),
+                        chat_id=chat_id,
+                        message_id=message_id,
+                        description=result.get("description"),
+                        source="generated"
+                    )
+                    result["download_uuid"] = registered_file.uuid
+                    result["download_url"] = f"/api/v1/files/download/{registered_file.uuid}"
+                    del result["_register_file"]
+                    logger.info(
+                        f"Registered file: {registered_file.original_filename} (UUID: {registered_file.uuid})")
+                except Exception as e:
+                    logger.error(f"Failed to register file: {e}")
+                    result["register_error"] = str(e)
+                    del result["_register_file"]
+
             return result
         except Exception as e:
             logger.error(f"Tool execution failed: {e}", exc_info=True)
@@ -134,7 +157,9 @@ if 'execute' in dir():
 
     async def process_tool_calls(
         self,
-        tool_calls: List[Dict[str, Any]]
+        tool_calls: List[Dict[str, Any]],
+        chat_id: str = None,
+        message_id: str = None
     ) -> List[Dict[str, Any]]:
         results = []
         for tool_call in tool_calls:
@@ -148,7 +173,7 @@ if 'execute' in dir():
                 arguments = {}
 
             try:
-                execution_result = await self.execute_tool(name, arguments)
+                execution_result = await self.execute_tool(name, arguments, chat_id, message_id)
                 results.append({
                     "tool_call_id": tool_call_id,
                     "name": name,

@@ -306,7 +306,8 @@ class ChatOrchestrator:
                 "reply": complete_response,
                 "reasoning": complete_reasoning,
                 "model_id": model_config.id,
-                "model_name": model_config.name
+                "model_name": model_config.name,
+                "total_duration": round(total_duration, 2)
             }
         }
 
@@ -337,6 +338,7 @@ class ChatOrchestrator:
             model_config, self.settings.chat_system_prompt, self.settings.chat_history_limit)
 
         system_prompt = chat_service._build_system_prompt(node)
+
         if tools:
             tool_info_list = []
             for t in tools:
@@ -356,6 +358,7 @@ class ChatOrchestrator:
             sandbox_prompt = sandbox_prompt.replace(
                 "{{sandbox_paths}}", sandbox_paths_str)
             system_prompt += f"\n\n{sandbox_prompt}"
+            system_prompt += "\n\n当前chat_id: " + chat_id + "\n"
 
         messages = [
             {"role": "system", "content": system_prompt}]
@@ -478,7 +481,8 @@ class ChatOrchestrator:
                     "thinking_start_time": iteration_reasoning_start_time.isoformat() if iteration_reasoning_start_time else None,
                     "tool_calls": [],
                     "input": iteration_input,
-                    "full_input": iteration_full_input
+                    "full_input": iteration_full_input,
+                    "content": iteration_content
                 })
                 break
 
@@ -502,7 +506,7 @@ class ChatOrchestrator:
                 assistant_msg["reasoning_content"] = iteration_reasoning
             messages.append(assistant_msg)
 
-            tool_results = await self.tool_service.process_tool_calls(tool_calls)
+            tool_results = await self.tool_service.process_tool_calls(tool_calls, chat_id)
             logger.info(f"Tool results count: {len(tool_results)}")
 
             for i, result in enumerate(tool_results):
@@ -540,7 +544,8 @@ class ChatOrchestrator:
                 "thinking_start_time": iteration_reasoning_start_time.isoformat() if iteration_reasoning_start_time else None,
                 "tool_calls": iteration_tool_calls_info,
                 "input": iteration_input,
-                "full_input": iteration_full_input
+                "full_input": iteration_full_input,
+                "content": iteration_content
             })
 
         complete_response = "".join(full_response)
@@ -568,7 +573,8 @@ class ChatOrchestrator:
                 "reply": complete_response,
                 "model_id": model_config.id,
                 "model_name": model_config.name,
-                "iterations": iterations_info if iterations_info else None
+                "iterations": iterations_info if iterations_info else None,
+                "total_duration": round(total_duration, 2)
             }
         }
 
@@ -673,6 +679,7 @@ class ChatOrchestrator:
             return
 
         model_config = await self._get_model_config(chat.model_id)
+        total_start_time = datetime.now()
 
         await self.message_repo.create_message(
             chat_id=chat_id,
@@ -732,12 +739,15 @@ class ChatOrchestrator:
                 type="text"
             )
 
+            total_duration = (
+                datetime.now() - total_start_time).total_seconds()
             yield {
                 "event": "conversation.done",
                 "data": {
                     "chat_id": chat_id,
                     "reply": complete_response,
                     "model_id": model_config.id,
-                    "model_name": model_config.name
+                    "model_name": model_config.name,
+                    "total_duration": round(total_duration, 2)
                 }
             }

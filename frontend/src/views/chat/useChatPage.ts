@@ -180,8 +180,19 @@ export function useChatPage() {
       thinking_duration?: number
       thinking_start_time?: string
       tool_calls?: Array<{ name: string; arguments: string; result: string; success: boolean; timestamp?: string }>
+      content?: string
     }>
   >([])
+
+  const displaySettings = ref({
+    showThinking: true,
+    expandThinking: false,
+    showTools: true,
+    expandTools: false,
+    showInput: true,
+    expandInput: false,
+    autoCollapse: true,
+  })
 
   let executeEventSource: EventSource | null = null
   let chatStreamController: AbortController | null = null
@@ -511,6 +522,10 @@ export function useChatPage() {
     answerBuffer.value += delta
     placeholder.content = answerBuffer.value
     if (iterationsData.value.length > 0) {
+      const iterIndex = (iteration || 1) - 1
+      if (iterationsData.value[iterIndex]) {
+        iterationsData.value[iterIndex].content = (iterationsData.value[iterIndex].content || '') + delta
+      }
       placeholder.metadata = {
         ...placeholder.metadata,
         iterations: iterationsData.value,
@@ -560,6 +575,7 @@ export function useChatPage() {
       full_input: fullInput,
       thinking: '',
       tool_calls: [],
+      content: '',
     }
     const placeholder = ensureAssistantPlaceholder()
     placeholder.metadata = {
@@ -610,24 +626,32 @@ export function useChatPage() {
     }
   }
 
-  function finalizeAssistantStream(reply: string, iterations?: unknown[]) {
+  function finalizeAssistantStream(reply: string, iterations?: unknown[], totalDuration?: number) {
     const placeholder = ensureAssistantPlaceholder()
     placeholder.content = reply
     if (iterations && Array.isArray(iterations) && iterations.length > 0) {
       placeholder.metadata = {
         ...placeholder.metadata,
         iterations,
+        total_duration: totalDuration || 0,
       }
     } else if (iterationsData.value.length > 0) {
       placeholder.metadata = {
         ...placeholder.metadata,
         iterations: iterationsData.value,
+        total_duration: totalDuration || 0,
       }
     } else if (reasoningBuffer.value) {
       placeholder.metadata = {
         ...placeholder.metadata,
         thinking: reasoningBuffer.value,
         reasoning_duration: reasoningDuration.value || 0,
+        total_duration: totalDuration || 0,
+      }
+    } else {
+      placeholder.metadata = {
+        ...placeholder.metadata,
+        total_duration: totalDuration || 0,
       }
     }
     reasoningBuffer.value = ''
@@ -702,7 +726,7 @@ export function useChatPage() {
           },
           onDone: (data) => {
             chatId.value = data.chat_id
-            finalizeAssistantStream(data.reply, (data as { iterations?: unknown[] }).iterations)
+            finalizeAssistantStream(data.reply, (data as { iterations?: unknown[] }).iterations, data.total_duration)
           },
           onError: (data) => {
             errorMessage.value = data.error
@@ -1168,5 +1192,6 @@ export function useChatPage() {
     conversationLabel,
     chatId,
     formatDateTime,
+    displaySettings,
   }
 }

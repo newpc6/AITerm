@@ -630,3 +630,87 @@ export async function getOpenAIToolsSchema() {
   const { data } = await http.get<ApiResponse<import('@/types/tool').OpenAITool[]>>('/api/v1/tools/schema/openai')
   return data.data
 }
+
+export interface FileItem {
+  id: string
+  uuid: string
+  filename: string
+  original_filename: string
+  file_size: number
+  file_type: string | null
+  mime_type: string | null
+  source: string
+  chat_id: string | null
+  message_id: string | null
+  description: string | null
+  is_deleted: boolean
+  created_at: string | null
+  updated_at: string | null
+}
+
+export interface FileListData {
+  files: FileItem[]
+  total: number
+}
+
+export interface FileUploadPayload {
+  file: File
+  chat_id?: string
+  message_id?: string
+  description?: string
+}
+
+export async function getFiles(params?: PaginationParams & { search?: string; file_type?: string; source?: string }) {
+  const { data } = await http.get<ApiResponse<FileListData>>('/api/v1/files', { params })
+  return data.data
+}
+
+export async function getFile(fileId: string) {
+  const { data } = await http.get<ApiResponse<FileItem>>(`/api/v1/files/${fileId}`)
+  return data.data
+}
+
+export function getFileDownloadUrl(fileUuid: string) {
+  return `${getApiBaseUrl()}/api/v1/files/download/${fileUuid}`
+}
+
+export async function uploadFile(payload: FileUploadPayload) {
+  const formData = new FormData()
+  formData.append('file', payload.file)
+  if (payload.chat_id) {
+    formData.append('chat_id', payload.chat_id)
+  }
+  if (payload.message_id) {
+    formData.append('message_id', payload.message_id)
+  }
+  if (payload.description) {
+    formData.append('description', payload.description)
+  }
+
+  const { data } = await http.post<ApiResponse<FileItem>>('/api/v1/files/upload', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data',
+    },
+  })
+  return data.data
+}
+
+export async function deleteFile(fileId: string) {
+  const { data } = await http.delete<ApiResponse<boolean>>(`/api/v1/files/${fileId}`)
+  return data.data
+}
+
+export async function batchDeleteFiles(ids: string[]) {
+  const { data } = await http.post<ApiResponse<number>>('/api/v1/files/batch-delete', { ids })
+  return data.data
+}
+
+export async function getFileTypes() {
+  const { data } = await http.get<ApiResponse<string[]>>('/api/v1/files/types/list')
+  return data.data
+}
+
+export async function getFileSources() {
+  const { data } = await http.get<ApiResponse<string[]>>('/api/v1/files/sources/list')
+  return data.data
+}

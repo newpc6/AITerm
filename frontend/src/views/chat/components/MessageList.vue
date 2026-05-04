@@ -47,6 +47,15 @@ const props = defineProps<{
   executeInputMessageId?: string
   executeInputLoading?: boolean
   executeUserInput?: string
+  displaySettings?: {
+    showThinking: boolean
+    expandThinking: boolean
+    showTools: boolean
+    expandTools: boolean
+    showInput: boolean
+    expandInput: boolean
+    autoCollapse: boolean
+  }
 }>()
 
 const emit = defineEmits<{
@@ -65,10 +74,14 @@ const actionableMessageIdSet = computed(() => new Set(props.actionableMessageIds
 const retryableMessageIdSet = computed(() => new Set(props.retryableMessageIds ?? []))
 const messageSignature = computed(() =>
   [
-    props.messages.map((message) => `${message.id}:${message.role}:${message.content}:${message.createdAt}`).join('\n<aiterm-message>\n'),
+    props.messages.map((message) => {
+      const metaStr = message.metadata ? JSON.stringify(message.metadata) : ''
+      return `${message.id}:${message.role}:${message.content}:${metaStr}:${message.createdAt}`
+    }).join('\n<aiterm-message>\n'),
     Array.from(actionableMessageIdSet.value).join(','),
     Array.from(retryableMessageIdSet.value).join(','),
     props.streamingMessageId,
+    props.isReasoningActive ? 'reasoning' : '',
     props.executeInputRequest?.question,
   ].join('\n<aiterm-state>\n'),
 )
@@ -180,7 +193,7 @@ onMounted(async () => {
           </div>
           <MessageContent v-else-if="message.type !== 'approval'" :content="message.content" :role="message.role"
             :is-streaming="isMsgStreaming" :is-reasoning-active="isMsgStreaming && isReasoningActive"
-            :metadata="message.metadata" />
+            :metadata="message.metadata" :display-settings="displaySettings" />
         </template>
 
         <ExecuteApprovalCard v-if="canShowExecuteApproval(message)" :hint="message.content"

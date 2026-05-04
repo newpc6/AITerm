@@ -178,6 +178,12 @@
   flex-shrink: 0;
 }
 
+.chat-main__header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+}
+
 .chat-main__header {
   align-items: flex-start;
 }

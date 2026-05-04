@@ -58,6 +58,7 @@ export type ConversationStreamDoneData = {
     result: string
     success: boolean
   }[]
+  total_duration?: number
 }
 
 export type ConversationMessageItem = {

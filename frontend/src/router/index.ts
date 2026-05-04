@@ -11,6 +11,7 @@ const router = createRouter({
     { path: '/chat', component: () => import('@/views/chat') },
     { path: '/history', component: () => import('@/views/history') },
     { path: '/terminal', component: () => import('@/views/terminal') },
+    { path: '/files', component: () => import('@/views/files/index.vue') },
     { path: '/nodes', component: () => import('@/views/nodes'), meta: { adminOnly: true } },
     { path: '/users', component: () => import('@/views/users'), meta: { adminOnly: true } },
     { path: '/models', component: () => import('@/views/models'), meta: { adminOnly: true } },

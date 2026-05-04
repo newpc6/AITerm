@@ -7,6 +7,7 @@ from .users import router as users_router
 from .settings import router as settings_router
 from .terminal import router as terminal_router
 from .tools import router as tools_router
+from .files import router as files_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -18,5 +19,6 @@ api_router.include_router(users_router)
 api_router.include_router(settings_router, prefix="/settings")
 api_router.include_router(terminal_router)
 api_router.include_router(tools_router)
+api_router.include_router(files_router)
 
 __all__ = ["api_router"]
