@@ -40,7 +40,9 @@ function canRetry(message: ChatMessage) {
 }
 
 function canShowActions(message: ChatMessage) {
-  return message.role === 'assistant' && actionableMessageIdSet.value.has(message.id) && !!message.content
+  if (!message.content) return false
+  if (message.role === 'user') return true
+  return message.role === 'assistant' && actionableMessageIdSet.value.has(message.id)
 }
 
 function isStreaming(message: ChatMessage) {

@@ -32,7 +32,7 @@ export function useSharePage() {
   })
 
   const actionableMessageIds = computed(() => {
-    return messages.value.filter((msg) => msg.role === 'assistant' && msg.content).map((msg) => msg.id)
+    return messages.value.filter((msg) => msg.content).map((msg) => msg.id)
   })
 
   const displaySettings = computed(() => ({
