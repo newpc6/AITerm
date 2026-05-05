@@ -46,7 +46,8 @@
       </header>
 
       <main class="share-content">
-        <MessageList :messages="messages" assistant-label="助手" user-label="用户" :display-settings="displaySettings" />
+        <MessageList :messages="messages" :actionable-message-ids="actionableMessageIds" assistant-label="助手"
+          user-label="用户" :display-settings="displaySettings" @copy="copyMessage" />
       </main>
 
       <footer class="share-footer">

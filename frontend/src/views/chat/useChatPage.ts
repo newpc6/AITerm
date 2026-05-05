@@ -500,11 +500,35 @@ export function useChatPage() {
       return
     }
 
+    let textToCopy = message.content
+    if (message.role === 'assistant') {
+      try {
+        const parsed = JSON.parse(message.content)
+        if (typeof parsed === 'object' && parsed !== null && typeof parsed.answer === 'string') {
+          textToCopy = parsed.answer
+        }
+      } catch {
+        // Not JSON, use as-is
+      }
+    }
+
     try {
-      await navigator.clipboard.writeText(message.content)
+      await navigator.clipboard.writeText(textToCopy)
       ElMessage.success('已复制')
     } catch {
-      ElMessage.error('复制失败，请检查浏览器权限')
+      const textarea = document.createElement('textarea')
+      textarea.value = textToCopy
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      try {
+        document.execCommand('copy')
+        ElMessage.success('已复制')
+      } catch {
+        ElMessage.error('复制失败')
+      }
+      document.body.removeChild(textarea)
     }
   }
 

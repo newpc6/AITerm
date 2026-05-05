@@ -1,5 +1,6 @@
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { getSharePreview, verifyShare, type ShareDetailData } from '@/api/aiterm'
 import type { ChatMessage } from '@/types/chat'
 
@@ -28,6 +29,10 @@ export function useSharePage() {
         createdAt: msg.created_at || new Date().toISOString(),
       }
     })
+  })
+
+  const actionableMessageIds = computed(() => {
+    return messages.value.filter((msg) => msg.role === 'assistant' && msg.content).map((msg) => msg.id)
   })
 
   const displaySettings = computed(() => ({
@@ -102,6 +107,44 @@ export function useSharePage() {
     router.push('/')
   }
 
+  async function copyMessage(messageId: string) {
+    const message = messages.value.find((item) => item.id === messageId)
+    if (!message) {
+      return
+    }
+
+    let textToCopy = message.content
+    if (message.role === 'assistant') {
+      try {
+        const parsed = JSON.parse(message.content)
+        if (typeof parsed === 'object' && parsed !== null && typeof parsed.answer === 'string') {
+          textToCopy = parsed.answer
+        }
+      } catch {
+        // Not JSON, use as-is
+      }
+    }
+
+    try {
+      await navigator.clipboard.writeText(textToCopy)
+      ElMessage.success('已复制')
+    } catch {
+      const textarea = document.createElement('textarea')
+      textarea.value = textToCopy
+      textarea.style.position = 'fixed'
+      textarea.style.opacity = '0'
+      document.body.appendChild(textarea)
+      textarea.select()
+      try {
+        document.execCommand('copy')
+        ElMessage.success('已复制')
+      } catch {
+        ElMessage.error('复制失败')
+      }
+      document.body.removeChild(textarea)
+    }
+  }
+
   onMounted(() => {
     loadShare()
   })
@@ -115,9 +158,11 @@ export function useSharePage() {
     passwordError,
     verifying,
     messages,
+    actionableMessageIds,
     displaySettings,
     handleVerifyPassword,
     formatDate,
     goHome,
+    copyMessage,
   }
 }
