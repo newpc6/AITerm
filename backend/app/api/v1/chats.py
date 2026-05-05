@@ -10,7 +10,7 @@ from app.models.common import PaginatedResponse
 from app.repositories.chat import ChatRepository
 from app.repositories.message import MessageRepository
 from app.services import ChatOrchestrator, ExecuteService
-from app.api.deps import get_chat_orchestrator, get_execute_service
+from app.api.deps import get_chat_orchestrator, get_execute_service, get_current_user
 
 router = APIRouter(prefix="/chats", tags=["chats"])
 logger = logging.getLogger("aiterm")
@@ -22,9 +22,19 @@ message_repo = MessageRepository()
 @router.get("")
 async def list_chats(
     page: int = Query(1, ge=1, description="页码"),
-    page_size: int = Query(20, ge=1, le=100, description="每页数量")
+    page_size: int = Query(20, ge=1, le=100, description="每页数量"),
+    current_user=Depends(get_current_user)
 ):
-    items, total = await chat_repo.list_chats(page, page_size)
+    user_id = None
+    include_user_info = False
+
+    if current_user:
+        if current_user.role != "admin":
+            user_id = int(current_user.id)
+        else:
+            include_user_info = True
+
+    items, total = await chat_repo.list_chats(page, page_size, user_id=user_id, include_user_info=include_user_info)
     paginated = PaginatedResponse.create(
         items=[item.model_dump() for item in items],
         total=total,
@@ -37,15 +47,18 @@ async def list_chats(
 @router.post("")
 async def create_chat(
     request: ChatCreate,
-    orchestrator: ChatOrchestrator = Depends(get_chat_orchestrator)
+    orchestrator: ChatOrchestrator = Depends(get_chat_orchestrator),
+    current_user=Depends(get_current_user)
 ):
     if not request.message or not request.message.strip():
         return Response(code=1001, message="message is required")
 
+    user_id = int(current_user.id) if current_user else None
     result = await orchestrator.create_chat(
         request.node_id,
         request.message,
-        request.model_id
+        request.model_id,
+        user_id=user_id
     )
     return Response(data=result)
 

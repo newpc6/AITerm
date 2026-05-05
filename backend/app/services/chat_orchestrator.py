@@ -647,7 +647,8 @@ class ChatOrchestrator:
         self,
         node_id: str,
         message: str,
-        model_id: Optional[str] = None
+        model_id: Optional[str] = None,
+        user_id: Optional[int] = None
     ) -> Dict[str, Any]:
         model_config = await self._get_model_config(model_id)
 
@@ -655,7 +656,8 @@ class ChatOrchestrator:
             title=message[:50] if message else "新对话",
             node_id=int(node_id),
             model_id=int(model_config.id) if model_config.id else None,
-            model_name=model_config.name
+            model_name=model_config.name,
+            user_id=user_id
         )
 
         await self.message_repo.create_message(

@@ -12,6 +12,7 @@ class ChatModel(Base):
     node_id = Column(Integer, nullable=False, default=1)
     model_id = Column(Integer, nullable=True)
     model_name = Column(String(255), nullable=True)
+    user_id = Column(Integer, nullable=True)
     status = Column(String(50), nullable=False, default="idle")
     summary = Column(Text, nullable=False, default="")
     created_at = Column(DateTime, nullable=False,
@@ -40,6 +41,7 @@ class ChatModel(Base):
             "node_id": str(self.node_id),
             "model_id": str(self.model_id) if self.model_id else None,
             "model_name": self.model_name,
+            "user_id": str(self.user_id) if self.user_id else None,
             "status": self.status,
             "summary": self.summary,
             "created_at": created_at_str,

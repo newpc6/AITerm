@@ -17,7 +17,7 @@
     </div>
 
     <ConversationHistoryTable :items="items" :loading="loading" :deleting-chat-id="deletingChatId"
-      @open="openConversation" @delete="removeConversation" />
+      :show-user-column="isAdmin" @open="openConversation" @delete="removeConversation" />
 
     <Pagination :page="page" :page-size="pageSize" :total="total" @update:page="handlePageChange"
       @update:page-size="handlePageSizeChange" />

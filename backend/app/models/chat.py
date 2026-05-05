@@ -110,6 +110,8 @@ class Chat(BaseModel):
     node_id: str = "1"
     model_id: Optional[str] = None
     model_name: Optional[str] = None
+    user_id: Optional[str] = None
+    user_info: Optional[Dict[str, Any]] = None
     status: str = ChatStatus.IDLE.value
     summary: str = ""
     created_at: Optional[str] = None

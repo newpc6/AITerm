@@ -1,9 +1,9 @@
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-import { deleteChat, getChats } from '@/api/aiterm'
-import type { ChatItem } from '@/types/api'
+import { deleteChat, getChats, getAuthStatus } from '@/api/aiterm'
+import type { ChatItem, UserItem } from '@/types/api'
 
 export function useConversationHistoryPage() {
   const router = useRouter()
@@ -14,6 +14,18 @@ export function useConversationHistoryPage() {
   const page = ref(1)
   const pageSize = ref(20)
   const total = ref(0)
+  const currentUser = ref<UserItem | null>(null)
+
+  const isAdmin = computed(() => !currentUser.value || currentUser.value.role === 'admin')
+
+  async function loadCurrentUser() {
+    try {
+      const status = await getAuthStatus()
+      currentUser.value = status.user ?? null
+    } catch {
+      currentUser.value = null
+    }
+  }
 
   async function loadConversations() {
     loading.value = true
@@ -81,6 +93,7 @@ export function useConversationHistoryPage() {
   }
 
   onMounted(() => {
+    void loadCurrentUser()
     void loadConversations()
   })
 
@@ -88,6 +101,7 @@ export function useConversationHistoryPage() {
     errorMessage,
     deletingChatId,
     items,
+    isAdmin,
     loadConversations,
     loading,
     removeConversation,
