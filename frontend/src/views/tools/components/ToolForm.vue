@@ -69,7 +69,7 @@ function generateTestArguments() {
   for (const param of paramItems.value) {
     if (!param.name.trim()) continue
 
-    if (param.default.trim()) {
+    if (param.default?.trim()) {
       if (param.type === 'number' || param.type === 'integer') {
         args[param.name] = Number(param.default)
       } else if (param.type === 'boolean') {
@@ -137,7 +137,7 @@ function buildParameters(): ToolParameters | undefined {
       description: item.description
     }
 
-    if (item.default.trim()) {
+    if (item.default?.trim()) {
       if (item.type === 'number' || item.type === 'integer') {
         param.default = Number(item.default)
       } else if (item.type === 'boolean') {
@@ -147,7 +147,7 @@ function buildParameters(): ToolParameters | undefined {
       }
     }
 
-    if (item.enum.trim()) {
+    if (item.enum?.trim()) {
       param.enum = item.enum.split(',').map(e => e.trim()).filter(e => e)
     }
 

@@ -214,7 +214,7 @@ const settings = computed(() => props.displaySettings || {
 function isThinkingInProgress(iteration?: ParsedIteration): boolean {
   if (!props.isStreaming) return false
   if (!iteration) return false
-  return iteration.thinking && !iteration.thinkingDuration
+  return !!iteration.thinking && !iteration.thinkingDuration
 }
 
 function isToolCallsInProgress(iteration?: ParsedIteration): boolean {
