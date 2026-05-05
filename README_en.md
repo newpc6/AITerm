@@ -57,6 +57,16 @@ Execute commands directly in the terminal with real-time result viewing.
 
 Manage multiple server nodes with support for adding, editing, and deleting nodes.
 
+### Share Feature
+
+![Share Dialog](assets/分享对话设置.jpg)
+
+When sharing conversations, you can set title, password protection, expiration, and select content to display (input, thinking, tool calls, answer).
+
+![Share Page Preview](assets/分享页面预览.jpg)
+
+Share page provides clean display without login required, supports password-protected access.
+
 ## Tech Stack
 
 ### Backend
