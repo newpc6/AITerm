@@ -35,7 +35,7 @@ def unregister_process(task_id: str):
 
 def kill_process(task_id: str) -> bool:
     _cancelled_tasks.add(task_id)
-    
+
     if task_id in _running_processes:
         proc = _running_processes[task_id]
         try:
@@ -71,12 +71,13 @@ def _run_sync_command(command: str, timeout: int, task_id: Optional[str] = None)
     stdout_lines: List[str] = []
     stderr_lines: List[str] = []
     cancelled = False
-    
+
     try:
         if platform.system() == "Windows":
             wrapped_command = f"[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; $OutputEncoding = [System.Text.Encoding]::UTF8; {command}"
             proc = subprocess.Popen(
-                ["powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", wrapped_command],
+                ["powershell.exe", "-NoProfile", "-ExecutionPolicy",
+                    "Bypass", "-Command", wrapped_command],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -84,8 +85,9 @@ def _run_sync_command(command: str, timeout: int, task_id: Optional[str] = None)
                 errors='replace'
             )
         else:
+            wrapped_command = f"export PATH=\"/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$PATH\"; {command}"
             proc = subprocess.Popen(
-                ["sh", "-lc", command],
+                ["/bin/bash", "-lc", wrapped_command],
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 text=True,
@@ -104,8 +106,10 @@ def _run_sync_command(command: str, timeout: int, task_id: Optional[str] = None)
             except:
                 pass
 
-        stdout_thread = threading.Thread(target=read_output, args=(proc.stdout, stdout_lines))
-        stderr_thread = threading.Thread(target=read_output, args=(proc.stderr, stderr_lines))
+        stdout_thread = threading.Thread(
+            target=read_output, args=(proc.stdout, stdout_lines))
+        stderr_thread = threading.Thread(
+            target=read_output, args=(proc.stderr, stderr_lines))
         stdout_thread.daemon = True
         stderr_thread.daemon = True
         stdout_thread.start()
@@ -113,7 +117,7 @@ def _run_sync_command(command: str, timeout: int, task_id: Optional[str] = None)
 
         start_time = datetime.now()
         check_interval = 0.5
-        
+
         while proc.poll() is None:
             if task_id and task_id in _cancelled_tasks:
                 logger.info(f"Task {task_id} cancelled, terminating process")
@@ -129,7 +133,7 @@ def _run_sync_command(command: str, timeout: int, task_id: Optional[str] = None)
                 cancelled = True
                 _cancelled_tasks.discard(task_id)
                 break
-            
+
             elapsed = (datetime.now() - start_time).total_seconds()
             if elapsed > timeout:
                 logger.info(f"Command timeout after {timeout} seconds")
@@ -144,7 +148,7 @@ def _run_sync_command(command: str, timeout: int, task_id: Optional[str] = None)
                         pass
                 stdout_thread.join(timeout=1)
                 stderr_thread.join(timeout=1)
-                
+
                 lines = []
                 if stdout_lines:
                     lines.append(("stdout", "".join(stdout_lines).strip()))
@@ -152,7 +156,7 @@ def _run_sync_command(command: str, timeout: int, task_id: Optional[str] = None)
                     lines.append(("stderr", "".join(stderr_lines).strip()))
                 if not lines:
                     lines.append(("stderr", f"命令执行超时，已在 {timeout} 秒后终止。"))
-                
+
                 if task_id:
                     unregister_process(task_id)
                 return CommandResult(
@@ -161,7 +165,7 @@ def _run_sync_command(command: str, timeout: int, task_id: Optional[str] = None)
                     timed_out=True,
                     error=TimeoutError()
                 )
-            
+
             threading.Event().wait(check_interval)
 
         stdout_thread.join(timeout=2)
@@ -230,8 +234,9 @@ def _run_sync_command(command: str, timeout: int, task_id: Optional[str] = None)
 
 
 async def execute_command(command: str, timeout: int = COMMAND_TIMEOUT, task_id: Optional[str] = None) -> CommandResult:
-    logger.info(f"execute_command called: command='{command}', timeout={timeout}, task_id={task_id}")
-    
+    logger.info(
+        f"execute_command called: command='{command}', timeout={timeout}, task_id={task_id}")
+
     if not command or not command.strip():
         return CommandResult(
             lines=[("stderr", "未生成可执行命令。")],
