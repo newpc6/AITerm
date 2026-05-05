@@ -36,6 +36,7 @@ import type {
   UserPayload,
   UserResetPasswordPayload,
   UserUpdatePayload,
+  PaginatedData,
 } from '@/types/api'
 
 export type PaginationParams = {
@@ -797,19 +798,21 @@ export async function verifyShare(shareId: string, payload: ShareVerifyPayload) 
 }
 
 export async function getSharePreview(shareId: string) {
-  const { data } = await http.get<ApiResponse<{
-    share_id: string
-    title: string
-    has_password: boolean
-    expires_at: string | null
-    created_at: string | null
-  }>>(`/api/v1/shares/${shareId}/preview`)
+  const { data } = await http.get<
+    ApiResponse<{
+      share_id: string
+      title: string
+      has_password: boolean
+      expires_at: string | null
+      created_at: string | null
+    }>
+  >(`/api/v1/shares/${shareId}/preview`)
   return data.data
 }
 
 export async function listShares(page: number = 1, pageSize: number = 20) {
   const { data } = await http.get<ApiResponse<PaginatedData<ShareItem>>>('/api/v1/shares', {
-    params: { page, page_size: pageSize }
+    params: { page, page_size: pageSize },
   })
   return data.data
 }
