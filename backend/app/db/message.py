@@ -1,4 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime
+from sqlalchemy.dialects.mysql import LONGTEXT
 from datetime import datetime, timezone
 
 from app.db.base import Base
@@ -37,7 +38,7 @@ class MessagePartModel(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     message_id = Column(Integer, nullable=False)
     seq = Column(Integer, nullable=False, default=0)
-    content = Column(Text, nullable=False, default="{}")
+    content = Column(LONGTEXT, nullable=False, default="{}")
     created_at = Column(DateTime, nullable=False,
                         default=lambda: datetime.now(timezone.utc))
 

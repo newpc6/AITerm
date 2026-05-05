@@ -1,5 +1,7 @@
 # AITerm
 
+[中文](README.md) | [English](README_en.md)
+
 AI 驱动的智能终端管理工具，通过自然语言指令远程管理服务器。
 
 ### 重点
@@ -139,6 +141,14 @@ python main.py
 ```
 
 ## 工具系统
+
+### 初始化默认配置
+
+自动初始化系统提示词、历史轮数、工具调用轮数、命令黑白名单、sandbox路径等
+
+```bash
+python init_scripts/init_settings.py
+```
 
 ### 初始化默认工具
 

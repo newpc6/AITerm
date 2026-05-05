@@ -8,6 +8,7 @@ aiomysql==0.2.0
 httpx==0.26.0
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
+bcrypt==4.0.1
 sse-starlette==1.8.2
 sqlalchemy[asyncio]==2.0.25
 greenlet==3.0.3

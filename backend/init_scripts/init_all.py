@@ -1,19 +1,30 @@
+# isort: skip_file
+# fmt: off
 """
 完整初始化脚本
 运行此脚本可以导入预设的工具和配置到数据库中
 
 使用方法:
-    cd backend
     python init_scripts/init_all.py
 """
 
-from init_scripts.init_settings import init_settings
-from init_scripts.init_tools import init_tools
-import asyncio
 import sys
 import os
+import asyncio
 
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+if os.path.exists(os.path.join(SCRIPT_DIR, "app")):
+    PROJECT_DIR = SCRIPT_DIR
+else:
+    PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
+
+sys.path.insert(0, PROJECT_DIR)
+os.chdir(PROJECT_DIR)
+
+from init_scripts.init_tools import init_tools
+from init_scripts.init_settings import init_settings
+# fmt: on
 
 
 async def init_all():

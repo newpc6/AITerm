@@ -7,6 +7,14 @@ from app.db.message import MessageModel, MessagePartModel
 from app.models.chat import Message, MessageType
 from app.utils import ensure_timezone
 
+MAX_CONTENT_LENGTH = 1000000
+
+
+def truncate_content(content: str, max_length: int = MAX_CONTENT_LENGTH) -> str:
+    if len(content) <= max_length:
+        return content
+    return content[:max_length - 100] + "\n... [内容已截断]"
+
 
 class MessageRepository:
     async def list_messages(self, chat_id: str, page: int = 1, page_size: int = 20) -> List[Message]:
@@ -73,10 +81,11 @@ class MessageRepository:
 
             if iterations:
                 for seq, iteration in enumerate(iterations):
+                    content_str = json.dumps(iteration, ensure_ascii=False)
                     part = MessagePartModel(
                         message_id=model.id,
                         seq=seq,
-                        content=json.dumps(iteration, ensure_ascii=False)
+                        content=truncate_content(content_str)
                     )
                     session.add(part)
 
@@ -117,10 +126,11 @@ class MessageRepository:
                         MessagePartModel.message_id == int(message_id))
                 )
                 for seq, iteration in enumerate(iterations):
+                    content_str = json.dumps(iteration, ensure_ascii=False)
                     part = MessagePartModel(
                         message_id=int(message_id),
                         seq=seq,
-                        content=json.dumps(iteration, ensure_ascii=False)
+                        content=truncate_content(content_str)
                     )
                     session.add(part)
 
@@ -138,10 +148,11 @@ class MessageRepository:
             max_seq = result.scalar()
             new_seq = (max_seq or -1) + 1
 
+            content_str = json.dumps(iteration, ensure_ascii=False)
             part = MessagePartModel(
                 message_id=int(message_id),
                 seq=new_seq,
-                content=json.dumps(iteration, ensure_ascii=False)
+                content=truncate_content(content_str)
             )
             session.add(part)
             await session.commit()

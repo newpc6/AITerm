@@ -1,22 +1,34 @@
+# isort: off
+# fmt: off
 """
 初始化系统配置脚本
 运行此脚本可以导入默认的提示词和配置到数据库中
 
 使用方法:
-    cd backend
-    python scripts/init_settings.py
+    python init_scripts/init_settings.py
 """
 
 from sqlalchemy import select
+import sys
+import os
+import asyncio
+import json
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
+if os.path.exists(os.path.join(SCRIPT_DIR, "app")):
+    PROJECT_DIR = SCRIPT_DIR
+else:
+    PROJECT_DIR = os.path.dirname(SCRIPT_DIR)
+
+sys.path.insert(0, PROJECT_DIR)
+os.chdir(PROJECT_DIR)
+
 from app.db.settings import SystemDictModel
 from app.db.base import Base
 from app.db import async_session_maker, engine
-import asyncio
-import sys
-import os
-import json
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# fmt: on
+# isort: on
 
 
 DEFAULT_SETTINGS = {
