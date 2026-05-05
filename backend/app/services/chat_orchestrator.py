@@ -15,6 +15,12 @@ from app.utils import now_iso
 logger = logging.getLogger("aiterm")
 
 
+def sanitize_unicode(text: str) -> str:
+    if not text:
+        return text
+    return text.encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace')
+
+
 class ChatOrchestrator:
     def __init__(
         self,
@@ -512,10 +518,15 @@ class ChatOrchestrator:
             for i, result in enumerate(tool_results):
                 tool_call = tool_calls[i] if i < len(tool_calls) else {}
                 tool_timestamp = datetime.now().isoformat()
+
+                result_content = sanitize_unicode(result.get("content", ""))
+                if result_content and len(result_content) > 10000:
+                    result_content = result_content[:10000] + "... [truncated]"
+
                 iteration_tool_calls_info.append({
                     "name": result["name"],
                     "arguments": tool_call.get("arguments", "{}"),
-                    "result": result["content"],
+                    "result": result_content,
                     "success": "success" in result.get("content", "") and "true" in result.get("content", "").lower(),
                     "timestamp": tool_timestamp
                 })
@@ -527,7 +538,7 @@ class ChatOrchestrator:
                         "iteration": iteration + 1,
                         "name": result["name"],
                         "arguments": tool_call.get("arguments", "{}"),
-                        "result": result["content"],
+                        "result": result_content,
                         "timestamp": tool_timestamp
                     }
                 }
@@ -535,7 +546,7 @@ class ChatOrchestrator:
                 messages.append({
                     "role": "tool",
                     "tool_call_id": result["tool_call_id"],
-                    "content": result["content"]
+                    "content": result_content
                 })
 
             iterations_info.append({
@@ -551,13 +562,16 @@ class ChatOrchestrator:
         complete_response = "".join(full_response)
         total_duration = (datetime.now() - total_start_time).total_seconds()
 
-        await self.message_repo.create_message_with_data(
-            chat_id=chat_id,
-            role="assistant",
-            answer=complete_response,
-            total_duration=round(total_duration, 2),
-            iterations=iterations_info if iterations_info else None
-        )
+        try:
+            await self.message_repo.create_message_with_data(
+                chat_id=chat_id,
+                role="assistant",
+                answer=complete_response,
+                total_duration=round(total_duration, 2),
+                iterations=iterations_info if iterations_info else None
+            )
+        except Exception as e:
+            logger.error(f"Failed to save message: {e}", exc_info=True)
 
         yield {
             "event": "conversation.done",
