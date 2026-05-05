@@ -16,17 +16,17 @@ const mainLinks = [
   { to: '/terminal', label: '终端' },
 ]
 
-const systemLinks = [
+const systemManageLinks = [
   { to: '/files', label: '文件管理' },
   { to: '/users', label: '用户管理', adminOnly: true },
   { to: '/shares', label: '分享管理', adminOnly: true },
 ]
 
-const adminLinks = [
-  { to: '/nodes', label: '节点' },
-  { to: '/tools', label: '工具' },
+const systemConfigLinks = [
   { to: '/models', label: '模型配置' },
   { to: '/global-settings', label: '全局配置' },
+  { to: '/nodes', label: '节点管理' },
+  { to: '/tools', label: '工具管理' },
 ]
 
 const showShell = computed(() => route.path !== '/login' && !route.path.match(/^\/share\/[^/]+$/))
@@ -43,23 +43,30 @@ const passwordForm = ref({
 
 const isAdmin = computed(() => !authEnabled.value || currentUser.value?.role === 'admin')
 
-const visibleSystemLinks = computed(() =>
-  systemLinks.filter((link) => !link.adminOnly || isAdmin.value)
+const visibleSystemManageLinks = computed(() =>
+  systemManageLinks.filter((link) => !link.adminOnly || isAdmin.value)
 )
 
-const visibleAdminLinks = computed(() =>
-  adminLinks.filter(() => isAdmin.value)
+const visibleSystemConfigLinks = computed(() =>
+  isAdmin.value ? systemConfigLinks : []
 )
 
 const currentUserLabel = computed(() => currentUser.value?.display_name || currentUser.value?.username || '')
 
-const currentSystemLink = computed(() => {
-  return systemLinks.find((link) => route.path.startsWith(link.to))
+const currentSystemManageLink = computed(() => {
+  return systemManageLinks.find((link) => route.path === link.to || route.path.startsWith(link.to + '/'))
+})
+
+const currentSystemConfigLink = computed(() => {
+  return systemConfigLinks.find((link) => route.path === link.to || route.path.startsWith(link.to + '/'))
 })
 
 const breadcrumb = computed(() => {
-  if (currentSystemLink.value) {
-    return `系统管理 / ${currentSystemLink.value.label}`
+  if (currentSystemManageLink.value) {
+    return `系统管理 / ${currentSystemManageLink.value.label}`
+  }
+  if (currentSystemConfigLink.value) {
+    return `系统配置 / ${currentSystemConfigLink.value.label}`
   }
   return null
 })
@@ -153,8 +160,7 @@ async function handleLogout() {
           :class="{ 'is-active': route.path === link.to }">
           {{ link.label }}
         </RouterLink>
-        <el-dropdown trigger="hover" :hide-on-click="false"
-          :class="{ 'is-active': currentSystemLink || route.path === '/files' || route.path.startsWith('/users') || route.path.startsWith('/shares') }">
+        <el-dropdown trigger="hover" :hide-on-click="false" :class="{ 'is-active': !!currentSystemManageLink }">
           <span class="shell__link shell__link--dropdown">
             系统管理
             <el-icon class="el-icon--right"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12">
@@ -163,19 +169,30 @@ async function handleLogout() {
           </span>
           <template #dropdown>
             <el-dropdown-menu>
-              <el-dropdown-item v-for="link in visibleSystemLinks" :key="link.to"
+              <el-dropdown-item v-for="link in visibleSystemManageLinks" :key="link.to"
                 :class="{ 'is-active': route.path === link.to }">
                 <RouterLink :to="link.to" class="shell__dropdown-link">{{ link.label }}</RouterLink>
               </el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
-        <template v-if="isAdmin">
-          <RouterLink v-for="link in visibleAdminLinks" :key="link.to" :to="link.to" class="shell__link"
-            :class="{ 'is-active': route.path === link.to }">
-            {{ link.label }}
-          </RouterLink>
-        </template>
+        <el-dropdown v-if="isAdmin" trigger="hover" :hide-on-click="false"
+          :class="{ 'is-active': !!currentSystemConfigLink }">
+          <span class="shell__link shell__link--dropdown">
+            系统配置
+            <el-icon class="el-icon--right"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12">
+                <path d="M7 10l5 5 5-5z" />
+              </svg></el-icon>
+          </span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item v-for="link in visibleSystemConfigLinks" :key="link.to"
+                :class="{ 'is-active': route.path === link.to }">
+                <RouterLink :to="link.to" class="shell__dropdown-link">{{ link.label }}</RouterLink>
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
       </nav>
       <div class="shell__actions">
         <span v-if="breadcrumb" class="shell__breadcrumb">{{ breadcrumb }}</span>
