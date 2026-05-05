@@ -551,19 +551,12 @@ class ChatOrchestrator:
         complete_response = "".join(full_response)
         total_duration = (datetime.now() - total_start_time).total_seconds()
 
-        message_data = {
-            "answer": complete_response,
-            "total_duration": round(total_duration, 2),
-            "iterations": iterations_info if iterations_info else None
-        }
-
-        message_content = json.dumps(message_data, ensure_ascii=False)
-
-        await self.message_repo.create_message(
+        await self.message_repo.create_message_with_data(
             chat_id=chat_id,
             role="assistant",
-            content=message_content,
-            type="text"
+            answer=complete_response,
+            total_duration=round(total_duration, 2),
+            iterations=iterations_info if iterations_info else None
         )
 
         yield {

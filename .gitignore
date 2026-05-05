@@ -46,6 +46,7 @@ coverage.html
 需求.md
 Design.md
 app.json
+backend/configs/app.json
 
 __pycache__/
 *.py[cod]

@@ -1,0 +1,25 @@
+{
+    "server": {
+        "port": 18084
+    },
+    "database": {
+        "driver": "sqlite/mysql",
+        "sqlite_path": "data/aiterm.db",
+        "mysql_host": "localhost",
+        "mysql_port": 3306,
+        "mysql_user": "root",
+        "mysql_password": "",
+        "mysql_database": "aiterm"
+    },
+    "cors": {
+        "allowed_origins": [
+            "http://localhost:18085",
+            "http://127.0.0.1:18085"
+        ]
+    },
+    "log": {
+        "enabled": true,
+        "request_body": 128,
+        "response_body": 128
+    }
+}

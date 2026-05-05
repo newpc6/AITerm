@@ -1,6 +1,5 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime
 from datetime import datetime, timezone
-import json
 
 from app.db.base import Base
 
@@ -11,8 +10,7 @@ class MessageModel(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     chat_id = Column(Integer, nullable=False)
     role = Column(String(50), nullable=False)
-    type = Column(String(50), nullable=False, default="text")
-    content = Column(Text, nullable=False)
+    content = Column(Text, nullable=False, default="{}")
     created_at = Column(DateTime, nullable=False,
                         default=lambda: datetime.now(timezone.utc))
 
@@ -28,7 +26,26 @@ class MessageModel(Base):
             "id": str(self.id),
             "chat_id": str(self.chat_id),
             "role": self.role,
-            "type": self.type,
             "content": self.content,
             "created_at": created_at_str
+        }
+
+
+class MessagePartModel(Base):
+    __tablename__ = "message_parts"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    message_id = Column(Integer, nullable=False)
+    seq = Column(Integer, nullable=False, default=0)
+    content = Column(Text, nullable=False, default="{}")
+    created_at = Column(DateTime, nullable=False,
+                        default=lambda: datetime.now(timezone.utc))
+
+    def to_dict(self):
+        return {
+            "id": str(self.id),
+            "message_id": str(self.message_id),
+            "seq": self.seq,
+            "content": self.content,
+            "created_at": self.created_at.isoformat() if self.created_at else None
         }

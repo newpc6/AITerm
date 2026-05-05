@@ -87,6 +87,35 @@ python main.py
 
 服务默认运行在 `http://localhost:18084`
 
+#### 数据库配置
+
+backend/app/configs/app.json中配置数据库类型为sqlite/mysql
+系统会自动创建表和字段
+如果配置sqlite，默认路径为backend/data/aiterm.db
+如需使用 MySQL，请按以下步骤操作：
+
+1. 复制配置模板文件：
+
+```bash
+cd backend/configs
+cp app.json.bak app.json
+```
+
+2. 编辑 `app.json`，修改数据库配置：
+
+```json
+{
+  "database": {
+    "driver": "mysql",
+    "mysql_host": "your_mysql_host",
+    "mysql_port": 3306,
+    "mysql_user": "your_username",
+    "mysql_password": "your_password",
+    "mysql_database": "aiterm"
+  }
+}
+```
+
 ### 前端启动
 
 ```bash
@@ -113,13 +142,7 @@ python main.py
 
 ### 初始化默认工具
 
-运行以下脚本导入预设工具和默认配置提示词
-
-```bash
-cd backend
-python init_scripts/init_tools.py
-python init_scripts/init_settings.py
-```
+工具页面 点击 【导入内置工具】，选择需要的工具导入
 
 预设工具包括：
 
@@ -137,6 +160,8 @@ python init_scripts/init_settings.py
 | create_directory | 创建目录     | 创建目录，支持多级创建                   |
 | get_file_info    | 获取文件信息 | 获取文件的详细信息，包括大小、修改时间等 |
 | search_files     | 搜索文件     | 在目录中搜索匹配的文件                   |
+
+等等共计40余项工具
 
 ### 工具管理
 
