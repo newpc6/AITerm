@@ -66,11 +66,14 @@ async def create_chat(
 @router.post("/stream")
 async def stream_chat(
     request: ChatCreate,
-    orchestrator: ChatOrchestrator = Depends(get_chat_orchestrator)
+    orchestrator: ChatOrchestrator = Depends(get_chat_orchestrator),
+    current_user=Depends(get_current_user)
 ):
     logger.info(f"开始流式对话: {request.model_dump()}")
     if not request.message or not request.message.strip():
         return Response(code=1001, message="message is required")
+
+    user_id = int(current_user.id) if current_user else None
 
     async def event_generator():
         try:
@@ -78,7 +81,8 @@ async def stream_chat(
                 request.chat_id,
                 request.node_id,
                 request.message,
-                request.model_id
+                request.model_id,
+                user_id=user_id
             ):
                 yield f"event: {event['event']}\n"
                 yield f"data: {json.dumps(event['data'], ensure_ascii=False)}\n\n"

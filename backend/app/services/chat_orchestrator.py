@@ -153,7 +153,8 @@ class ChatOrchestrator:
         chat_id: Optional[str],
         node_id: str,
         message: str,
-        model_id: Optional[str] = None
+        model_id: Optional[str] = None,
+        user_id: Optional[int] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
         model_config = await self._get_model_config(model_id)
 
@@ -164,7 +165,8 @@ class ChatOrchestrator:
                 title=message[:50] if message else "新对话",
                 node_id=int(node_id),
                 model_id=int(model_config.id) if model_config.id else None,
-                model_name=model_config.name
+                model_name=model_config.name,
+                user_id=user_id
             )
             chat_id = chat.id
 
