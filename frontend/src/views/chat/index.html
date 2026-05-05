@@ -72,91 +72,100 @@
             <span>{{ selectedModel?.name || '未选择模型' }}</span>
             <span>会话 {{ chatId || 'new' }}</span>
           </div>
-          <el-dropdown trigger="click" placement="bottom-end" :hide-on-click="false">
-            <el-button text circle>
-              <el-icon :size="18"><svg viewBox="0 0 24 24" fill="currentColor">
-                  <path
-                    d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
-                </svg></el-icon>
-            </el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item @click="displaySettings.showThinking = !displaySettings.showThinking">
-                  <el-icon v-if="displaySettings.showThinking" style="color: #67c23a;"><svg viewBox="0 0 24 24"
-                      fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                    </svg></el-icon>
-                  <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                    </svg></el-icon>
-                  <span>显示思考</span>
-                </el-dropdown-item>
-                <el-dropdown-item @click="displaySettings.expandThinking = !displaySettings.expandThinking"
-                  :disabled="!displaySettings.showThinking">
-                  <el-icon v-if="displaySettings.expandThinking" style="color: #67c23a;"><svg viewBox="0 0 24 24"
-                      fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                    </svg></el-icon>
-                  <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                    </svg></el-icon>
-                  <span>展开思考</span>
-                </el-dropdown-item>
-                <el-dropdown-item divided @click="displaySettings.showTools = !displaySettings.showTools">
-                  <el-icon v-if="displaySettings.showTools" style="color: #67c23a;"><svg viewBox="0 0 24 24"
-                      fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                    </svg></el-icon>
-                  <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                    </svg></el-icon>
-                  <span>显示工具</span>
-                </el-dropdown-item>
-                <el-dropdown-item @click="displaySettings.expandTools = !displaySettings.expandTools"
-                  :disabled="!displaySettings.showTools">
-                  <el-icon v-if="displaySettings.expandTools" style="color: #67c23a;"><svg viewBox="0 0 24 24"
-                      fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                    </svg></el-icon>
-                  <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                    </svg></el-icon>
-                  <span>展开工具</span>
-                </el-dropdown-item>
-                <el-dropdown-item divided @click="displaySettings.showInput = !displaySettings.showInput">
-                  <el-icon v-if="displaySettings.showInput" style="color: #67c23a;"><svg viewBox="0 0 24 24"
-                      fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                    </svg></el-icon>
-                  <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                    </svg></el-icon>
-                  <span>显示输入</span>
-                </el-dropdown-item>
-                <el-dropdown-item @click="displaySettings.expandInput = !displaySettings.expandInput"
-                  :disabled="!displaySettings.showInput">
-                  <el-icon v-if="displaySettings.expandInput" style="color: #67c23a;"><svg viewBox="0 0 24 24"
-                      fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                    </svg></el-icon>
-                  <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                    </svg></el-icon>
-                  <span>展开输入</span>
-                </el-dropdown-item>
-                <el-dropdown-item divided @click="displaySettings.autoCollapse = !displaySettings.autoCollapse">
-                  <el-icon v-if="displaySettings.autoCollapse" style="color: #67c23a;"><svg viewBox="0 0 24 24"
-                      fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                    </svg></el-icon>
-                  <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
-                      <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
-                    </svg></el-icon>
-                  <span>自动收起已完成</span>
-                </el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
+          <div class="setting-share">
+            <el-dropdown trigger="click" placement="bottom-end" :hide-on-click="false">
+              <el-button text circle>
+                <el-icon :size="18"><svg viewBox="0 0 24 24" fill="currentColor">
+                    <path
+                      d="M19.14 12.94c.04-.31.06-.63.06-.94 0-.31-.02-.63-.06-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
+                  </svg></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item divided @click="displaySettings.showThinking = !displaySettings.showThinking">
+                    <el-icon v-if="displaySettings.showThinking" style="color: #67c23a;"><svg viewBox="0 0 24 24"
+                        fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <span>显示思考</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="displaySettings.expandThinking = !displaySettings.expandThinking"
+                    :disabled="!displaySettings.showThinking">
+                    <el-icon v-if="displaySettings.expandThinking" style="color: #67c23a;"><svg viewBox="0 0 24 24"
+                        fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <span>展开思考</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item divided @click="displaySettings.showTools = !displaySettings.showTools">
+                    <el-icon v-if="displaySettings.showTools" style="color: #67c23a;"><svg viewBox="0 0 24 24"
+                        fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <span>显示工具</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="displaySettings.expandTools = !displaySettings.expandTools"
+                    :disabled="!displaySettings.showTools">
+                    <el-icon v-if="displaySettings.expandTools" style="color: #67c23a;"><svg viewBox="0 0 24 24"
+                        fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <span>展开工具</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item divided @click="displaySettings.showInput = !displaySettings.showInput">
+                    <el-icon v-if="displaySettings.showInput" style="color: #67c23a;"><svg viewBox="0 0 24 24"
+                        fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <span>显示输入</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="displaySettings.expandInput = !displaySettings.expandInput"
+                    :disabled="!displaySettings.showInput">
+                    <el-icon v-if="displaySettings.expandInput" style="color: #67c23a;"><svg viewBox="0 0 24 24"
+                        fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <span>展开输入</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item divided @click="displaySettings.autoCollapse = !displaySettings.autoCollapse">
+                    <el-icon v-if="displaySettings.autoCollapse" style="color: #67c23a;"><svg viewBox="0 0 24 24"
+                        fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <span>自动收起已完成</span>
+                  </el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+            <el-tooltip content="分享对话" placement="top">
+              <el-button :disabled="!chatId" text circle @click="showShareDialog = true">
+                <el-icon>
+                  <Share />
+                </el-icon>
+              </el-button>
+            </el-tooltip>
+          </div>
         </div>
       </div>
 
@@ -177,4 +186,7 @@
         @stop-chat="stopChatResponse" />
     </div>
   </div>
+
+  <ShareDialog v-if="showShareDialog" :chat-id="chatId" :chat-title="activeChatTitle"
+    @close="showShareDialog = false" />
 </section>

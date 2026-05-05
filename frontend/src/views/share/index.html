@@ -1,0 +1,57 @@
+<section class="page page--share">
+  <div v-if="loading" class="share-loading">
+    <el-icon class="is-loading" :size="32"><svg viewBox="0 0 24 24" fill="currentColor">
+        <path
+          d="M12 4V2C6.48 2 2 6.48 2 12h2c0-4.42 3.58-8 8-8zm6.32 2.12l1.42-1.42C17.64 2.28 14.99 1 12 1S6.36 2.28 4.26 4.7l1.42 1.42C7.27 4.28 9.52 3 12 3s4.73 1.28 6.32 3.12zM12 6c-3.31 0-6 2.69-6 6s2.69 6 6 6 6-2.69 6-6-2.69-6-6-6zm0 10c-2.21 0-4-1.79-4-4s1.79-4 4-4 4 1.79 4 4-1.79 4-4 4z" />
+      </svg></el-icon>
+    <span>加载中...</span>
+  </div>
+
+  <div v-else-if="error" class="share-error">
+    <el-icon :size="48"><svg viewBox="0 0 24 24" fill="currentColor">
+        <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
+      </svg></el-icon>
+    <p>{{ error }}</p>
+    <el-button type="primary" @click="goHome">返回首页</el-button>
+  </div>
+
+  <template v-else-if="showPasswordForm">
+    <div class="share-password">
+      <div class="share-password__card">
+        <h2>需要访问密码</h2>
+        <p>此分享内容需要密码才能查看</p>
+        <el-form @submit.prevent="handleVerifyPassword">
+          <el-input v-model="password" type="password" placeholder="请输入访问密码" show-password
+            @keyup.enter="handleVerifyPassword" />
+          <el-button type="primary" :loading="verifying" @click="handleVerifyPassword">验证</el-button>
+        </el-form>
+        <p v-if="passwordError" class="share-password__error">{{ passwordError }}</p>
+      </div>
+    </div>
+  </template>
+
+  <template v-else-if="shareData">
+    <div class="share-container">
+      <header class="share-header">
+        <div class="share-header__left">
+          <h1 class="share-header__title">{{ shareData.title || shareData.chat_title || '分享的对话' }}</h1>
+          <div class="share-header__meta">
+            <span v-if="shareData.created_at">创建于 {{ formatDate(shareData.created_at) }}</span>
+            <span v-if="shareData.expires_at">有效期至 {{ formatDate(shareData.expires_at) }}</span>
+          </div>
+        </div>
+        <div class="share-header__right">
+          <el-button text @click="goHome">返回 AITerm</el-button>
+        </div>
+      </header>
+
+      <main class="share-content">
+        <MessageList :messages="messages" assistant-label="助手" user-label="用户" :display-settings="displaySettings" />
+      </main>
+
+      <footer class="share-footer">
+        <span>由 AITerm 分享</span>
+      </footer>
+    </div>
+  </template>
+</section>

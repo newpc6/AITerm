@@ -6,6 +6,7 @@ from app.db.user import UserModel
 from app.db.node import NodeModel
 from app.db.tool import ToolModel
 from app.db.file import FileModel
+from app.db.share import ShareModel
 import os
 import logging
 from typing import List, Set, Dict, Any, Type
@@ -57,6 +58,7 @@ ALL_MODELS: List[Type[Base]] = [
     AuthSettingsModel,
     ToolModel,
     FileModel,
+    ShareModel,
 ]
 
 

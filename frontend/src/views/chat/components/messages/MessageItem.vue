@@ -83,7 +83,7 @@ function isStreaming(message: ChatMessage) {
 }
 
 .message-row--assistant .message {
-  max-width: min(92%, 1040px);
+  width: 85%;
 }
 
 .message {

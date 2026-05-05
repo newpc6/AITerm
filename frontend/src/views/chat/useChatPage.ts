@@ -194,6 +194,8 @@ export function useChatPage() {
     autoCollapse: true,
   })
 
+  const showShareDialog = ref(false)
+
   let executeEventSource: EventSource | null = null
   let chatStreamController: AbortController | null = null
 
@@ -1193,5 +1195,6 @@ export function useChatPage() {
     chatId,
     formatDateTime,
     displaySettings,
+    showShareDialog,
   }
 }

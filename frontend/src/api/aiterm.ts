@@ -714,3 +714,107 @@ export async function getFileSources() {
   const { data } = await http.get<ApiResponse<string[]>>('/api/v1/files/sources/list')
   return data.data
 }
+
+export interface ShareItem {
+  id: string
+  share_id: string
+  chat_id: string
+  title: string
+  has_password: boolean
+  expires_at: string | null
+  view_count: number
+  created_at: string | null
+  show_input: boolean
+  show_thinking: boolean
+  show_tools: boolean
+  show_answer: boolean
+}
+
+export interface ShareCreatePayload {
+  chat_id: string
+  title?: string
+  password?: string
+  expires_in?: number
+  show_input?: boolean
+  show_thinking?: boolean
+  show_tools?: boolean
+  show_answer?: boolean
+}
+
+export interface ShareVerifyPayload {
+  share_id: string
+  password?: string
+}
+
+export interface ShareDetailData {
+  share_id: string
+  title: string
+  has_password: boolean
+  expires_at: string | null
+  messages: Array<{
+    id: string
+    role: string
+    type: string
+    content: string
+    created_at: string | null
+  }>
+  chat_title: string | null
+  created_at: string | null
+  show_input: boolean
+  show_thinking: boolean
+  show_tools: boolean
+  show_answer: boolean
+}
+
+export async function createShare(payload: ShareCreatePayload) {
+  const { data } = await http.post<ApiResponse<ShareItem>>('/api/v1/shares', payload)
+  return data.data
+}
+
+export async function getShare(shareId: string) {
+  const { data } = await http.get<ApiResponse<ShareItem>>(`/api/v1/shares/${shareId}`)
+  return data.data
+}
+
+export async function getShareByChat(chatId: string) {
+  const { data } = await http.get<ApiResponse<ShareItem>>(`/api/v1/shares/chat/${chatId}`)
+  return data.data
+}
+
+export async function deleteShare(shareId: string) {
+  const { data } = await http.delete<ApiResponse<{ share_id: string; status: string }>>(`/api/v1/shares/${shareId}`)
+  return data.data
+}
+
+export async function deleteShareByChat(chatId: string) {
+  const { data } = await http.delete<ApiResponse<{ chat_id: string; status: string }>>(`/api/v1/shares/chat/${chatId}`)
+  return data.data
+}
+
+export async function verifyShare(shareId: string, payload: ShareVerifyPayload) {
+  const { data } = await http.post<ApiResponse<ShareDetailData>>(`/api/v1/shares/${shareId}/verify`, payload)
+  return data.data
+}
+
+export async function getSharePreview(shareId: string) {
+  const { data } = await http.get<ApiResponse<{
+    share_id: string
+    title: string
+    has_password: boolean
+    expires_at: string | null
+    created_at: string | null
+  }>>(`/api/v1/shares/${shareId}/preview`)
+  return data.data
+}
+
+export async function listShares(page: number = 1, pageSize: number = 20) {
+  const { data } = await http.get<ApiResponse<PaginatedData<ShareItem>>>('/api/v1/shares', {
+    params: { page, page_size: pageSize }
+  })
+  return data.data
+}
+
+export async function batchDeleteShares(shareIds: string[]) {
+  const { data } = await http.post<ApiResponse<{ deleted_count: number }>>('/api/v1/shares/batch-delete', shareIds)
+  return data.data
+}

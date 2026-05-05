@@ -10,19 +10,26 @@ import type { UserItem } from '@/types/api'
 const route = useRoute()
 const router = useRouter()
 
-const links = [
+const mainLinks = [
   { to: '/chat', label: '对话' },
   { to: '/history', label: '历史' },
   { to: '/terminal', label: '终端' },
-  { to: '/files', label: '文件' },
-  { to: '/nodes', label: '节点' },
-  { to: '/tools', label: '工具', adminOnly: true },
-  { to: '/users', label: '用户', adminOnly: true },
-  { to: '/models', label: '模型配置', adminOnly: true },
-  { to: '/global-settings', label: '全局配置', adminOnly: true },
 ]
 
-const showShell = computed(() => route.path !== '/login')
+const systemLinks = [
+  { to: '/files', label: '文件管理' },
+  { to: '/users', label: '用户管理', adminOnly: true },
+  { to: '/shares', label: '分享管理', adminOnly: true },
+]
+
+const adminLinks = [
+  { to: '/nodes', label: '节点' },
+  { to: '/tools', label: '工具' },
+  { to: '/models', label: '模型配置' },
+  { to: '/global-settings', label: '全局配置' },
+]
+
+const showShell = computed(() => route.path !== '/login' && !route.path.match(/^\/share\/[^/]+$/))
 const authEnabled = ref(false)
 const currentUser = ref<UserItem | null>(null)
 const passwordDialogVisible = ref(false)
@@ -33,10 +40,29 @@ const passwordForm = ref({
   new_password: '',
   confirm_password: '',
 })
-const visibleLinks = computed(() =>
-  links.filter((link) => !link.adminOnly || !authEnabled.value || currentUser.value?.role === 'admin'),
+
+const isAdmin = computed(() => !authEnabled.value || currentUser.value?.role === 'admin')
+
+const visibleSystemLinks = computed(() =>
+  systemLinks.filter((link) => !link.adminOnly || isAdmin.value)
 )
+
+const visibleAdminLinks = computed(() =>
+  adminLinks.filter(() => isAdmin.value)
+)
+
 const currentUserLabel = computed(() => currentUser.value?.display_name || currentUser.value?.username || '')
+
+const currentSystemLink = computed(() => {
+  return systemLinks.find((link) => route.path.startsWith(link.to))
+})
+
+const breadcrumb = computed(() => {
+  if (currentSystemLink.value) {
+    return `系统管理 / ${currentSystemLink.value.label}`
+  }
+  return null
+})
 
 async function loadAuthStatus() {
   try {
@@ -123,11 +149,36 @@ async function handleLogout() {
     <header class="shell__header">
       <div class="shell__brand">AITerm</div>
       <nav class="shell__nav">
-        <RouterLink v-for="link in visibleLinks" :key="link.to" :to="link.to" class="shell__link">
+        <RouterLink v-for="link in mainLinks" :key="link.to" :to="link.to" class="shell__link"
+          :class="{ 'is-active': route.path === link.to }">
           {{ link.label }}
         </RouterLink>
+        <el-dropdown trigger="hover" :hide-on-click="false"
+          :class="{ 'is-active': currentSystemLink || route.path === '/files' || route.path.startsWith('/users') || route.path.startsWith('/shares') }">
+          <span class="shell__link shell__link--dropdown">
+            系统管理
+            <el-icon class="el-icon--right"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12">
+                <path d="M7 10l5 5 5-5z" />
+              </svg></el-icon>
+          </span>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item v-for="link in visibleSystemLinks" :key="link.to"
+                :class="{ 'is-active': route.path === link.to }">
+                <RouterLink :to="link.to" class="shell__dropdown-link">{{ link.label }}</RouterLink>
+              </el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <template v-if="isAdmin">
+          <RouterLink v-for="link in visibleAdminLinks" :key="link.to" :to="link.to" class="shell__link"
+            :class="{ 'is-active': route.path === link.to }">
+            {{ link.label }}
+          </RouterLink>
+        </template>
       </nav>
       <div class="shell__actions">
+        <span v-if="breadcrumb" class="shell__breadcrumb">{{ breadcrumb }}</span>
         <span v-if="currentUserLabel" class="shell__user">{{ currentUserLabel }}</span>
         <el-button v-if="currentUserLabel" text @click="openPasswordDialog">修改密码</el-button>
         <el-button text @click="handleLogout">退出</el-button>
@@ -157,3 +208,30 @@ async function handleLogout() {
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.shell__link--dropdown {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.shell__link.is-active {
+  color: var(--el-color-primary);
+  font-weight: 500;
+}
+
+.shell__dropdown-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+.shell__breadcrumb {
+  font-size: 13px;
+  color: var(--el-text-color-secondary);
+  padding: 4px 12px;
+  background: var(--el-fill-color-light);
+  border-radius: 4px;
+}
+</style>
