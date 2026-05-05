@@ -33,13 +33,7 @@ async def create_user(
     current_user = Depends(get_current_user)
 ):
     try:
-        user = await service.create_user(
-            request.username,
-            request.display_name,
-            request.password,
-            request.role,
-            request.status
-        )
+        user = await service.create_user(request)
         return Response(data=user.model_dump())
     except ValueError as e:
         return Response(code=1003, message=str(e))
