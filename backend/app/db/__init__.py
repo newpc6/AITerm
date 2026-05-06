@@ -185,6 +185,7 @@ def get_sqlite_type(column) -> str:
 
 
 def get_mysql_type(column) -> str:
+    col_type_str = str(column.type).upper()
     if isinstance(column.type, Integer):
         return "INT"
     elif isinstance(column.type, Float):
@@ -194,9 +195,19 @@ def get_mysql_type(column) -> str:
     elif isinstance(column.type, String):
         return f"VARCHAR({column.type.length or 255})"
     elif isinstance(column.type, Text):
+        if "LONGTEXT" in col_type_str:
+            return "LONGTEXT"
+        if "MEDIUMTEXT" in col_type_str:
+            return "MEDIUMTEXT"
         return "TEXT"
     else:
-        return column.type.compile(dialect=None)
+        if "LONGTEXT" in col_type_str:
+            return "LONGTEXT"
+        if "MEDIUMTEXT" in col_type_str:
+            return "MEDIUMTEXT"
+        if "TEXT" in col_type_str:
+            return "TEXT"
+        return col_type_str
 
 
 def get_column_type(column) -> str:
@@ -412,10 +423,30 @@ async def auto_migrate_mysql():
             existing_columns = await get_table_columns_info(conn, table_name)
 
             new_columns = []
+            type_changes = []
 
             for col_name, column in model_columns.items():
                 if col_name not in existing_columns:
                     new_columns.append(col_name)
+                else:
+                    db_col = existing_columns[col_name]
+                    model_type = get_mysql_type(column)
+                    db_type = (db_col["type"] or "").upper()
+
+                    if not types_compatible(db_type, model_type):
+                        type_changes.append((col_name, model_type, db_type))
+
+            for col_name, new_type, old_type in type_changes:
+                if old_type in ("TEXT", "MEDIUMTEXT", "LONGTEXT") and not any(
+                    t in new_type for t in ("TEXT", "LONGTEXT", "MEDIUMTEXT")
+                ):
+                    logger.warning(
+                        f"Skipping type change for {col_name} in {table_name}: {old_type} -> {new_type} (would shrink text column)")
+                    continue
+                sql = f"ALTER TABLE `{table_name}` MODIFY COLUMN `{col_name}` {new_type}"
+                logger.info(
+                    f"Modifying column {col_name} in {table_name}: {old_type} -> {new_type}")
+                await conn.execute(text(sql))
 
             for col_name in new_columns:
                 column = model_columns[col_name]
