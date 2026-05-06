@@ -191,6 +191,12 @@ export interface ChatItem {
   node_id: string
   model_id: string | null
   model_name: string | null
+  user_id: string | null
+  user_info: {
+    id: string
+    username: string
+    display_name: string
+  } | null
   status: string
   summary: string
   created_at: string | null

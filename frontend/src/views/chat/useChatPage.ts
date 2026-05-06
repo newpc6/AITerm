@@ -324,8 +324,8 @@ export function useChatPage() {
       lastUsage.value = null
       conversationTotalUsage.value = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, reasoning_tokens: 0 }
       for (const msg of messages.value) {
-        if (msg.role === 'assistant' && msg.metadata?.usage) {
-          const u = msg.metadata.usage as Record<string, number>
+        if (msg.role === 'assistant' && (msg.metadata as Record<string, unknown>)?.usage) {
+          const u = (msg.metadata as Record<string, unknown>).usage as Record<string, number>
           conversationTotalUsage.value.prompt_tokens += u.prompt_tokens || 0
           conversationTotalUsage.value.completion_tokens += u.completion_tokens || 0
           conversationTotalUsage.value.total_tokens += u.total_tokens || 0
@@ -703,7 +703,7 @@ export function useChatPage() {
         ...placeholder.metadata,
         iterations,
         total_duration: totalDuration || 0,
-        full_input: preservedFullInput || (placeholder.metadata?.full_input as string),
+        full_input: preservedFullInput || ((placeholder.metadata as Record<string, unknown>)?.full_input as string),
         usage,
       }
     } else if (iterationsData.value.length > 0) {
@@ -711,7 +711,7 @@ export function useChatPage() {
         ...placeholder.metadata,
         iterations: iterationsData.value,
         total_duration: totalDuration || 0,
-        full_input: preservedFullInput || (placeholder.metadata?.full_input as string),
+        full_input: preservedFullInput || ((placeholder.metadata as Record<string, unknown>)?.full_input as string),
         usage,
       }
     } else if (reasoningBuffer.value) {

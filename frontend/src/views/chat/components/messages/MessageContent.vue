@@ -71,14 +71,6 @@ interface ParsedContent {
   legacyToolCalls: ToolCall[]
   currentThinking: string
   fullInput: string
-  usage: {
-    prompt_tokens: number
-    completion_tokens: number
-    total_tokens: number
-    prompt_cache_hit_tokens?: number
-    prompt_cache_miss_tokens?: number
-    reasoning_tokens?: number
-  } | null
 }
 
 const parsedContent = computed<ParsedContent>(() => {
@@ -200,13 +192,22 @@ const hasIterations = computed(() => parsedContent.value.iterations.length > 0)
 const hasLegacyThinking = computed(() => parsedContent.value.legacyThinking.length > 0)
 const hasLegacyToolCalls = computed(() => parsedContent.value.legacyToolCalls.length > 0)
 const hasCurrentThinking = computed(() => parsedContent.value.currentThinking.length > 0)
+type UsageData = {
+  prompt_tokens: number
+  completion_tokens: number
+  total_tokens: number
+  prompt_cache_hit_tokens?: number
+  prompt_cache_miss_tokens?: number
+  reasoning_tokens?: number
+}
+
 const hasFullInput = computed(() => !!parsedContent.value.fullInput)
 
-const messageUsage = computed(() => {
-  if (props.metadata?.usage) return props.metadata.usage as ParsedContent['usage']
+const messageUsage = computed<UsageData | null>(() => {
+  if (props.metadata?.usage) return props.metadata.usage as UsageData
   try {
     const parsed = JSON.parse(props.content)
-    if (parsed?.usage) return parsed.usage as ParsedContent['usage']
+    if (parsed?.usage) return parsed.usage as UsageData
   } catch { }
   return null
 })
