@@ -37,38 +37,6 @@ class ChatOrchestrator:
         self.message_repo = MessageRepository()
         self.tool_service = ToolService(sandbox_paths=settings.sandbox_paths)
 
-    async def detect_intent(self, message: str, model_config: ModelConfig) -> str:
-        response_text = ""
-        try:
-            llm_client = LLMClient(model_config)
-            intent_prompt = self.settings.intent_detection_prompt
-            prompt = intent_prompt.replace("{user_message}", message)
-            logger.info(f"Intent detection prompt: {prompt[:100]}...")
-
-            response = await llm_client.chat([
-                {"role": "user", "content": prompt}
-            ], temperature=0.1)
-            logger.info(f"Intent detection raw response: {repr(response)}")
-
-            response_text = response.strip()
-            if response_text.startswith("```"):
-                json_match = re.search(
-                    r'```(?:json)?\s*([\s\S]*?)\s*```', response_text)
-                if json_match:
-                    response_text = json_match.group(1)
-
-            result = json.loads(response_text)
-            intent = result.get("intent", "chat")
-            logger.info(f"Intent detection: intent={intent}")
-            return intent
-        except json.JSONDecodeError as e:
-            logger.warning(
-                f"Intent detection JSON decode failed: {e}, defaulting to chat")
-            return "chat"
-        except Exception as e:
-            logger.warning(f"Intent detection failed: {e}, defaulting to chat")
-            return "chat"
-
     async def create_conversation(
         self,
         conversation_id: Optional[str],
@@ -170,9 +138,7 @@ class ChatOrchestrator:
             )
             chat_id = chat.id
 
-        intent = await self.detect_intent(message, model_config)
-        mode = "execute" if intent == "execute" else "chat"
-        logger.info(f"Detected intent: {intent}, mode: {mode}")
+        mode = "chat"
 
         yield {
             "event": "conversation.meta",
@@ -751,9 +717,7 @@ class ChatOrchestrator:
             type="text"
         )
 
-        intent = await self.detect_intent(message, model_config)
-        mode = "execute" if intent == "execute" else "chat"
-
+        mode = "chat"
         yield {
             "event": "conversation.meta",
             "data": {

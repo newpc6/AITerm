@@ -1149,14 +1149,17 @@ export function useChatPage() {
     return null
   })
   const usagePercentage = computed(() => {
-    if (!lastUsage.value || !modelContextLength.value) return null
-    const ratio = lastUsage.value.total_tokens / modelContextLength.value
+    if (!modelContextLength.value) return null
+    const tokens = lastUsage.value?.total_tokens || conversationTotalUsage.value.total_tokens
+    if (!tokens) return null
+    const ratio = tokens / modelContextLength.value
     return Math.min(100, Math.round(ratio * 1000) / 10)
   })
   const usageColor = computed(() => {
-    if (!usagePercentage.value) return '#67c23a'
+    if (!usagePercentage.value) return '#85ce60ff'
     if (usagePercentage.value > 80) return '#f56c6c'
     if (usagePercentage.value > 50) return '#e6a23c'
+    if (usagePercentage.value > 30) return '#60a5fa'
     return '#67c23a'
   })
   const hasUsage = computed(() => lastUsage.value !== null || conversationTotalUsage.value.total_tokens > 0)
