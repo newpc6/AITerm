@@ -10,8 +10,9 @@ from app.repositories import (
 from app.services import (
     NodeService, ExecuteService,
     AuthService, UserService, ChatOrchestrator,
-    ModelConfigService, GlobalSettingsService
+    GlobalSettingsService
 )
+from app.services.model_setting import ModelConfigService
 
 
 def get_node_repository() -> NodeRepository:

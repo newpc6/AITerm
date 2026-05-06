@@ -13,11 +13,13 @@ export function useModelsPage() {
   const editingModel = ref<ModelConfigItem | null>(null)
   const form = ref<ModelConfigPayload>({
     name: '',
+    api_type: 'openai',
     api_url: 'https://api.openai.com/v1',
     api_key: '',
     model: 'gpt-4o-mini',
     temperature: 0.7,
     context_length: null,
+    thinking_type: 'default',
     extra_params: {},
     extra_body: {},
     extra_headers: {},
@@ -63,11 +65,13 @@ export function useModelsPage() {
     editingModel.value = null
     form.value = {
       name: '',
+      api_type: 'openai',
       api_url: 'https://api.openai.com/v1',
       api_key: '',
       model: 'gpt-4o-mini',
       temperature: 0.7,
       context_length: null,
+      thinking_type: 'default',
       extra_params: {},
       extra_body: {},
       extra_headers: {},
@@ -85,11 +89,13 @@ export function useModelsPage() {
     editingModel.value = model
     form.value = {
       name: model.name,
+      api_type: model.api_type || 'openai',
       api_url: model.api_url,
       api_key: model.api_key,
       model: model.model,
       temperature: model.temperature,
       context_length: model.context_length ?? null,
+      thinking_type: model.thinking_type || 'default',
       extra_params: model.extra_params || {},
       extra_body: model.extra_body || {},
       extra_headers: model.extra_headers || {},

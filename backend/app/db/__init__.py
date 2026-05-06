@@ -1,4 +1,5 @@
-from app.db.settings import ModelConfigModel, SystemDictModel, AuthSettingsModel
+from app.db.model_setting import ModelConfigModel
+from app.db.settings import SystemDictModel, AuthSettingsModel
 from app.db.message import MessageModel, MessagePartModel
 from app.db.chat import ChatModel
 from app.db.session import SessionModel

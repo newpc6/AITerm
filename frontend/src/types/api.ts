@@ -178,11 +178,13 @@ export type ExecuteListData = PaginatedData<ExecuteItem>
 export type ModelConfigItem = {
   id: string
   name: string
+  api_type: string
   api_url: string
   api_key: string
   model: string
   temperature: number
   context_length: number | null
+  thinking_type: string
   extra_params: Record<string, unknown>
   extra_body: Record<string, unknown>
   extra_headers: Record<string, string>
@@ -195,11 +197,13 @@ export type ModelConfigListData = PaginatedData<ModelConfigItem>
 
 export type ModelConfigPayload = {
   name: string
+  api_type: string
   api_url: string
   api_key: string
   model: string
   temperature: number
   context_length: number | null
+  thinking_type: string
   extra_params: Record<string, unknown>
   extra_body: Record<string, unknown>
   extra_headers: Record<string, string>

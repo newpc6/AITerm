@@ -47,6 +47,14 @@
         <el-input v-model="form.name" placeholder="例如：GPT-4o、Claude 3.5、DeepSeek" :disabled="saving" />
       </el-form-item>
 
+      <el-form-item label="接口类型" required>
+        <el-select v-model="form.api_type" :disabled="saving" style="width: 100%">
+          <el-option label="OpenAI 兼容 (DeepSeek, Qwen, etc.)" value="openai" />
+          <el-option label="Anthropic (Claude)" value="anthropic" :disabled="true" />
+          <el-option label="Ollama (本地)" value="ollama" :disabled="true" />
+        </el-select>
+      </el-form-item>
+
       <el-form-item label="API地址" required>
         <el-input v-model="form.api_url" placeholder="https://api.openai.com/v1" :disabled="saving" />
       </el-form-item>
@@ -61,6 +69,16 @@
 
       <el-form-item label="温度参数">
         <el-input-number v-model="form.temperature" :min="0" :max="2" :step="0.1" :precision="1" :disabled="saving" />
+      </el-form-item>
+
+      <el-form-item label="思考类型">
+        <el-select v-model="form.thinking_type" :disabled="saving" style="width: 100%">
+          <el-option label="默认" value="default" />
+          <el-option label="启用 (DeepSeek thinking)" value="enabled" />
+          <el-option label="自动" value="auto" />
+          <el-option label="禁用" value="disabled" />
+        </el-select>
+        <div class="form-hint">控制模型的内部推理思考 (reasoning/thinking) 模式</div>
       </el-form-item>
 
       <el-form-item label="上下文长度 (Token)">

@@ -6,7 +6,8 @@ from .base import (
 from .node import NodeRepository
 from .user import UserRepository
 from .session import SessionRepository
-from .settings import ModelConfigRepository, GlobalSettingsRepository, AuthSettingsRepository
+from .model_setting import ModelConfigRepository
+from .settings import GlobalSettingsRepository, AuthSettingsRepository
 
 __all__ = [
     "INodeRepository",

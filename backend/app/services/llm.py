@@ -11,6 +11,7 @@ from app.models import (
 )
 from app.models.chat import Message
 from app.services.command import detect_platform, describe_node
+from app.services.llm_providers.factory import create_llm_client
 import logging
 
 logger = logging.getLogger("aiterm")
@@ -74,60 +75,45 @@ class ExecuteFailureRepairResult:
 
 class LLMClient:
     def __init__(self, settings: Union[LLMSettings, ModelConfig], debug_logging: bool = False):
+        self._provider = create_llm_client(
+            settings, debug_logging=debug_logging)
         self.settings = settings
         self.timeout = 90.0
         self.debug_logging = debug_logging
 
     @property
     def api_url(self) -> str:
-        return self.settings.api_url
+        return self._provider.api_url
 
     @property
     def api_key(self) -> str:
-        return self.settings.api_key
+        return self._provider.api_key
 
     @property
     def model(self) -> str:
-        return self.settings.model
+        return self._provider.model
 
     @property
     def temperature(self) -> float:
-        return self.settings.temperature
+        return self._provider.temperature
 
     @property
     def extra_params(self) -> Dict[str, Any]:
-        if hasattr(self.settings, 'extra_params'):
-            return self.settings.extra_params or {}
-        return {}
+        return self._provider.extra_params
 
     @property
     def extra_body(self) -> Dict[str, Any]:
-        if hasattr(self.settings, 'extra_body'):
-            return self.settings.extra_body or {}
-        return {}
+        return self._provider.extra_body
 
     @property
     def extra_headers(self) -> Dict[str, str]:
-        if hasattr(self.settings, 'extra_headers'):
-            return self.settings.extra_headers or {}
-        return {}
+        return self._provider.extra_headers
 
     def _build_chat_url(self) -> str:
-        url = self.api_url.rstrip("/")
-        if url.endswith("/chat/completions"):
-            return url
-        return f"{url}/chat/completions"
+        return self._provider._get_chat_url()
 
     def _get_headers(self) -> Dict[str, str]:
-        headers = {
-            "Content-Type": "application/json",
-            "Accept": "application/json, text/event-stream"
-        }
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
-        if self.extra_headers:
-            headers.update(self.extra_headers)
-        return headers
+        return self._provider._get_headers()
 
     async def chat(
         self,
@@ -135,55 +121,15 @@ class LLMClient:
         temperature: Optional[float] = None,
         stream: bool = True
     ) -> str:
-        if not self.api_url or not self.model:
-            raise ValueError("LLM 设置未完成，请先在设置页填写 API 地址和模型")
+        return await self._provider.chat(messages, temperature, stream)
 
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature or self.temperature or 0.7,
-            "stream": stream
-        }
-
-        if self.extra_params:
-            payload.update(self.extra_params)
-
-        if self.extra_body:
-            payload.update(self.extra_body)
-
-        logger.info(
-            f"LLMClient.chat: calling model={self.model}, url={self._build_chat_url()}")
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                self._build_chat_url(),
-                headers=self._get_headers(),
-                json=payload
-            )
-
-            if response.status_code >= 400:
-                error_data = response.json() if response.headers.get(
-                    "content-type", "").startswith("application/json") else {}
-                logger.error(
-                    f"LLM API error: status={response.status_code}, response={error_data}")
-                if "error" in error_data and error_data["error"].get("message"):
-                    raise ValueError(error_data["error"]["message"])
-                raise ValueError(f"模型请求失败: HTTP {response.status_code}")
-
-            data = response.json()
-            if "choices" not in data or len(data["choices"]) == 0:
-                raise ValueError("模型未返回有效回复")
-            logger.info(f"模型返回数据: {data}")
-            content = data["choices"][0].get("message", {}).get("content", "")
-            if isinstance(content, list):
-                content = "\n".join(
-                    item.get("text", "") for item in content
-                    if isinstance(item, dict) and "text" in item
-                )
-
-            if not content.strip():
-                raise ValueError("模型返回内容为空")
-
-            return content.strip()
+    async def chat_stream(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: Optional[float] = None
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        async for chunk in self._provider.chat_stream(messages, temperature):
+            yield chunk
 
     async def chat_with_tools_stream(
         self,
@@ -191,300 +137,8 @@ class LLMClient:
         tools: List[Dict[str, Any]],
         temperature: Optional[float] = None
     ) -> AsyncGenerator[Dict[str, Any], None]:
-        if not self.api_url or not self.model:
-            raise ValueError("LLM 设置未完成，请先在设置页填写 API 地址和模型")
-
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature or self.temperature or 0.7,
-            "stream": True,
-            "tools": tools,
-            "tool_choice": "auto",
-            "thinking": {"type": "enabled"},
-            "reasoning_effort": "high"
-        }
-
-        for tool in tools:
-            if "function" in tool and "parameters" in tool["function"]:
-                params = tool["function"]["parameters"]
-                if "required" in params and params["required"] is None:
-                    params["required"] = []
-                if "properties" in params and params["properties"]:
-                    for prop_name, prop in params["properties"].items():
-                        if isinstance(prop, dict):
-                            if "enum" in prop and prop["enum"] is None:
-                                del prop["enum"]
-                            if "default" in prop and prop["default"] is None:
-                                del prop["default"]
-
-        if self.extra_params:
-            payload.update(self.extra_params)
-
-        if self.extra_body:
-            payload.update(self.extra_body)
-
-        logger.info(
-            f"chat_with_tools_stream: calling model={self.model}, tools_count={len(tools)}")
-
-        if self.debug_logging:
-            logger.info(
-                f"chat_with_tools_stream: request payload=\n{json.dumps(payload, ensure_ascii=False, indent=2)}")
-
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream(
-                "POST",
-                self._build_chat_url(),
-                headers=self._get_headers(),
-                json=payload
-            ) as response:
-                if response.status_code >= 400:
-                    error_text = await response.aread()
-                    error_data = {}
-                    try:
-                        error_data = json.loads(error_text)
-                    except:
-                        pass
-                    logger.error(
-                        f"LLM API error: status={response.status_code}, response={error_text}")
-                    if "error" in error_data and error_data["error"].get("message"):
-                        raise ValueError(error_data["error"]["message"])
-                    raise ValueError(f"模型请求失败: HTTP {response.status_code}")
-
-                full_content = ""
-                full_reasoning = ""
-                tool_calls_data = {}
-                usage_data = {}
-
-                async for line in response.aiter_lines():
-                    if not line or line == "data: [DONE]":
-                        continue
-                    if line.startswith("data: "):
-                        data_str = line[6:]
-                        try:
-                            data = json.loads(data_str)
-                        except:
-                            continue
-
-                        if data.get("usage"):
-                            usage_data = data["usage"]
-
-                        if "choices" not in data or len(data["choices"]) == 0:
-                            continue
-
-                        delta = data["choices"][0].get("delta", {})
-
-                        if self.debug_logging:
-                            logger.info(
-                                f"Stream delta: {json.dumps(delta, ensure_ascii=False)}")
-
-                        if delta.get("reasoning_content"):
-                            chunk = delta["reasoning_content"]
-                            full_reasoning += chunk
-                            yield {"type": "reasoning", "delta": chunk}
-
-                        if delta.get("content"):
-                            chunk = delta["content"]
-                            full_content += chunk
-                            yield {"type": "content", "delta": chunk}
-
-                        if delta.get("tool_calls"):
-                            # logger.info(
-                            #     f"Tool calls in delta: {delta.get('tool_calls')}")
-                            for tc in delta["tool_calls"]:
-                                idx = tc.get("index", 0)
-                                if idx not in tool_calls_data:
-                                    tool_calls_data[idx] = {
-                                        "id": "",
-                                        "name": "",
-                                        "arguments": ""
-                                    }
-                                if tc.get("id"):
-                                    tool_calls_data[idx]["id"] = tc["id"]
-                                if tc.get("function"):
-                                    if tc["function"].get("name"):
-                                        tool_calls_data[idx]["name"] = tc["function"]["name"]
-                                    if tc["function"].get("arguments"):
-                                        tool_calls_data[idx]["arguments"] += tc["function"]["arguments"]
-
-                tool_calls_list = None
-                if tool_calls_data:
-                    tool_calls_list = list(tool_calls_data.values())
-
-                logger.info(
-                    f"Stream done: content_len={len(full_content)}, reasoning_len={len(full_reasoning)}, tool_calls={tool_calls_list}")
-
-                yield {
-                    "type": "done",
-                    "content": full_content,
-                    "reasoning_content": full_reasoning,
-                    "tool_calls": tool_calls_list,
-                    "usage": usage_data
-                }
-
-    async def chat_with_tools(
-        self,
-        messages: List[Dict[str, Any]],
-        tools: List[Dict[str, Any]],
-        temperature: Optional[float] = None
-    ) -> Dict[str, Any]:
-        if not self.api_url or not self.model:
-            raise ValueError("LLM 设置未完成，请先在设置页填写 API 地址和模型")
-
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature or self.temperature or 0.7,
-            "stream": False,
-            "tools": tools,
-            "tool_choice": "auto"
-        }
-
-        if self.extra_params:
-            payload.update(self.extra_params)
-
-        if self.extra_body:
-            payload.update(self.extra_body)
-
-        logger.info(
-            f"chat_with_tools: calling model={self.model}, tools_count={len(tools)}")
-
-        if self.debug_logging:
-            logger.info(
-                f"chat_with_tools: request payload=\n{json.dumps(payload, ensure_ascii=False, indent=2)}")
-
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                self._build_chat_url(),
-                headers=self._get_headers(),
-                json=payload
-            )
-
-            if response.status_code >= 400:
-                error_text = response.text
-                error_data = response.json() if response.headers.get(
-                    "content-type", "").startswith("application/json") else {}
-                logger.error(
-                    f"LLM API error: status={response.status_code}, response={error_text}")
-                if "error" in error_data and error_data["error"].get("message"):
-                    raise ValueError(error_data["error"]["message"])
-                raise ValueError(f"模型请求失败: HTTP {response.status_code}")
-
-            data = response.json()
-            if self.debug_logging:
-                logger.info(
-                    f"chat_with_tools: response=\n{json.dumps(data, ensure_ascii=False, indent=2)}")
-
-            if "choices" not in data or len(data["choices"]) == 0:
-                raise ValueError("模型未返回有效回复")
-
-            message = data["choices"][0].get("message", {})
-            result = {
-                "content": message.get("content", ""),
-                "tool_calls": None,
-                "reasoning_content": message.get("reasoning_content", "")
-            }
-
-            if "tool_calls" in message:
-                result["tool_calls"] = []
-                for tool_call in message["tool_calls"]:
-                    result["tool_calls"].append({
-                        "id": tool_call.get("id", ""),
-                        "name": tool_call.get("function", {}).get("name", ""),
-                        "arguments": tool_call.get("function", {}).get("arguments", "{}")
-                    })
-
-            return result
-
-    async def chat_stream(
-        self,
-        messages: List[Dict[str, str]],
-        temperature: Optional[float] = None
-    ) -> AsyncGenerator[StreamChunk, None]:
-        if not self.api_url or not self.model:
-            raise ValueError("LLM 设置未完成，请先在设置页填写 API 地址和模型")
-
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature or self.temperature or 0.7,
-            "stream": True
-        }
-
-        if self.extra_params:
-            payload.update(self.extra_params)
-
-        if self.extra_body:
-            payload.update(self.extra_body)
-
-        logger.info(
-            f"chat_stream: Sending request to {self._build_chat_url()}")
-        logger.info(f"chat_stream: Model: {self.model}")
-
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream(
-                "POST",
-                self._build_chat_url(),
-                headers=self._get_headers(),
-                json=payload
-            ) as response:
-                logger.info(
-                    f"chat_stream: Response status: {response.status_code}")
-                if response.status_code >= 400:
-                    body = await response.aread()
-                    try:
-                        error_data = json.loads(body)
-                        if "error" in error_data and error_data["error"].get("message"):
-                            raise ValueError(error_data["error"]["message"])
-                    except json.JSONDecodeError:
-                        pass
-                    raise ValueError(f"模型请求失败: HTTP {response.status_code}")
-
-                line_count = 0
-                usage_data = {}
-                async for line in response.aiter_lines():
-                    line_count += 1
-                    if not line or not line.startswith("data:"):
-                        continue
-
-                    data_str = line[5:].strip()
-                    if data_str == "[DONE]":
-                        logger.info(
-                            f"chat_stream: Received [DONE] after {line_count} lines")
-                        break
-
-                    try:
-                        data = json.loads(data_str)
-                        if "error" in data and data["error"].get("message"):
-                            raise ValueError(data["error"]["message"])
-
-                        if data.get("usage"):
-                            usage_data = data["usage"]
-
-                        if "choices" in data and len(data["choices"]) > 0:
-                            delta = data["choices"][0].get("delta", {})
-
-                            reasoning_content = delta.get(
-                                "reasoning_content", "")
-                            if reasoning_content:
-                                yield {"type": "reasoning", "content": reasoning_content, "reasoning_done": False}
-
-                            content = delta.get("content", "")
-                            if isinstance(content, list):
-                                content = "\n".join(
-                                    item.get("text", "") for item in content
-                                    if isinstance(item, dict) and "text" in item
-                                )
-                            if content:
-                                yield {"type": "content", "content": content, "reasoning_done": True}
-                    except json.JSONDecodeError:
-                        continue
-
-                if usage_data:
-                    yield {"type": "usage", "usage": usage_data}
-
-                logger.info(
-                    f"chat_stream: Finished, total lines: {line_count}")
+        async for chunk in self._provider.chat_with_tools_stream(messages, tools, temperature):
+            yield chunk
 
 
 class ExecutePlanner:

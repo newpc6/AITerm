@@ -50,10 +50,13 @@ from .auth import (
     AuthLoginData,
 )
 
-from .settings import (
+from .model_setting import (
     ModelConfig,
     ModelConfigCreate,
     ModelConfigUpdate,
+)
+
+from .settings import (
     GlobalSettings,
     GlobalSettingsUpdate,
 )

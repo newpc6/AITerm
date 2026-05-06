@@ -4,13 +4,12 @@ from datetime import datetime
 
 from app.models import (
     Node, NodeCreate, NodeUpdate,
-    # Task, TaskCreate, TaskUpdate, TaskStep,
     User, UserCreate, UserUpdate,
     Session,
-    ModelConfig, ModelConfigCreate, ModelConfigUpdate,
     GlobalSettings, GlobalSettingsUpdate,
     AuthSettings, AuthSettingsUpdate
 )
+from app.models.model_setting import ModelConfig, ModelConfigCreate, ModelConfigUpdate
 
 
 class INodeRepository(ABC):

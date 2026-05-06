@@ -71,6 +71,14 @@ interface ParsedContent {
   legacyToolCalls: ToolCall[]
   currentThinking: string
   fullInput: string
+  usage: {
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+    prompt_cache_hit_tokens?: number
+    prompt_cache_miss_tokens?: number
+    reasoning_tokens?: number
+  } | null
 }
 
 const parsedContent = computed<ParsedContent>(() => {
@@ -193,6 +201,15 @@ const hasLegacyThinking = computed(() => parsedContent.value.legacyThinking.leng
 const hasLegacyToolCalls = computed(() => parsedContent.value.legacyToolCalls.length > 0)
 const hasCurrentThinking = computed(() => parsedContent.value.currentThinking.length > 0)
 const hasFullInput = computed(() => !!parsedContent.value.fullInput)
+
+const messageUsage = computed(() => {
+  if (props.metadata?.usage) return props.metadata.usage as ParsedContent['usage']
+  try {
+    const parsed = JSON.parse(props.content)
+    if (parsed?.usage) return parsed.usage as ParsedContent['usage']
+  } catch { }
+  return null
+})
 
 const collapsedThinking = ref<Set<number>>(new Set())
 const collapsedToolCalls = ref<Set<number>>(new Set())
@@ -799,7 +816,20 @@ onUnmounted(() => {
       <span class="total-duration__value">{{ formatDuration(parsedContent.totalDuration) }}</span>
     </div>
 
-    <div v-if="shouldShowFullInput() && hasFullInput && role === 'assistant'" class="full-input-block full-input-message">
+    <div v-if="messageUsage && role === 'assistant'" class="message-usage">
+      <svg class="message-usage__icon" viewBox="0 0 24 24" fill="currentColor" width="12" height="12">
+        <path
+          d="M11.8 10.9c-2.27-.59-3-1.2-3-2.15 0-1.09 1.01-1.85 2.7-1.85 1.78 0 2.44.85 2.5 2.1h2.21c-.07-1.72-1.12-3.3-3.21-3.81V3h-3v2.16c-1.94.42-3.5 1.68-3.5 3.61 0 2.31 1.91 3.46 4.7 4.13 2.5.6 3 1.48 3 2.41 0 .69-.49 1.79-2.7 1.79-2.06 0-2.87-.92-2.98-2.1h-2.2c.12 2.19 1.76 3.42 3.68 3.83V21h3v-2.15c1.95-.37 3.5-1.5 3.5-3.55 0-2.84-2.43-3.81-4.7-4.4z" />
+      </svg>
+      <span class="message-usage__value">{{ messageUsage.total_tokens.toLocaleString() }} Token</span>
+      <span class="message-usage__detail">输入{{ messageUsage.prompt_tokens }} · 输出{{ messageUsage.completion_tokens
+      }}</span>
+      <span v-if="messageUsage.reasoning_tokens" class="message-usage__detail">推理{{ messageUsage.reasoning_tokens
+      }}</span>
+    </div>
+
+    <div v-if="shouldShowFullInput() && hasFullInput && role === 'assistant'"
+      class="full-input-block full-input-message">
       <div class="input-header" @click="toggleFullInput">
         <el-icon class="input-icon">
           <Document />
@@ -1157,5 +1187,29 @@ onUnmounted(() => {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.6);
   font-weight: 500;
+}
+
+.message-usage {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.message-usage__icon {
+  color: rgba(96, 165, 250, 0.6);
+  flex-shrink: 0;
+}
+
+.message-usage__value {
+  font-size: 12px;
+  color: rgba(96, 165, 250, 0.8);
+  font-weight: 500;
+}
+
+.message-usage__detail {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.35);
 }
 </style>

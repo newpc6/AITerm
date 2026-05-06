@@ -686,7 +686,7 @@ export function useChatPage() {
     }
   }
 
-  function finalizeAssistantStream(reply: string, iterations?: unknown[], totalDuration?: number) {
+  function finalizeAssistantStream(reply: string, iterations?: unknown[], totalDuration?: number, usage?: Record<string, number>) {
     const placeholder = ensureAssistantPlaceholder()
     placeholder.content = reply
 
@@ -704,6 +704,7 @@ export function useChatPage() {
         iterations,
         total_duration: totalDuration || 0,
         full_input: preservedFullInput || (placeholder.metadata?.full_input as string),
+        usage,
       }
     } else if (iterationsData.value.length > 0) {
       placeholder.metadata = {
@@ -711,6 +712,7 @@ export function useChatPage() {
         iterations: iterationsData.value,
         total_duration: totalDuration || 0,
         full_input: preservedFullInput || (placeholder.metadata?.full_input as string),
+        usage,
       }
     } else if (reasoningBuffer.value) {
       placeholder.metadata = {
@@ -718,11 +720,13 @@ export function useChatPage() {
         thinking: reasoningBuffer.value,
         reasoning_duration: reasoningDuration.value || 0,
         total_duration: totalDuration || 0,
+        usage,
       }
     } else {
       placeholder.metadata = {
         ...placeholder.metadata,
         total_duration: totalDuration || 0,
+        usage,
       }
     }
     reasoningBuffer.value = ''
@@ -797,8 +801,8 @@ export function useChatPage() {
           },
           onDone: (data) => {
             chatId.value = data.chat_id
-            finalizeAssistantStream(data.reply, (data as { iterations?: unknown[] }).iterations, data.total_duration)
             const usageData = (data as Record<string, unknown>).usage as Record<string, number> | undefined
+            finalizeAssistantStream(data.reply, (data as { iterations?: unknown[] }).iterations, data.total_duration, usageData)
             if (usageData) {
               lastUsage.value = {
                 prompt_tokens: usageData.prompt_tokens || 0,

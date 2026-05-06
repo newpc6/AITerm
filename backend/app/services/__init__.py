@@ -1,6 +1,7 @@
 from .command import execute_command, detect_platform, describe_node, CommandResult
 from .llm import LLMClient, ExecutePlanner, ExecuteRepairer, ChatService, ExecuteSummarizer
-from .settings_service import ModelConfigService, GlobalSettingsService
+from .model_setting import ModelConfigService
+from .settings_service import GlobalSettingsService
 from .node_service import NodeService
 from .execute_service import ExecuteService
 from .user_service import UserService
