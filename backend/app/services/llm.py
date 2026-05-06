@@ -254,6 +254,7 @@ class LLMClient:
                 full_content = ""
                 full_reasoning = ""
                 tool_calls_data = {}
+                usage_data = {}
 
                 async for line in response.aiter_lines():
                     if not line or line == "data: [DONE]":
@@ -264,6 +265,9 @@ class LLMClient:
                             data = json.loads(data_str)
                         except:
                             continue
+
+                        if data.get("usage"):
+                            usage_data = data["usage"]
 
                         if "choices" not in data or len(data["choices"]) == 0:
                             continue
@@ -314,7 +318,8 @@ class LLMClient:
                     "type": "done",
                     "content": full_content,
                     "reasoning_content": full_reasoning,
-                    "tool_calls": tool_calls_list
+                    "tool_calls": tool_calls_list,
+                    "usage": usage_data
                 }
 
     async def chat_with_tools(
@@ -436,6 +441,7 @@ class LLMClient:
                     raise ValueError(f"模型请求失败: HTTP {response.status_code}")
 
                 line_count = 0
+                usage_data = {}
                 async for line in response.aiter_lines():
                     line_count += 1
                     if not line or not line.startswith("data:"):
@@ -451,6 +457,9 @@ class LLMClient:
                         data = json.loads(data_str)
                         if "error" in data and data["error"].get("message"):
                             raise ValueError(data["error"]["message"])
+
+                        if data.get("usage"):
+                            usage_data = data["usage"]
 
                         if "choices" in data and len(data["choices"]) > 0:
                             delta = data["choices"][0].get("delta", {})
@@ -470,6 +479,9 @@ class LLMClient:
                                 yield {"type": "content", "content": content, "reasoning_done": True}
                     except json.JSONDecodeError:
                         continue
+
+                if usage_data:
+                    yield {"type": "usage", "usage": usage_data}
 
                 logger.info(
                     f"chat_stream: Finished, total lines: {line_count}")
@@ -838,9 +850,16 @@ class ChatService:
             f"ChatService.chat_stream: User message: {message[:100]}...")
 
         chunk_count = 0
+        usage = {}
         async for chunk in self.llm_client.chat_stream(messages):
             chunk_count += 1
+            if chunk.get("type") == "usage":
+                usage = chunk.get("usage", {})
+                continue
             yield chunk
+
+        if usage:
+            yield {"type": "usage", "usage": usage}
 
         logger.info(
             f"ChatService.chat_stream: Finished with {chunk_count} chunks")

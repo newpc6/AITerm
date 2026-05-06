@@ -12,6 +12,7 @@ class MessageModel(Base):
     chat_id = Column(Integer, nullable=False)
     role = Column(String(50), nullable=False)
     content = Column(Text, nullable=False, default="{}")
+    full_input = Column(LONGTEXT, nullable=True)
     created_at = Column(DateTime, nullable=False,
                         default=lambda: datetime.now(timezone.utc))
 
@@ -28,6 +29,7 @@ class MessageModel(Base):
             "chat_id": str(self.chat_id),
             "role": self.role,
             "content": self.content,
+            "full_input": self.full_input,
             "created_at": created_at_str
         }
 

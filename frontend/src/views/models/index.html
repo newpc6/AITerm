@@ -63,6 +63,11 @@
         <el-input-number v-model="form.temperature" :min="0" :max="2" :step="0.1" :precision="1" :disabled="saving" />
       </el-form-item>
 
+      <el-form-item label="上下文长度 (Token)">
+        <el-input v-model="contextLengthText" placeholder="例如：128000（DeepSeek 为 128K）" :disabled="saving" />
+        <div class="form-hint">模型的上下文窗口大小，留空则使用系统设置的对话轮数限制</div>
+      </el-form-item>
+
       <el-form-item label="额外请求体 (JSON)">
         <el-input v-model="extraBodyText" type="textarea" :rows="4"
           placeholder='{"thinking": {"type": "enabled"}, "reasoning_effort": "high"}' :disabled="saving" />
@@ -78,10 +83,15 @@
       <el-form-item>
         <el-checkbox v-model="form.is_default" :disabled="saving">设为默认模型</el-checkbox>
       </el-form-item>
+
+      <el-form-item v-if="testResult">
+        <el-alert :title="testResult" type="info" :closable="false" />
+      </el-form-item>
     </el-form>
 
     <template #footer>
       <el-button :disabled="saving" @click="dialogVisible = false">取消</el-button>
+      <el-button v-if="editingModel" :loading="testing" @click="handleTest">测试连接</el-button>
       <el-button type="primary" :loading="saving" @click="saveModel">保存</el-button>
     </template>
   </el-dialog>

@@ -32,7 +32,8 @@ class ShareRepository:
         show_input: bool = True,
         show_thinking: bool = True,
         show_tools: bool = True,
-        show_answer: bool = True
+        show_answer: bool = True,
+        show_full_input: bool = False
     ) -> Share:
         async with async_session_maker() as session:
             share_id = generate_share_id()
@@ -55,7 +56,8 @@ class ShareRepository:
                 show_input=show_input,
                 show_thinking=show_thinking,
                 show_tools=show_tools,
-                show_answer=show_answer
+                show_answer=show_answer,
+                show_full_input=show_full_input
             )
             session.add(model)
             await session.commit()
@@ -173,7 +175,8 @@ class ShareRepository:
             show_input=model.show_input if model.show_input is not None else True,
             show_thinking=model.show_thinking if model.show_thinking is not None else True,
             show_tools=model.show_tools if model.show_tools is not None else True,
-            show_answer=model.show_answer if model.show_answer is not None else True
+            show_answer=model.show_answer if model.show_answer is not None else True,
+            show_full_input=model.show_full_input if model.show_full_input is not None else False
         )
 
     def _to_list_item(self, model: ShareModel) -> ShareListItem:
@@ -193,5 +196,6 @@ class ShareRepository:
             show_input=model.show_input if model.show_input is not None else True,
             show_thinking=model.show_thinking if model.show_thinking is not None else True,
             show_tools=model.show_tools if model.show_tools is not None else True,
-            show_answer=model.show_answer if model.show_answer is not None else True
+            show_answer=model.show_answer if model.show_answer is not None else True,
+            show_full_input=model.show_full_input if model.show_full_input is not None else False
         )

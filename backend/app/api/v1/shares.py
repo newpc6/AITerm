@@ -17,7 +17,7 @@ chat_repo = ChatRepository()
 message_repo = MessageRepository()
 
 
-def filter_message_content(msg: dict, show_input: bool, show_thinking: bool, show_tools: bool, show_answer: bool) -> dict:
+def filter_message_content(msg: dict, show_input: bool, show_thinking: bool, show_tools: bool, show_answer: bool, show_full_input: bool) -> dict:
     if msg.get("role") == "user":
         return msg
 
@@ -38,28 +38,28 @@ def filter_message_content(msg: dict, show_input: bool, show_thinking: bool, sho
     for iteration in iterations:
         if not isinstance(iteration, dict):
             continue
-        
+
         filtered_iter = {}
-        
+
         if show_thinking and iteration.get("thinking"):
             filtered_iter["thinking"] = iteration["thinking"]
             if iteration.get("thinking_duration"):
                 filtered_iter["thinking_duration"] = iteration["thinking_duration"]
             if iteration.get("thinking_start_time"):
                 filtered_iter["thinking_start_time"] = iteration["thinking_start_time"]
-        
+
         if show_tools and iteration.get("tool_calls"):
             filtered_iter["tool_calls"] = iteration["tool_calls"]
-        
+
         if show_input:
             if iteration.get("input"):
                 filtered_iter["input"] = iteration["input"]
             if iteration.get("full_input"):
                 filtered_iter["full_input"] = iteration["full_input"]
-        
+
         if iteration.get("content"):
             filtered_iter["content"] = iteration["content"]
-        
+
         if filtered_iter:
             filtered_iterations.append(filtered_iter)
 
@@ -71,6 +71,9 @@ def filter_message_content(msg: dict, show_input: bool, show_thinking: bool, sho
         "total_duration": total_duration,
         "iterations": filtered_iterations
     }
+
+    if show_full_input and parsed.get("full_input"):
+        filtered_content["full_input"] = parsed["full_input"]
 
     result = dict(msg)
     result["content"] = json.dumps(filtered_content, ensure_ascii=False)
@@ -97,7 +100,8 @@ async def create_share(request: ShareCreate):
         show_input=request.show_input if request.show_input is not None else True,
         show_thinking=request.show_thinking if request.show_thinking is not None else True,
         show_tools=request.show_tools if request.show_tools is not None else True,
-        show_answer=request.show_answer if request.show_answer is not None else True
+        show_answer=request.show_answer if request.show_answer is not None else True,
+        show_full_input=request.show_full_input if request.show_full_input is not None else False
     )
     return Response(data=share.model_dump())
 
@@ -138,6 +142,7 @@ async def verify_share(share_id: str, request: ShareVerify):
     show_thinking = share.show_thinking if share.show_thinking is not None else True
     show_tools = share.show_tools if share.show_tools is not None else True
     show_answer = share.show_answer if share.show_answer is not None else True
+    show_full_input = share.show_full_input if share.show_full_input is not None else False
 
     message_list = []
     for msg in messages:
@@ -149,7 +154,7 @@ async def verify_share(share_id: str, request: ShareVerify):
             "created_at": msg.created_at
         }
         filtered = filter_message_content(
-            msg_dict, show_input, show_thinking, show_tools, show_answer)
+            msg_dict, show_input, show_thinking, show_tools, show_answer, show_full_input)
         if filtered:
             message_list.append(filtered)
 
@@ -164,7 +169,8 @@ async def verify_share(share_id: str, request: ShareVerify):
         show_input=show_input,
         show_thinking=show_thinking,
         show_tools=show_tools,
-        show_answer=show_answer
+        show_answer=show_answer,
+        show_full_input=show_full_input
     )
 
     return Response(data=detail.model_dump())

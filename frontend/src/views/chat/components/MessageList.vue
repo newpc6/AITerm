@@ -54,6 +54,8 @@ const props = defineProps<{
     expandTools: boolean
     showInput: boolean
     expandInput: boolean
+    showFullInput: boolean
+    expandFullInput: boolean
     autoCollapse: boolean
   }
 }>()

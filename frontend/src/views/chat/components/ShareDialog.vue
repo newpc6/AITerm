@@ -25,6 +25,7 @@ const form = ref({
   showThinking: true,
   showTools: true,
   showAnswer: true,
+  showFullInput: false,
 })
 
 const expiresInOptions = [
@@ -82,12 +83,14 @@ async function handleCreateShare() {
       show_thinking?: boolean
       show_tools?: boolean
       show_answer?: boolean
+      show_full_input?: boolean
     } = {
       chat_id: props.chatId,
       show_input: form.value.showInput,
       show_thinking: form.value.showThinking,
       show_tools: form.value.showTools,
       show_answer: form.value.showAnswer,
+      show_full_input: form.value.showFullInput,
     }
 
     if (form.value.title.trim()) {
@@ -184,6 +187,7 @@ function handleClose() {
             <el-checkbox v-model="form.showThinking">思考</el-checkbox>
             <el-checkbox v-model="form.showTools">工具调用</el-checkbox>
             <el-checkbox v-model="form.showAnswer">回答</el-checkbox>
+            <el-checkbox v-model="form.showFullInput">完整输入</el-checkbox>
           </div>
         </el-form-item>
       </el-form>
@@ -274,6 +278,7 @@ function handleClose() {
 
 .share-checkbox-group {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
 }
 </style>

@@ -9,6 +9,7 @@ class ModelConfig(BaseModel):
     api_key: str = ""
     model: str = "gpt-4o-mini"
     temperature: float = 0.7
+    context_length: Optional[int] = None
     extra_params: Dict[str, Any] = {}
     extra_body: Dict[str, Any] = {}
     extra_headers: Dict[str, Any] = {}
@@ -23,6 +24,7 @@ class ModelConfigCreate(BaseModel):
     api_key: str = ""
     model: str = "gpt-4o-mini"
     temperature: float = 0.7
+    context_length: Optional[int] = None
     extra_params: Dict[str, Any] = {}
     extra_body: Dict[str, Any] = {}
     extra_headers: Dict[str, Any] = {}
@@ -35,6 +37,7 @@ class ModelConfigUpdate(BaseModel):
     api_key: Optional[str] = None
     model: Optional[str] = None
     temperature: Optional[float] = None
+    context_length: Optional[int] = None
     extra_params: Optional[Dict[str, Any]] = None
     extra_body: Optional[Dict[str, Any]] = None
     extra_headers: Optional[Dict[str, Any]] = None

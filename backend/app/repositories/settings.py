@@ -59,6 +59,7 @@ class ModelConfigRepository(IModelConfigRepository):
                 api_key=model.api_key,
                 model=model.model,
                 temperature=int(model.temperature * 100),
+                context_length=model.context_length,
                 extra_params_json=json.dumps(model.extra_params),
                 extra_body_json=json.dumps(model.extra_body),
                 extra_headers_json=json.dumps(model.extra_headers),
@@ -86,6 +87,7 @@ class ModelConfigRepository(IModelConfigRepository):
             db_model.api_key = model.api_key
             db_model.model = model.model
             db_model.temperature = int(model.temperature * 100)
+            db_model.context_length = model.context_length
             db_model.extra_params_json = json.dumps(model.extra_params)
             db_model.extra_body_json = json.dumps(model.extra_body)
             db_model.extra_headers_json = json.dumps(model.extra_headers)
@@ -157,6 +159,7 @@ class ModelConfigRepository(IModelConfigRepository):
             api_key=model.api_key,
             model=model.model,
             temperature=model.temperature / 100.0,
+            context_length=model.context_length,
             extra_params=extra_params,
             extra_body=extra_body,
             extra_headers=extra_headers,

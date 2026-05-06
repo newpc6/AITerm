@@ -8,12 +8,21 @@ from app.models.chat import Message, MessageType
 from app.utils import ensure_timezone
 
 MAX_CONTENT_LENGTH = 1000000
+MAX_FULL_INPUT_LENGTH = 1000000
 
 
 def truncate_content(content: str, max_length: int = MAX_CONTENT_LENGTH) -> str:
     if len(content) <= max_length:
         return content
     return content[:max_length - 100] + "\n... [内容已截断]"
+
+
+def truncate_full_input(content: str) -> str:
+    if not content:
+        return content
+    if len(content) <= MAX_FULL_INPUT_LENGTH:
+        return content
+    return content[:MAX_FULL_INPUT_LENGTH - 100] + "\n... [完整内容过长,已截断]"
 
 
 class MessageRepository:
@@ -71,17 +80,30 @@ class MessageRepository:
                 "total_duration": total_duration
             }
 
+            full_input_val = None
+            if iterations:
+                for iteration in iterations:
+                    if iteration.get("full_input"):
+                        full_input_val = iteration["full_input"]
+                    if iteration.get("usage"):
+                        msg_content["usage"] = iteration["usage"]
+
             model = MessageModel(
                 chat_id=int(chat_id),
                 role=role,
-                content=json.dumps(msg_content, ensure_ascii=False)
+                content=json.dumps(msg_content, ensure_ascii=False),
+                full_input=truncate_full_input(
+                    full_input_val) if full_input_val else None
             )
             session.add(model)
             await session.flush()
 
             if iterations:
                 for seq, iteration in enumerate(iterations):
-                    content_str = json.dumps(iteration, ensure_ascii=False)
+                    iteration_copy = {
+                        k: v for k, v in iteration.items() if k != "full_input"}
+                    content_str = json.dumps(
+                        iteration_copy, ensure_ascii=False)
                     part = MessagePartModel(
                         message_id=model.id,
                         seq=seq,
@@ -121,12 +143,24 @@ class MessageRepository:
             model.content = json.dumps(msg_content, ensure_ascii=False)
 
             if iterations is not None:
+                full_input_val = None
+                for iteration in iterations:
+                    if iteration.get("full_input"):
+                        full_input_val = iteration["full_input"]
+                    if iteration.get("usage"):
+                        msg_content["usage"] = iteration["usage"]
+                model.full_input = truncate_full_input(
+                    full_input_val) if full_input_val else None
+
                 await session.execute(
                     delete(MessagePartModel).where(
                         MessagePartModel.message_id == int(message_id))
                 )
                 for seq, iteration in enumerate(iterations):
-                    content_str = json.dumps(iteration, ensure_ascii=False)
+                    iteration_copy = {
+                        k: v for k, v in iteration.items() if k != "full_input"}
+                    content_str = json.dumps(
+                        iteration_copy, ensure_ascii=False)
                     part = MessagePartModel(
                         message_id=int(message_id),
                         seq=seq,
@@ -148,13 +182,40 @@ class MessageRepository:
             max_seq = result.scalar()
             new_seq = (max_seq or -1) + 1
 
-            content_str = json.dumps(iteration, ensure_ascii=False)
+            iteration_copy = {k: v for k,
+                              v in iteration.items() if k != "full_input"}
+            content_str = json.dumps(iteration_copy, ensure_ascii=False)
             part = MessagePartModel(
                 message_id=int(message_id),
                 seq=new_seq,
                 content=truncate_content(content_str)
             )
             session.add(part)
+
+            if iteration.get("full_input"):
+                result = await session.execute(
+                    select(MessageModel).where(
+                        MessageModel.id == int(message_id))
+                )
+                model = result.scalar_one_or_none()
+                if model:
+                    model.full_input = truncate_full_input(
+                        iteration["full_input"])
+
+            if iteration.get("usage"):
+                result = await session.execute(
+                    select(MessageModel).where(
+                        MessageModel.id == int(message_id))
+                )
+                model = result.scalar_one_or_none()
+                if model:
+                    try:
+                        content_obj = json.loads(model.content or "{}")
+                    except:
+                        content_obj = {}
+                    content_obj["usage"] = iteration["usage"]
+                    model.content = json.dumps(content_obj, ensure_ascii=False)
+
             await session.commit()
 
             return {"seq": new_seq, "content": iteration}
@@ -259,6 +320,7 @@ class MessageRepository:
                 role=model.role,
                 type="text",
                 content=model.content or "",
+                full_input=model.full_input,
                 created_at=created_at.isoformat() if created_at else None
             )
 
@@ -269,6 +331,7 @@ class MessageRepository:
 
         answer = msg_content.get("answer", "")
         total_duration = msg_content.get("total_duration", 0)
+        usage = msg_content.get("usage")
 
         iterations = []
         for p in parts:
@@ -281,8 +344,11 @@ class MessageRepository:
         full_content = {
             "answer": answer,
             "total_duration": total_duration,
-            "iterations": iterations
+            "iterations": iterations,
+            "full_input": model.full_input
         }
+        if usage:
+            full_content["usage"] = usage
 
         return Message(
             id=str(model.id),
@@ -290,5 +356,6 @@ class MessageRepository:
             role=model.role,
             type="text",
             content=json.dumps(full_content, ensure_ascii=False),
+            full_input=model.full_input,
             created_at=created_at.isoformat() if created_at else None
         )

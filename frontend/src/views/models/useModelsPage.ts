@@ -1,7 +1,7 @@
 import { onMounted, ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-import { getModels, createModel, updateModel, deleteModel, setDefaultModel } from '@/api/aiterm'
+import { getModels, createModel, updateModel, deleteModel, setDefaultModel, testModel } from '@/api/aiterm'
 import type { ModelConfigItem, ModelConfigPayload } from '@/types/api'
 
 export function useModelsPage() {
@@ -17,6 +17,7 @@ export function useModelsPage() {
     api_key: '',
     model: 'gpt-4o-mini',
     temperature: 0.7,
+    context_length: null,
     extra_params: {},
     extra_body: {},
     extra_headers: {},
@@ -24,6 +25,9 @@ export function useModelsPage() {
   })
   const extraBodyText = ref('{}')
   const extraHeadersText = ref('{}')
+  const contextLengthText = ref('')
+  const testing = ref(false)
+  const testResult = ref('')
   const page = ref(1)
   const pageSize = ref(20)
   const total = ref(0)
@@ -63,6 +67,7 @@ export function useModelsPage() {
       api_key: '',
       model: 'gpt-4o-mini',
       temperature: 0.7,
+      context_length: null,
       extra_params: {},
       extra_body: {},
       extra_headers: {},
@@ -70,6 +75,8 @@ export function useModelsPage() {
     }
     extraBodyText.value = '{}'
     extraHeadersText.value = '{}'
+    contextLengthText.value = ''
+    testResult.value = ''
     dialogVisible.value = true
   }
 
@@ -82,6 +89,7 @@ export function useModelsPage() {
       api_key: model.api_key,
       model: model.model,
       temperature: model.temperature,
+      context_length: model.context_length ?? null,
       extra_params: model.extra_params || {},
       extra_body: model.extra_body || {},
       extra_headers: model.extra_headers || {},
@@ -89,6 +97,8 @@ export function useModelsPage() {
     }
     extraBodyText.value = JSON.stringify(model.extra_body || {}, null, 2)
     extraHeadersText.value = JSON.stringify(model.extra_headers || {}, null, 2)
+    contextLengthText.value = model.context_length ? String(model.context_length) : ''
+    testResult.value = ''
     dialogVisible.value = true
   }
 
@@ -116,6 +126,7 @@ export function useModelsPage() {
 
     form.value.extra_body = parseJsonSafe(extraBodyText.value, {})
     form.value.extra_headers = parseJsonSafe(extraHeadersText.value, {})
+    form.value.context_length = contextLengthText.value ? parseInt(contextLengthText.value, 10) || null : null
 
     saving.value = true
     try {
@@ -133,6 +144,34 @@ export function useModelsPage() {
       ElMessage.error(error.response?.data?.message || '保存失败')
     } finally {
       saving.value = false
+    }
+  }
+
+  async function handleTest() {
+    if (!editingModel.value?.id) {
+      ElMessage.warning('请先保存模型后再测试')
+      return
+    }
+
+    testing.value = true
+    testResult.value = ''
+    try {
+      const result = await testModel(editingModel.value.id)
+      const usage = result.usage
+      testResult.value = `测试成功！\n回复：${result.reply}\n总 Token：${usage.total_tokens}\n输入 Token：${usage.prompt_tokens}\n输出 Token：${usage.completion_tokens}`
+      if (usage.prompt_cache_hit_tokens !== undefined) {
+        testResult.value += `\n缓存命中：${usage.prompt_cache_hit_tokens}`
+      }
+      if (usage.reasoning_tokens) {
+        testResult.value += `\n推理 Token：${usage.reasoning_tokens}`
+      }
+      ElMessage.success('测试成功')
+    } catch (e: unknown) {
+      const error = e as { response?: { data?: { message?: string } } }
+      testResult.value = `测试失败：${error?.response?.data?.message || e}`
+      ElMessage.error(testResult.value)
+    } finally {
+      testing.value = false
     }
   }
 
@@ -177,13 +216,18 @@ export function useModelsPage() {
     hasModels,
     dialogVisible,
     dialogTitle,
+    editingModel,
     form,
     extraBodyText,
     extraHeadersText,
+    contextLengthText,
+    testing,
+    testResult,
     loadModels,
     openCreateDialog,
     openEditDialog,
     saveModel,
+    handleTest,
     handleDelete,
     handleSetDefault,
     page,

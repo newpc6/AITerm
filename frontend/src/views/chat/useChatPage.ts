@@ -59,6 +59,8 @@ function createMessageFromApi(item: { id: string; role: string; content: string;
           total_duration: parsed.total_duration,
           tool_calls: parsed.tool_calls,
           iterations: parsed.iterations,
+          full_input: parsed.full_input,
+          usage: parsed.usage,
         }
       } else if (typeof parsed.message === 'string') {
         content = parsed.message
@@ -184,6 +186,22 @@ export function useChatPage() {
     }>
   >([])
 
+  const lastUsage = ref<{
+    prompt_tokens: number
+    completion_tokens: number
+    total_tokens: number
+    prompt_cache_hit_tokens?: number
+    prompt_cache_miss_tokens?: number
+    reasoning_tokens?: number
+  } | null>(null)
+
+  const conversationTotalUsage = ref({
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+    reasoning_tokens: 0,
+  })
+
   const displaySettings = ref({
     showThinking: true,
     expandThinking: false,
@@ -191,6 +209,8 @@ export function useChatPage() {
     expandTools: false,
     showInput: true,
     expandInput: false,
+    showFullInput: false,
+    expandFullInput: false,
     autoCollapse: true,
   })
 
@@ -203,6 +223,8 @@ export function useChatPage() {
     closeStreams()
     chatId.value = ''
     messages.value = createInitialMessages()
+    lastUsage.value = null
+    conversationTotalUsage.value = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, reasoning_tokens: 0 }
     localStorage.removeItem(LAST_CHAT_ID_KEY)
   }
 
@@ -298,6 +320,18 @@ export function useChatPage() {
     try {
       const [messagesData, chatData] = await Promise.all([getChatMessages(targetChatId), getChat(targetChatId)])
       messages.value = messagesData.items.map((item) => createMessageFromApi(item)).filter((msg) => msg.content && msg.content.trim())
+
+      lastUsage.value = null
+      conversationTotalUsage.value = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, reasoning_tokens: 0 }
+      for (const msg of messages.value) {
+        if (msg.role === 'assistant' && msg.metadata?.usage) {
+          const u = msg.metadata.usage as Record<string, number>
+          conversationTotalUsage.value.prompt_tokens += u.prompt_tokens || 0
+          conversationTotalUsage.value.completion_tokens += u.completion_tokens || 0
+          conversationTotalUsage.value.total_tokens += u.total_tokens || 0
+          conversationTotalUsage.value.reasoning_tokens += u.reasoning_tokens || 0
+        }
+      }
 
       if (messages.value.length === 0) {
         messages.value = createInitialMessages()
@@ -655,17 +689,28 @@ export function useChatPage() {
   function finalizeAssistantStream(reply: string, iterations?: unknown[], totalDuration?: number) {
     const placeholder = ensureAssistantPlaceholder()
     placeholder.content = reply
+
+    let preservedFullInput: string | undefined = undefined
+    for (const iter of iterationsData.value) {
+      if (iter.full_input) {
+        preservedFullInput = iter.full_input
+        break
+      }
+    }
+
     if (iterations && Array.isArray(iterations) && iterations.length > 0) {
       placeholder.metadata = {
         ...placeholder.metadata,
         iterations,
         total_duration: totalDuration || 0,
+        full_input: preservedFullInput || (placeholder.metadata?.full_input as string),
       }
     } else if (iterationsData.value.length > 0) {
       placeholder.metadata = {
         ...placeholder.metadata,
         iterations: iterationsData.value,
         total_duration: totalDuration || 0,
+        full_input: preservedFullInput || (placeholder.metadata?.full_input as string),
       }
     } else if (reasoningBuffer.value) {
       placeholder.metadata = {
@@ -753,6 +798,23 @@ export function useChatPage() {
           onDone: (data) => {
             chatId.value = data.chat_id
             finalizeAssistantStream(data.reply, (data as { iterations?: unknown[] }).iterations, data.total_duration)
+            const usageData = (data as Record<string, unknown>).usage as Record<string, number> | undefined
+            if (usageData) {
+              lastUsage.value = {
+                prompt_tokens: usageData.prompt_tokens || 0,
+                completion_tokens: usageData.completion_tokens || 0,
+                total_tokens: usageData.total_tokens || 0,
+                prompt_cache_hit_tokens: usageData.prompt_cache_hit_tokens as number | undefined,
+                prompt_cache_miss_tokens: usageData.prompt_cache_miss_tokens as number | undefined,
+                reasoning_tokens: usageData.reasoning_tokens as number | undefined,
+              }
+              conversationTotalUsage.value = {
+                prompt_tokens: conversationTotalUsage.value.prompt_tokens + (usageData.prompt_tokens || 0),
+                completion_tokens: conversationTotalUsage.value.completion_tokens + (usageData.completion_tokens || 0),
+                total_tokens: conversationTotalUsage.value.total_tokens + (usageData.total_tokens || 0),
+                reasoning_tokens: conversationTotalUsage.value.reasoning_tokens + (usageData.reasoning_tokens || 0),
+              }
+            }
           },
           onError: (data) => {
             errorMessage.value = data.error
@@ -1076,6 +1138,24 @@ export function useChatPage() {
 
   const conversationLabel = computed(() => chatId.value || 'new')
   const selectedModel = computed(() => availableModels.value.find((item) => item.id === selectedModelId.value) ?? null)
+  const modelContextLength = computed(() => selectedModel.value?.context_length ?? null)
+  const modelContextLimit = computed(() => {
+    if (modelContextLength.value) return modelContextLength.value
+    const rounds = displaySettings.value as unknown as { chat_history_limit?: number }
+    return null
+  })
+  const usagePercentage = computed(() => {
+    if (!lastUsage.value || !modelContextLength.value) return null
+    const ratio = lastUsage.value.total_tokens / modelContextLength.value
+    return Math.min(100, Math.round(ratio * 1000) / 10)
+  })
+  const usageColor = computed(() => {
+    if (!usagePercentage.value) return '#67c23a'
+    if (usagePercentage.value > 80) return '#f56c6c'
+    if (usagePercentage.value > 50) return '#e6a23c'
+    return '#67c23a'
+  })
+  const hasUsage = computed(() => lastUsage.value !== null || conversationTotalUsage.value.total_tokens > 0)
   const assistantTitle = computed(() => selectedModel.value?.name || '模型')
   const assistantLabel = computed(() => shortenLabel(assistantTitle.value, 8) || '模型')
   const userTitle = computed(() => currentUserName.value || '用户')
@@ -1181,11 +1261,18 @@ export function useChatPage() {
     errorMessage,
     hasChatResults,
     hasMoreChats,
+    hasUsage,
     input,
     isReasoningActive,
+    lastUsage,
     loadMoreChats,
     loading,
     messages,
+    conversationTotalUsage,
+    modelContextLength,
+    modelContextLimit,
+    usagePercentage,
+    usageColor,
     reloadSidebarData,
     removeChatItem,
     restartActiveExecute,

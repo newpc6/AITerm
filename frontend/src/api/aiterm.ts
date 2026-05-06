@@ -485,6 +485,24 @@ export async function setDefaultModel(modelId: string) {
   return data.data
 }
 
+export async function testModel(modelId: string) {
+  const { data } = await http.post<
+    ApiResponse<{
+      success: boolean
+      reply: string
+      usage: {
+        prompt_tokens: number
+        completion_tokens: number
+        total_tokens: number
+        prompt_cache_hit_tokens?: number
+        prompt_cache_miss_tokens?: number
+        reasoning_tokens?: number
+      }
+    }>
+  >(`/api/v1/settings/models/${modelId}/test`)
+  return data.data
+}
+
 export async function getGlobalSettings() {
   const { data } = await http.get<ApiResponse<GlobalSettingsData>>('/api/v1/settings/global')
   return data.data
@@ -729,6 +747,7 @@ export interface ShareItem {
   show_thinking: boolean
   show_tools: boolean
   show_answer: boolean
+  show_full_input: boolean
 }
 
 export interface ShareCreatePayload {
@@ -740,6 +759,7 @@ export interface ShareCreatePayload {
   show_thinking?: boolean
   show_tools?: boolean
   show_answer?: boolean
+  show_full_input?: boolean
 }
 
 export interface ShareVerifyPayload {
@@ -765,6 +785,7 @@ export interface ShareDetailData {
   show_thinking: boolean
   show_tools: boolean
   show_answer: boolean
+  show_full_input: boolean
 }
 
 export async function createShare(payload: ShareCreatePayload) {

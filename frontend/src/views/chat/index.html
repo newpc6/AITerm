@@ -67,6 +67,41 @@
             '未选择模型' }}</p>
         </div>
         <div class="chat-main__header-right">
+          <div class="chat-main__context-info" v-if="hasUsage">
+            <el-tooltip placement="bottom">
+              <template #content>
+                <div>
+                  <div v-if="modelContextLength">上下文长度：{{ modelContextLength.toLocaleString() }} Token</div>
+                  <template v-if="lastUsage">
+                    <div>本次输入：{{ lastUsage.prompt_tokens.toLocaleString() }}</div>
+                    <div>本次输出：{{ lastUsage.completion_tokens.toLocaleString() }}</div>
+                    <div>本次合计：{{ lastUsage.total_tokens.toLocaleString() }}</div>
+                    <div v-if="lastUsage.prompt_cache_hit_tokens">缓存命中：{{
+                      lastUsage.prompt_cache_hit_tokens.toLocaleString() }}</div>
+                    <div v-if="lastUsage.reasoning_tokens">本次推理：{{ lastUsage.reasoning_tokens.toLocaleString() }}</div>
+                    <hr style="margin: 6px 0; border-color: rgba(255,255,255,0.1);" />
+                  </template>
+                  <div>对话总输入：{{ conversationTotalUsage.prompt_tokens.toLocaleString() }}</div>
+                  <div>对话总输出：{{ conversationTotalUsage.completion_tokens.toLocaleString() }}</div>
+                  <div>对话总合计：{{ conversationTotalUsage.total_tokens.toLocaleString() }}</div>
+                  <div v-if="conversationTotalUsage.reasoning_tokens">对话推理：{{
+                    conversationTotalUsage.reasoning_tokens.toLocaleString() }}</div>
+                  <div v-if="modelContextLength && usagePercentage !== null">使用率：{{ usagePercentage }}%</div>
+                </div>
+              </template>
+              <template v-if="modelContextLength && usagePercentage !== null">
+                <div class="usage-circle" :style="{
+                  background: `conic-gradient(${usageColor} ${usagePercentage}%, transparent ${usagePercentage}%)`
+                }">
+                  <span class="usage-circle__text">{{ usagePercentage }}%</span>
+                </div>
+              </template>
+              <div v-else class="usage-badge">
+                <span class="usage-badge__text">{{ (lastUsage?.total_tokens ||
+                  conversationTotalUsage.total_tokens).toLocaleString() }}</span>
+              </div>
+            </el-tooltip>
+          </div>
           <div class="chat-main__meta">
             <span>{{ selectedNode?.name || '未选择节点' }}</span>
             <span>{{ selectedModel?.name || '未选择模型' }}</span>
@@ -144,6 +179,27 @@
                         <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
                       </svg></el-icon>
                     <span>展开输入</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item divided @click="displaySettings.showFullInput = !displaySettings.showFullInput">
+                    <el-icon v-if="displaySettings.showFullInput" style="color: #67c23a;"><svg viewBox="0 0 24 24"
+                        fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <span>显示完整输入</span>
+                  </el-dropdown-item>
+                  <el-dropdown-item @click="displaySettings.expandFullInput = !displaySettings.expandFullInput"
+                    :disabled="!displaySettings.showFullInput">
+                    <el-icon v-if="displaySettings.expandFullInput" style="color: #67c23a;"><svg viewBox="0 0 24 24"
+                        fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <el-icon v-else style="visibility: hidden;"><svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                      </svg></el-icon>
+                    <span>展开完整输入</span>
                   </el-dropdown-item>
                   <el-dropdown-item divided @click="displaySettings.autoCollapse = !displaySettings.autoCollapse">
                     <el-icon v-if="displaySettings.autoCollapse" style="color: #67c23a;"><svg viewBox="0 0 24 24"

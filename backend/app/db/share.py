@@ -20,6 +20,7 @@ class ShareModel(Base):
     show_thinking = Column(Boolean, nullable=False, default=True)
     show_tools = Column(Boolean, nullable=False, default=True)
     show_answer = Column(Boolean, nullable=False, default=True)
+    show_full_input = Column(Boolean, nullable=False, default=False)
 
     def to_dict(self):
         created_at_str = None
@@ -49,4 +50,5 @@ class ShareModel(Base):
             "show_thinking": self.show_thinking,
             "show_tools": self.show_tools,
             "show_answer": self.show_answer,
+            "show_full_input": self.show_full_input,
         }

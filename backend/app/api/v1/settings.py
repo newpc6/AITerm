@@ -22,7 +22,7 @@ router = APIRouter(tags=["settings"])
 
 @router.post("/select-folder")
 async def select_folder(
-    current_user = Depends(require_admin)
+    current_user=Depends(require_admin)
 ):
     try:
         def open_folder_dialog():
@@ -38,7 +38,8 @@ async def select_folder(
             elif sys.platform == "darwin":
                 import subprocess
                 result = subprocess.run(
-                    ["osascript", "-e", 'POSIX path of (choose folder with prompt "选择沙盒文件夹")'],
+                    ["osascript", "-e",
+                        'POSIX path of (choose folder with prompt "选择沙盒文件夹")'],
                     capture_output=True, text=True
                 )
                 if result.returncode == 0:
@@ -52,10 +53,10 @@ async def select_folder(
                 folder = filedialog.askdirectory(title="选择沙盒文件夹")
                 root.destroy()
                 return folder
-        
+
         loop = asyncio.get_event_loop()
         folder = await loop.run_in_executor(None, open_folder_dialog)
-        
+
         if folder:
             return Response(data={"path": folder})
         else:
@@ -69,7 +70,7 @@ async def list_models(
     page: int = Query(1, ge=1, description="页码"),
     page_size: int = Query(20, ge=1, le=100, description="每页数量"),
     service: ModelConfigService = Depends(get_model_config_service),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
     items, total = await service.list_models(page, page_size)
     paginated = PaginatedResponse.create(
@@ -85,7 +86,7 @@ async def list_models(
 async def get_model(
     model_id: str,
     service: ModelConfigService = Depends(get_model_config_service),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
     model = await service.get_model(model_id)
     if not model:
@@ -97,7 +98,7 @@ async def get_model(
 async def create_model(
     request: ModelConfigCreate,
     service: ModelConfigService = Depends(get_model_config_service),
-    current_user = Depends(require_admin)
+    current_user=Depends(require_admin)
 ):
     try:
         model = await service.create_model(request)
@@ -111,7 +112,7 @@ async def update_model(
     model_id: str,
     request: ModelConfigUpdate,
     service: ModelConfigService = Depends(get_model_config_service),
-    current_user = Depends(require_admin)
+    current_user=Depends(require_admin)
 ):
     model = await service.update_model(model_id, request)
     if not model:
@@ -123,7 +124,7 @@ async def update_model(
 async def delete_model(
     model_id: str,
     service: ModelConfigService = Depends(get_model_config_service),
-    current_user = Depends(require_admin)
+    current_user=Depends(require_admin)
 ):
     try:
         success = await service.delete_model(model_id)
@@ -134,11 +135,82 @@ async def delete_model(
         return Response(code=1003, message=str(e))
 
 
+@router.post("/models/{model_id}/test")
+async def test_model(
+    model_id: str,
+    service: ModelConfigService = Depends(get_model_config_service),
+    current_user=Depends(require_admin)
+):
+    model = await service.get_model(model_id)
+    if not model:
+        return Response(code=1001, message="模型不存在")
+
+    try:
+        import httpx
+
+        url = model.api_url.rstrip("/")
+        if not url.endswith("/chat/completions"):
+            url = f"{url}/chat/completions"
+
+        headers = {"Content-Type": "application/json"}
+        if model.api_key:
+            headers["Authorization"] = f"Bearer {model.api_key}"
+        if model.extra_headers:
+            headers.update({k: v for k, v in model.extra_headers.items()})
+
+        payload = {
+            "model": model.model,
+            "messages": [
+                {"role": "user", "content": "Hi"}
+            ],
+            "temperature": 0.1,
+            "max_tokens": 10,
+            "stream": False
+        }
+        if model.extra_body:
+            payload.update({k: v for k, v in model.extra_body.items() if k != "stream"})
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.post(url, headers=headers, json=payload)
+
+            if response.status_code >= 400:
+                error_data = {}
+                try:
+                    error_data = response.json()
+                except:
+                    pass
+                return Response(code=1005, message=error_data.get("error", {}).get("message", f"HTTP {response.status_code}"))
+
+            data = response.json()
+            reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            usage = data.get("usage", {})
+
+            result = {
+                "success": True,
+                "reply": reply,
+                "usage": {
+                    "prompt_tokens": usage.get("prompt_tokens", 0),
+                    "completion_tokens": usage.get("completion_tokens", 0),
+                    "total_tokens": usage.get("total_tokens", 0),
+                    "prompt_cache_hit_tokens": usage.get("prompt_cache_hit_tokens"),
+                    "prompt_cache_miss_tokens": usage.get("prompt_cache_miss_tokens"),
+                }
+            }
+
+            completion_details = usage.get("completion_tokens_details", {})
+            if completion_details.get("reasoning_tokens"):
+                result["usage"]["reasoning_tokens"] = completion_details["reasoning_tokens"]
+
+            return Response(data=result)
+    except Exception as e:
+        return Response(code=1005, message=f"测试失败: {str(e)}")
+
+
 @router.post("/models/{model_id}/default")
 async def set_default_model(
     model_id: str,
     service: ModelConfigService = Depends(get_model_config_service),
-    current_user = Depends(require_admin)
+    current_user=Depends(require_admin)
 ):
     success = await service.set_default_model(model_id)
     if not success:
@@ -149,7 +221,7 @@ async def set_default_model(
 @router.get("/global")
 async def get_global_settings(
     service: GlobalSettingsService = Depends(get_global_settings_service),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
     settings = await service.get_settings()
     return Response(data=settings.model_dump())
@@ -159,10 +231,11 @@ async def get_global_settings(
 async def update_global_settings(
     request: GlobalSettingsUpdate,
     service: GlobalSettingsService = Depends(get_global_settings_service),
-    current_user = Depends(require_admin)
+    current_user=Depends(require_admin)
 ):
     current = await service.get_settings()
-    update_data = {k: v for k, v in request.model_dump().items() if v is not None}
+    update_data = {k: v for k, v in request.model_dump().items()
+                   if v is not None}
 
     for key, value in update_data.items():
         setattr(current, key, value)
@@ -174,7 +247,7 @@ async def update_global_settings(
 @router.get("/auth")
 async def get_auth_settings(
     repo: AuthSettingsRepository = Depends(get_auth_settings_repository),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
     settings = await repo.get_settings()
     return Response(data=settings.model_dump())
@@ -184,10 +257,11 @@ async def get_auth_settings(
 async def update_auth_settings(
     request: AuthSettingsUpdate,
     repo: AuthSettingsRepository = Depends(get_auth_settings_repository),
-    current_user = Depends(require_admin)
+    current_user=Depends(require_admin)
 ):
     current = await repo.get_settings()
-    update_data = {k: v for k, v in request.model_dump().items() if v is not None}
+    update_data = {k: v for k, v in request.model_dump().items()
+                   if v is not None}
 
     for key, value in update_data.items():
         setattr(current, key, value)

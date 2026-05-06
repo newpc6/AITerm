@@ -44,6 +44,8 @@ const props = defineProps<{
     expandTools: boolean
     showInput: boolean
     expandInput: boolean
+    showFullInput: boolean
+    expandFullInput: boolean
     autoCollapse: boolean
   }
 }>()
@@ -68,6 +70,7 @@ interface ParsedContent {
   legacyThinkingDuration: number
   legacyToolCalls: ToolCall[]
   currentThinking: string
+  fullInput: string
 }
 
 const parsedContent = computed<ParsedContent>(() => {
@@ -88,6 +91,7 @@ const parsedContent = computed<ParsedContent>(() => {
       legacyThinkingDuration: 0,
       legacyToolCalls: [],
       currentThinking: props.metadata.current_thinking || '',
+      fullInput: (props.metadata.full_input as string) || '',
     }
   }
 
@@ -100,6 +104,7 @@ const parsedContent = computed<ParsedContent>(() => {
       legacyThinkingDuration: props.metadata.reasoning_duration || 0,
       legacyToolCalls: Array.isArray(props.metadata.tool_calls) ? props.metadata.tool_calls : [],
       currentThinking: props.metadata.current_thinking || '',
+      fullInput: (props.metadata.full_input as string) || '',
     }
   }
 
@@ -124,6 +129,7 @@ const parsedContent = computed<ParsedContent>(() => {
             legacyThinkingDuration: 0,
             legacyToolCalls: [],
             currentThinking: '',
+            fullInput: (parsed.full_input as string) || '',
           }
         }
 
@@ -136,6 +142,7 @@ const parsedContent = computed<ParsedContent>(() => {
           legacyThinkingDuration: parsed.reasoning_duration || 0,
           legacyToolCalls: toolCalls && Array.isArray(toolCalls) && toolCalls.length > 0 ? toolCalls : [],
           currentThinking: '',
+          fullInput: (parsed.full_input as string) || '',
         }
       }
       if (typeof parsed.content === 'string' && typeof parsed.type === 'string') {
@@ -147,6 +154,7 @@ const parsedContent = computed<ParsedContent>(() => {
           legacyThinkingDuration: 0,
           legacyToolCalls: [],
           currentThinking: '',
+          fullInput: '',
         }
       }
     }
@@ -164,6 +172,7 @@ const parsedContent = computed<ParsedContent>(() => {
       legacyThinkingDuration: match[1] ? parseFloat(match[1]) : 0,
       legacyToolCalls: [],
       currentThinking: '',
+      fullInput: '',
     }
   }
 
@@ -175,6 +184,7 @@ const parsedContent = computed<ParsedContent>(() => {
     legacyThinkingDuration: 0,
     legacyToolCalls: [],
     currentThinking: '',
+    fullInput: '',
   }
 })
 
@@ -182,13 +192,16 @@ const hasIterations = computed(() => parsedContent.value.iterations.length > 0)
 const hasLegacyThinking = computed(() => parsedContent.value.legacyThinking.length > 0)
 const hasLegacyToolCalls = computed(() => parsedContent.value.legacyToolCalls.length > 0)
 const hasCurrentThinking = computed(() => parsedContent.value.currentThinking.length > 0)
+const hasFullInput = computed(() => !!parsedContent.value.fullInput)
 
 const collapsedThinking = ref<Set<number>>(new Set())
 const collapsedToolCalls = ref<Set<number>>(new Set())
 const collapsedInput = ref<Set<number>>(new Set())
+const collapsedFullInput = ref(false)
 const manuallyExpandedThinking = ref<Set<number>>(new Set())
 const manuallyExpandedToolCalls = ref<Set<number>>(new Set())
 const manuallyExpandedInput = ref<Set<number>>(new Set())
+const manuallyExpandedFullInput = ref(false)
 const delayedCollapseToolCalls = ref<Set<number>>(new Set())
 const delayedCollapseInput = ref<Set<number>>(new Set())
 const alreadyCollapsedToolCalls = ref<Set<number>>(new Set())
@@ -208,6 +221,8 @@ const settings = computed(() => props.displaySettings || {
   expandTools: false,
   showInput: true,
   expandInput: false,
+  showFullInput: false,
+  expandFullInput: false,
   autoCollapse: true,
 })
 
@@ -233,6 +248,32 @@ function shouldShowTools(): boolean {
 
 function shouldShowInput(): boolean {
   return settings.value.showInput
+}
+
+function shouldShowFullInput(): boolean {
+  return settings.value.showFullInput
+}
+
+function isFullInputExpanded(): boolean {
+  if (manuallyExpandedFullInput.value) {
+    return true
+  }
+  if (collapsedFullInput.value) {
+    return false
+  }
+  return settings.value.expandFullInput
+}
+
+function toggleFullInput() {
+  if (collapsedFullInput.value) {
+    collapsedFullInput.value = false
+    manuallyExpandedFullInput.value = true
+  } else if (manuallyExpandedFullInput.value) {
+    manuallyExpandedFullInput.value = false
+    collapsedFullInput.value = true
+  } else {
+    collapsedFullInput.value = true
+  }
 }
 
 function isThinkingExpanded(index: number, iteration?: ParsedIteration): boolean {
@@ -302,6 +343,9 @@ function isInputExpanded(index: number, iteration?: ParsedIteration): boolean {
   if (collapsedInput.value.has(index)) {
     return false
   }
+  if (settings.value.expandInput) {
+    return true
+  }
   if (props.isStreaming) {
     if (alreadyCollapsedInput.value.has(index)) {
       return false
@@ -327,7 +371,7 @@ function isInputExpanded(index: number, iteration?: ParsedIteration): boolean {
     }
     return true
   }
-  return settings.value.expandInput
+  return false
 }
 
 function isLegacyThinkingExpanded(): boolean {
@@ -583,22 +627,6 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <div v-if="shouldShowInput() && iteration.fullInput" class="input-block full-input-block">
-          <div class="input-header" @click="toggleInput(index)">
-            <el-icon class="input-icon">
-              <Document />
-            </el-icon>
-            <span class="input-label">完整输入（含提示词）</span>
-            <el-icon class="input-toggle">
-              <ArrowUp v-if="isInputExpanded(index, iteration)" />
-              <ArrowDown v-else />
-            </el-icon>
-          </div>
-          <div v-show="isInputExpanded(index, iteration)" class="input-body">
-            <MarkdownContent :content="'```json\n' + iteration.fullInput + '\n```'" mode="markdown" />
-          </div>
-        </div>
-
         <div v-if="shouldShowThinking() && iteration.thinking" class="thinking-block"
           :class="{ 'thinking-active': !iteration.thinkingDuration && props.isReasoningActive }">
           <div class="thinking-header" @click="toggleThinking(index)">
@@ -769,6 +797,22 @@ onUnmounted(() => {
     <div v-else-if="role === 'assistant' && parsedContent.totalDuration > 0 && !isStreaming" class="total-duration">
       <span class="total-duration__label">总耗时</span>
       <span class="total-duration__value">{{ formatDuration(parsedContent.totalDuration) }}</span>
+    </div>
+
+    <div v-if="shouldShowFullInput() && hasFullInput && role === 'assistant'" class="full-input-block full-input-message">
+      <div class="input-header" @click="toggleFullInput">
+        <el-icon class="input-icon">
+          <Document />
+        </el-icon>
+        <span class="input-label">完整输入（含提示词、历史上下文）</span>
+        <el-icon class="input-toggle">
+          <ArrowUp v-if="isFullInputExpanded()" />
+          <ArrowDown v-else />
+        </el-icon>
+      </div>
+      <div v-show="isFullInputExpanded()" class="input-body">
+        <MarkdownContent :content="'```json\n' + parsedContent.fullInput + '\n```'" mode="markdown" />
+      </div>
     </div>
   </div>
 </template>

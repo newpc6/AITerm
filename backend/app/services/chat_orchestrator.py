@@ -236,9 +236,13 @@ class ChatOrchestrator:
         reasoning_start_time = None
         reasoning_duration = 0.0
         total_start_time = datetime.now()
+        chat_usage = {}
 
         try:
             async for chunk in chat_service.chat_stream(node, history, message):
+                if chunk["type"] == "usage":
+                    chat_usage = chunk.get("usage", {})
+                    continue
                 if chunk["type"] == "reasoning":
                     if reasoning_start_time is None:
                         reasoning_start_time = datetime.now()
@@ -288,22 +292,25 @@ class ChatOrchestrator:
         total_duration = (datetime.now() - total_start_time).total_seconds()
 
         if complete_reasoning:
-            message_content = json.dumps({
+            message_content_obj = {
                 "answer": complete_response,
                 "thinking": complete_reasoning,
                 "reasoning_duration": round(reasoning_duration, 2),
                 "total_duration": round(total_duration, 2),
-            }, ensure_ascii=False)
+            }
         else:
-            message_content = json.dumps({
+            message_content_obj = {
                 "answer": complete_response,
                 "total_duration": round(total_duration, 2),
-            }, ensure_ascii=False)
+            }
+
+        if chat_usage:
+            message_content_obj["usage"] = chat_usage
 
         await self.message_repo.create_message(
             chat_id=chat_id,
             role="assistant",
-            content=message_content,
+            content=json.dumps(message_content_obj, ensure_ascii=False),
             type="text"
         )
 
@@ -315,7 +322,8 @@ class ChatOrchestrator:
                 "reasoning": complete_reasoning,
                 "model_id": model_config.id,
                 "model_name": model_config.name,
-                "total_duration": round(total_duration, 2)
+                "total_duration": round(total_duration, 2),
+                "usage": chat_usage
             }
         }
 
@@ -378,7 +386,46 @@ class ChatOrchestrator:
                     try:
                         parsed = json.loads(content)
                         if isinstance(parsed, dict) and "answer" in parsed:
-                            content = parsed["answer"]
+                            answer = parsed.get("answer", "")
+                            iterations_data = parsed.get("iterations", [])
+                            if iterations_data:
+                                for iter_data in iterations_data:
+                                    iter_content = iter_data.get("content", "")
+                                    iter_tool_calls = iter_data.get(
+                                        "tool_calls", [])
+                                    iter_thinking = iter_data.get(
+                                        "thinking", "")
+                                    assistant_part = {"role": "assistant"}
+                                    if iter_content:
+                                        assistant_part["content"] = iter_content
+                                    if iter_thinking:
+                                        assistant_part["reasoning_content"] = iter_thinking
+                                    if iter_tool_calls:
+                                        assistant_part["tool_calls"] = [
+                                            {
+                                                "id": tc.get("id", f"call_{i}"),
+                                                "type": "function",
+                                                "function": {
+                                                    "name": tc["name"],
+                                                    "arguments": tc.get("arguments", "{}")
+                                                }
+                                            }
+                                            for i, tc in enumerate(iter_tool_calls)
+                                        ]
+                                    if assistant_part.get("content") or assistant_part.get("tool_calls"):
+                                        messages.append(assistant_part)
+                                    for tc in iter_tool_calls:
+                                        tc_id = tc.get(
+                                            "id", f"call_{len(messages)}")
+                                        messages.append({
+                                            "role": "tool",
+                                            "tool_call_id": tc_id,
+                                            "content": tc.get("result", "")
+                                        })
+                            else:
+                                messages.append(
+                                    {"role": role, "content": answer})
+                            continue
                     except (json.JSONDecodeError, TypeError):
                         pass
                 messages.append({"role": role, "content": content})
@@ -394,11 +441,11 @@ class ChatOrchestrator:
 
             iteration_input = None
             iteration_full_input = None
+            iteration_full_input = json.dumps(
+                messages, ensure_ascii=False, indent=2)
             if self.settings.show_llm_input:
                 iteration_input = json.dumps(
                     messages[-1], ensure_ascii=False, indent=2)
-                iteration_full_input = json.dumps(
-                    messages, ensure_ascii=False, indent=2)
                 yield {
                     "event": "conversation.iteration_start",
                     "data": {
@@ -464,6 +511,7 @@ class ChatOrchestrator:
                     }
                 elif chunk["type"] == "done":
                     iteration_tool_calls = chunk.get("tool_calls")
+                    iteration_usage = chunk.get("usage", {})
                     if iteration_reasoning_started:
                         iteration_reasoning_duration = (
                             datetime.now() - iteration_reasoning_start_time).total_seconds()
@@ -490,7 +538,8 @@ class ChatOrchestrator:
                     "tool_calls": [],
                     "input": iteration_input,
                     "full_input": iteration_full_input,
-                    "content": iteration_content
+                    "content": iteration_content,
+                    "usage": iteration_usage
                 })
                 break
 
@@ -526,6 +575,7 @@ class ChatOrchestrator:
                     result_content = result_content[:10000] + "... [truncated]"
 
                 iteration_tool_calls_info.append({
+                    "id": tool_call.get("id", ""),
                     "name": result["name"],
                     "arguments": tool_call.get("arguments", "{}"),
                     "result": result_content,
@@ -558,7 +608,8 @@ class ChatOrchestrator:
                 "tool_calls": iteration_tool_calls_info,
                 "input": iteration_input,
                 "full_input": iteration_full_input,
-                "content": iteration_content
+                "content": iteration_content,
+                "usage": iteration_usage
             })
 
         complete_response = "".join(full_response)
@@ -583,7 +634,8 @@ class ChatOrchestrator:
                 "model_id": model_config.id,
                 "model_name": model_config.name,
                 "iterations": iterations_info if iterations_info else None,
-                "total_duration": round(total_duration, 2)
+                "total_duration": round(total_duration, 2),
+                "usage": iterations_info[-1].get("usage", {}) if iterations_info else {}
             }
         }
 
@@ -591,7 +643,7 @@ class ChatOrchestrator:
         self,
         model_config: ModelConfig,
         messages: List[Dict[str, Any]],
-        max_iterations: int = 5
+        max_iterations: int = 30
     ) -> AsyncGenerator[Dict[str, Any], None]:
         llm_client = LLMClient(model_config)
         tools = await self.tool_service.get_openai_tools()
@@ -724,14 +776,18 @@ class ChatOrchestrator:
                 model_config, self.settings.chat_system_prompt, self.settings.chat_history_limit)
 
             full_response = []
+            usage = {}
             try:
                 async for chunk in chat_service.chat_stream(node, history, message):
-                    full_response.append(chunk)
+                    if chunk["type"] == "usage":
+                        usage = chunk.get("usage", {})
+                        continue
+                    full_response.append(chunk["content"])
                     yield {
                         "event": "conversation.delta",
                         "data": {
                             "chat_id": chat_id,
-                            "delta": chunk
+                            "delta": chunk["content"]
                         }
                     }
             except Exception as e:
@@ -743,10 +799,18 @@ class ChatOrchestrator:
                 return
 
             complete_response = "".join(full_response)
+
+            content_obj = {
+                "answer": complete_response,
+                "total_duration": round(total_duration, 2),
+            }
+            if usage:
+                content_obj["usage"] = usage
+
             await self.message_repo.create_message(
                 chat_id=chat_id,
                 role="assistant",
-                content=complete_response,
+                content=json.dumps(content_obj, ensure_ascii=False),
                 type="text"
             )
 
@@ -759,6 +823,7 @@ class ChatOrchestrator:
                     "reply": complete_response,
                     "model_id": model_config.id,
                     "model_name": model_config.name,
-                    "total_duration": round(total_duration, 2)
+                    "total_duration": round(total_duration, 2),
+                    "usage": usage
                 }
             }

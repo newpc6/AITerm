@@ -11,6 +11,7 @@ class ShareCreate(BaseModel):
     show_thinking: Optional[bool] = True
     show_tools: Optional[bool] = True
     show_answer: Optional[bool] = True
+    show_full_input: Optional[bool] = False
 
 
 class ShareVerify(BaseModel):
@@ -31,6 +32,7 @@ class Share(BaseModel):
     show_thinking: bool = True
     show_tools: bool = True
     show_answer: bool = True
+    show_full_input: bool = False
 
 
 class ShareDetail(BaseModel):
@@ -45,6 +47,7 @@ class ShareDetail(BaseModel):
     show_thinking: bool = True
     show_tools: bool = True
     show_answer: bool = True
+    show_full_input: bool = False
 
 
 class ShareListItem(BaseModel):
@@ -60,3 +63,4 @@ class ShareListItem(BaseModel):
     show_thinking: bool = True
     show_tools: bool = True
     show_answer: bool = True
+    show_full_input: bool = False

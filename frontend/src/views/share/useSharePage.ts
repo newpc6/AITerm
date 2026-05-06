@@ -42,6 +42,8 @@ export function useSharePage() {
     expandTools: true,
     showInput: shareData.value?.show_input ?? true,
     expandInput: true,
+    showFullInput: shareData.value?.show_full_input ?? false,
+    expandFullInput: true,
     autoCollapse: false,
   }))
 

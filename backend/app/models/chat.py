@@ -101,6 +101,7 @@ class Message(BaseModel):
     role: str
     type: str = MessageType.TEXT.value
     content: str
+    full_input: Optional[str] = None
     created_at: Optional[str] = None
 
 

@@ -13,6 +13,7 @@ class ModelConfigModel(Base):
     api_key = Column(String(500), nullable=False, default="")
     model = Column(String(255), nullable=False)
     temperature = Column(Integer, nullable=False, default=70)
+    context_length = Column(Integer, nullable=True)
     extra_params_json = Column(Text, nullable=False, default="{}")
     extra_body_json = Column(Text, nullable=False, default="{}")
     extra_headers_json = Column(Text, nullable=False, default="{}")
@@ -28,6 +29,7 @@ class ModelConfigModel(Base):
             "api_key": self.api_key,
             "model": self.model,
             "temperature": self.temperature / 100.0,
+            "context_length": self.context_length,
             "extra_params_json": self.extra_params_json,
             "extra_body_json": self.extra_body_json,
             "extra_headers_json": self.extra_headers_json,

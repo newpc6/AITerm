@@ -182,6 +182,7 @@ export type ModelConfigItem = {
   api_key: string
   model: string
   temperature: number
+  context_length: number | null
   extra_params: Record<string, unknown>
   extra_body: Record<string, unknown>
   extra_headers: Record<string, string>
@@ -198,6 +199,7 @@ export type ModelConfigPayload = {
   api_key: string
   model: string
   temperature: number
+  context_length: number | null
   extra_params: Record<string, unknown>
   extra_body: Record<string, unknown>
   extra_headers: Record<string, string>
