@@ -64,7 +64,9 @@ async function loadTools() {
   loading.value = true
   errorMessage.value = ''
   try {
-    allTools.value = await getTools()
+    const data = await getTools()
+    data.sort((a, b) => (b.is_builtin ? 1 : 0) - (a.is_builtin ? 1 : 0) || a.name.localeCompare(b.name))
+    allTools.value = data
     total.value = allTools.value.length
   } catch {
     errorMessage.value = '加载工具列表失败'

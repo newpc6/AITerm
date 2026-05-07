@@ -66,15 +66,12 @@ function handleSelectionChange(selection: Tool[]) {
         <template #default="{ row }">
           <el-button type="primary" link :icon="Edit" @click="emit('edit', row)">编辑</el-button>
           <el-button type="primary" link :icon="Download" @click="emit('export', row)">导出</el-button>
-          <el-button type="primary" link @click="emit('toggleEnabled', row)">
-            {{ row.enabled ? '禁用' : '启用' }}
-          </el-button>
-          <el-tooltip v-if="row.is_builtin" content="内置工具不可删除" placement="top">
-            <span class="delete-wrapper">
-              <el-button type="danger" link :icon="Delete" disabled>删除</el-button>
-            </span>
-          </el-tooltip>
-          <el-button v-else type="danger" link :icon="Delete" @click="emit('delete', row)">删除</el-button>
+          <template v-if="!row.is_builtin">
+            <el-button type="primary" link @click="emit('toggleEnabled', row)">
+              {{ row.enabled ? '禁用' : '启用' }}
+            </el-button>
+            <el-button type="danger" link :icon="Delete" @click="emit('delete', row)">删除</el-button>
+          </template>
         </template>
       </el-table-column>
     </el-table>
