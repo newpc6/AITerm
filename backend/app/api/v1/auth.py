@@ -1,5 +1,5 @@
-from fastapi import APIRouter, Depends, Header
-from typing import Optional
+from fastapi import APIRouter, Depends, Header, Body
+from typing import Optional, Dict
 
 from app.models import Response, AuthStatus, AuthLoginData, UserLogin, AuthChangePassword
 from app.services import AuthService
@@ -50,7 +50,7 @@ async def logout(
 
 @router.get("/me")
 async def get_current_user_info(
-    user = Depends(get_current_user)
+    user=Depends(get_current_user)
 ):
     if not user:
         return Response(code=4011, message="unauthorized")
@@ -60,7 +60,7 @@ async def get_current_user_info(
 @router.post("/change-password")
 async def change_password(
     request: AuthChangePassword,
-    user = Depends(get_current_user),
+    user=Depends(get_current_user),
     service: AuthService = Depends(get_auth_service)
 ):
     if not user:
@@ -71,3 +71,15 @@ async def change_password(
         return Response(data={"status": "password_changed"})
     except ValueError as e:
         return Response(code=4010, message=str(e))
+
+
+@router.put("/profile")
+async def update_profile(
+    payload: Dict[str, str] = Body(...),
+    user=Depends(get_current_user),
+    service: AuthService = Depends(get_auth_service)
+):
+    if not user:
+        return Response(code=4011, message="unauthorized")
+    await service.update_profile(user.id, payload)
+    return Response(data={"status": "updated"})

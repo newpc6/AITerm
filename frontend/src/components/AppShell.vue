@@ -4,31 +4,15 @@ import { ElMessage } from 'element-plus'
 import { useRoute, useRouter } from 'vue-router'
 
 import { clearAuthToken } from '@/auth'
-import { changeMyPassword, getAuthStatus, logout } from '@/api/aiterm'
+import { changeMyPassword, getAuthStatus } from '@/api/aiterm'
 import type { UserItem } from '@/types/api'
+
+import AppTopBar from './AppTopBar.vue'
+import AppSidebar from './AppSidebar.vue'
+import AppTagsView from './AppTagsView.vue'
 
 const route = useRoute()
 const router = useRouter()
-
-const mainLinks = [
-  { to: '/chat', label: '对话' },
-  { to: '/history', label: '历史' },
-  { to: '/terminal', label: '终端' },
-]
-
-const systemManageLinks = [
-  { to: '/files', label: '文件管理' },
-  { to: '/users', label: '用户管理', adminOnly: true },
-  { to: '/shares', label: '分享管理', adminOnly: true },
-]
-
-const systemConfigLinks = [
-  { to: '/models', label: '模型配置' },
-  { to: '/global-settings', label: '全局配置' },
-  { to: '/nodes', label: '节点管理' },
-  { to: '/tools', label: '工具管理' },
-  { to: '/sandbox', label: '沙盒配置', adminOnly: true },
-]
 
 const showShell = computed(() => route.path !== '/login' && !route.path.match(/^\/share\/[^/]+$/))
 const authEnabled = ref(false)
@@ -42,35 +26,84 @@ const passwordForm = ref({
   confirm_password: '',
 })
 
-const isAdmin = computed(() => !authEnabled.value || currentUser.value?.role === 'admin')
+const openTabs = ref<{ path: string; label: string }[]>([])
 
-const visibleSystemManageLinks = computed(() =>
-  systemManageLinks.filter((link) => !link.adminOnly || isAdmin.value)
-)
-
-const visibleSystemConfigLinks = computed(() =>
-  isAdmin.value ? systemConfigLinks : []
-)
-
-const currentUserLabel = computed(() => currentUser.value?.display_name || currentUser.value?.username || '')
-
-const currentSystemManageLink = computed(() => {
-  return systemManageLinks.find((link) => route.path === link.to || route.path.startsWith(link.to + '/'))
-})
-
-const currentSystemConfigLink = computed(() => {
-  return systemConfigLinks.find((link) => route.path === link.to || route.path.startsWith(link.to + '/'))
-})
+const menuLabelMap: Record<string, string> = {
+  '/chat': '对话',
+  '/agents/workbench': '智能体工作台',
+  '/history': '历史',
+  '/terminal': '终端',
+  '/shares': '分享管理',
+  '/workspace/files': '文件浏览',
+  '/workspace/agents': '智能体管理',
+  '/workspace/skills': '技能',
+  '/workspace/scheduler': '定时任务',
+  '/workspace/models': '模型配置',
+  '/tools/library': '工具库',
+  '/tools/my': '我的工具',
+  '/profile': '个人中心',
+  '/system/users': '用户管理',
+  '/system/teams': '团队管理',
+  '/system/nodes': '节点管理',
+  '/system/sandbox': '沙盒配置',
+  '/system/settings': '全局配置',
+}
 
 const breadcrumb = computed(() => {
-  if (currentSystemManageLink.value) {
-    return `系统管理 / ${currentSystemManageLink.value.label}`
-  }
-  if (currentSystemConfigLink.value) {
-    return `系统配置 / ${currentSystemConfigLink.value.label}`
+  const path = route.path
+  if (path === '/chat') return 'AI 对话 / 对话'
+  for (const [p, label] of Object.entries(menuLabelMap)) {
+    if (path === p || path.startsWith(p + '/')) return label
   }
   return null
 })
+
+const isAdmin = computed(() => !authEnabled.value || currentUser.value?.role === 'admin')
+
+function resolveLabel(path: string): string {
+  return menuLabelMap[path] || path
+}
+
+function addTab(path: string) {
+  if (path === '/login' || path.startsWith('/share/')) return
+  const base = path.split('?')[0]
+  const exists = openTabs.value.find(t => t.path === base)
+  if (!exists) {
+    openTabs.value.push({ path: base, label: resolveLabel(base) })
+  }
+}
+
+function closeTab(path: string) {
+  const idx = openTabs.value.findIndex(t => t.path === path)
+  if (idx === -1 || path === '/chat') return
+  openTabs.value.splice(idx, 1)
+  if (route.path === path) {
+    const next = openTabs.value[Math.min(idx, openTabs.value.length - 1)]
+    if (next) router.push(next.path)
+  }
+}
+
+function closeOthers(path: string) {
+  openTabs.value = openTabs.value.filter(t => t.path === path || t.path === '/chat')
+}
+
+function closeAll() {
+  openTabs.value = openTabs.value.filter(t => t.path === '/chat')
+  router.push('/chat')
+}
+
+function closeLeft(path: string) {
+  const idx = openTabs.value.findIndex(t => t.path === path)
+  openTabs.value = [
+    ...openTabs.value.filter(t => t.path === '/chat'),
+    ...openTabs.value.slice(idx),
+  ]
+}
+
+function closeRight(path: string) {
+  const idx = openTabs.value.findIndex(t => t.path === path)
+  openTabs.value = openTabs.value.slice(0, idx + 1)
+}
 
 async function loadAuthStatus() {
   try {
@@ -83,28 +116,19 @@ async function loadAuthStatus() {
   }
 }
 
-watch(
-  () => route.fullPath,
-  () => {
-    void loadAuthStatus()
-  },
-  { immediate: true },
-)
+watch(() => route.fullPath, () => {
+  addTab(route.path)
+  loadAuthStatus()
+}, { immediate: true })
 
 function openPasswordDialog() {
-  passwordForm.value = {
-    current_password: '',
-    new_password: '',
-    confirm_password: '',
-  }
+  passwordForm.value = { current_password: '', new_password: '', confirm_password: '' }
   passwordErrorMessage.value = ''
   passwordDialogVisible.value = true
 }
 
 async function submitPasswordChange() {
-  if (passwordSaving.value) {
-    return
-  }
+  if (passwordSaving.value) return
   if (!passwordForm.value.current_password || !passwordForm.value.new_password) {
     passwordErrorMessage.value = '请完整填写当前密码和新密码。'
     return
@@ -117,10 +141,7 @@ async function submitPasswordChange() {
     passwordErrorMessage.value = '两次输入的新密码不一致。'
     return
   }
-
   passwordSaving.value = true
-  passwordErrorMessage.value = ''
-
   try {
     await changeMyPassword({
       current_password: passwordForm.value.current_password,
@@ -128,83 +149,28 @@ async function submitPasswordChange() {
     })
     ElMessage.success('密码修改成功，请重新登录。')
     passwordDialogVisible.value = false
-    currentUser.value = null
     clearAuthToken()
-    void router.replace('/login')
+    router.replace('/login')
   } catch {
     passwordErrorMessage.value = '修改密码失败，请检查当前密码是否正确。'
   } finally {
     passwordSaving.value = false
   }
 }
-
-async function handleLogout() {
-  try {
-    await logout()
-  } catch {
-    // Ignore logout API failures and clear local token anyway.
-  } finally {
-    currentUser.value = null
-    clearAuthToken()
-    void router.replace('/login')
-  }
-}
 </script>
 
 <template>
   <slot v-if="!showShell" />
-  <div v-else class="shell">
-    <header class="shell__header">
-      <div class="shell__brand">AITerm</div>
-      <nav class="shell__nav">
-        <RouterLink v-for="link in mainLinks" :key="link.to" :to="link.to" class="shell__link"
-          :class="{ 'is-active': route.path === link.to }">
-          {{ link.label }}
-        </RouterLink>
-        <el-dropdown trigger="hover" :hide-on-click="false" :class="{ 'is-active': !!currentSystemManageLink }">
-          <span class="shell__link shell__link--dropdown">
-            系统管理
-            <el-icon class="el-icon--right"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12">
-                <path d="M7 10l5 5 5-5z" />
-              </svg></el-icon>
-          </span>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item v-for="link in visibleSystemManageLinks" :key="link.to"
-                :class="{ 'is-active': route.path === link.to }">
-                <RouterLink :to="link.to" class="shell__dropdown-link">{{ link.label }}</RouterLink>
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-        <el-dropdown v-if="isAdmin" trigger="hover" :hide-on-click="false"
-          :class="{ 'is-active': !!currentSystemConfigLink }">
-          <span class="shell__link shell__link--dropdown">
-            系统配置
-            <el-icon class="el-icon--right"><svg viewBox="0 0 24 24" fill="currentColor" width="12" height="12">
-                <path d="M7 10l5 5 5-5z" />
-              </svg></el-icon>
-          </span>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item v-for="link in visibleSystemConfigLinks" :key="link.to"
-                :class="{ 'is-active': route.path === link.to }">
-                <RouterLink :to="link.to" class="shell__dropdown-link">{{ link.label }}</RouterLink>
-              </el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-      </nav>
-      <div class="shell__actions">
-        <span v-if="breadcrumb" class="shell__breadcrumb">{{ breadcrumb }}</span>
-        <span v-if="currentUserLabel" class="shell__user">{{ currentUserLabel }}</span>
-        <el-button v-if="currentUserLabel" text @click="openPasswordDialog">修改密码</el-button>
-        <el-button text @click="handleLogout">退出</el-button>
-      </div>
-    </header>
-    <main class="shell__content" :class="{ 'shell__content--wide': route.path === '/chat' }">
-      <slot />
-    </main>
+  <div v-else class="shell-v2">
+    <AppTopBar :current-user="currentUser" :breadcrumb="breadcrumb" @open-password-dialog="openPasswordDialog" />
+    <AppTagsView :tabs="openTabs" @close="closeTab" @close-others="closeOthers" @close-all="closeAll"
+      @close-left="closeLeft" @close-right="closeRight" />
+    <div class="shell-v2__body">
+      <AppSidebar :is-admin="isAdmin" />
+      <main class="shell-v2__main">
+        <router-view />
+      </main>
+    </div>
 
     <el-dialog v-model="passwordDialogVisible" title="修改密码" width="420px">
       <el-alert v-if="passwordErrorMessage" :title="passwordErrorMessage" type="warning" show-icon :closable="false" />
@@ -228,28 +194,22 @@ async function handleLogout() {
 </template>
 
 <style scoped>
-.shell__link--dropdown {
-  cursor: pointer;
+.shell-v2 {
   display: flex;
-  align-items: center;
-  gap: 4px;
+  flex-direction: column;
+  min-height: 100vh;
+  background: linear-gradient(180deg, var(--color-bg-secondary) 0%, var(--color-bg-tertiary) 100%);
 }
 
-.shell__link.is-active {
-  color: var(--el-color-primary);
-  font-weight: 500;
+.shell-v2__body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
 }
 
-.shell__dropdown-link {
-  color: inherit;
-  text-decoration: none;
-}
-
-.shell__breadcrumb {
-  font-size: 13px;
-  color: var(--el-text-color-secondary);
-  padding: 4px 12px;
-  background: var(--el-fill-color-light);
-  border-radius: 4px;
+.shell-v2__main {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
 }
 </style>

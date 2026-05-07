@@ -124,3 +124,17 @@ class AuthService:
             await session.commit()
             
         return True
+
+    async def update_profile(self, user_id: str, data: dict) -> None:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(UserModel).where(UserModel.id == int(user_id))
+            )
+            user_model = result.scalar_one_or_none()
+            if not user_model:
+                raise ValueError("用户不存在")
+
+            if 'display_name' in data and data['display_name']:
+                user_model.display_name = data['display_name']
+            user_model.updated_at = now_iso()
+            await session.commit()

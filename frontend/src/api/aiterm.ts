@@ -81,6 +81,11 @@ export async function changeMyPassword(payload: AuthChangePasswordPayload) {
   return data.data
 }
 
+export async function updateMyProfile(payload: { display_name: string }) {
+  const { data } = await http.put<ApiResponse<{ status: string }>>('/api/v1/auth/profile', payload)
+  return data.data
+}
+
 export async function submitConversation(payload: ConversationPayload) {
   const { data } = await http.post<ApiResponse<ConversationData>>('/api/v1/conversations', payload)
   return data.data
