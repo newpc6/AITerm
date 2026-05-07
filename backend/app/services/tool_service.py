@@ -7,6 +7,7 @@ from typing import List, Dict, Any, Optional
 
 from app.repositories.tool import ToolRepository
 from app.models.tool import Tool
+from app.services.workspace_service import WorkspaceService
 
 logger = logging.getLogger("aiterm")
 
@@ -15,6 +16,16 @@ class ToolService:
     def __init__(self, sandbox_paths: List[str] = None):
         self.tool_repo = ToolRepository()
         self.sandbox_paths = sandbox_paths or []
+        self._workspace_service = None
+
+    @property
+    def workspace_service(self):
+        if self._workspace_service is None:
+            from app.config import get_settings
+            settings = get_settings()
+            from app.repositories.settings import GlobalSettingsRepository
+            self._workspace_service = WorkspaceService(settings)
+        return self._workspace_service
 
     def validate_path_in_sandbox(self, path: str) -> bool:
         if not self.sandbox_paths:
@@ -31,6 +42,9 @@ class ToolService:
         if not tool.sandbox_only:
             return True, ""
 
+        if self.workspace_service.sandbox_mode == "host":
+            return True, "Host mode: sandbox checks bypassed"
+
         path_keys = ["path", "file_path", "dir_path",
                      "directory", "source", "destination", "target", "save_path"]
 
@@ -38,7 +52,7 @@ class ToolService:
             if key in arguments:
                 path = arguments[key]
                 if not self.validate_path_in_sandbox(path):
-                    return False, f"路径 '{path}' 不在沙盒允许范围内，操作被拒绝。"
+                    return False, f"Path '{path}' is outside sandbox allowed scope"
 
         delete_keywords = ["delete", "remove", "unlink", "rmdir"]
         if any(kw in tool.name.lower() for kw in delete_keywords):

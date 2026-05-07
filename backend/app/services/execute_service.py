@@ -12,6 +12,7 @@ from app.repositories.chat import ChatRepository
 from app.repositories.message import MessageRepository
 from app.services.llm import LLMClient, ExecutePlanner, ExecuteRepairer, ExecuteSummarizer, ExecuteStep
 from app.services.command import execute_command, describe_node, cancel_command
+from app.services.workspace_service import WorkspaceService
 from app.config import LLMSettings
 
 logger = logging.getLogger("aiterm")
@@ -29,6 +30,7 @@ class ExecuteService:
         self.settings = settings
         self.chat_repo = ChatRepository()
         self.message_repo = MessageRepository()
+        self.workspace_service = WorkspaceService(settings)
         self._running_executions: Dict[str, asyncio.Task] = {}
         self._cancelled_executions: set = set()
         self._execution_steps: Dict[str, List[ExecuteStep]] = {}
@@ -117,49 +119,18 @@ class ExecuteService:
         ]
         for pattern in blacklist:
             if pattern in command.lower():
-                return True, f"危险命令检测: {pattern}"
+                if self.workspace_service.sandbox_mode != "host":
+                    return True, f"Dangerous command detected: {pattern}"
         return False, ""
 
     def _check_sandbox_path(self, command: str) -> tuple:
-        sandbox_paths = getattr(self.settings, 'sandbox_paths', []) or []
-        if not sandbox_paths:
+        if self.workspace_service.sandbox_mode == "host":
+            is_dangerous, reason = self._check_command_risk(command)
+            if is_dangerous:
+                return False, f"Dangerous in host mode: {reason}"
             return True, ""
 
-        path_patterns = [
-            r'["\']([^"\']+)["\']',
-            r'(?:(?:-o|--output|-O|--output-document)\s+)([^\s]+)',
-            r'(?:>|>>)\s*([^\s]+)',
-            r'(?:<)\s*([^\s]+)',
-            r'(?:-f|--file)\s+([^\s]+)',
-            r'(?:-d|--directory)\s+([^\s]+)',
-            r'(?:-p|--path)\s+([^\s]+)',
-            r'(?:New-Item|Remove-Item|Copy-Item|Move-Item|Set-Content|Add-Content|Get-Content)\s+(?:-Path\s+)?["\']?([^"\'\s]+)',
-            r'(?:Out-File|Set-Content)\s+(?:-FilePath\s+)?["\']?([^"\'\s]+)',
-        ]
-
-        for pattern in path_patterns:
-            matches = re.findall(pattern, command, re.IGNORECASE)
-            for match in matches:
-                path = match if isinstance(
-                    match, str) else match[0] if match else ""
-                if not path:
-                    continue
-
-                if not os.path.isabs(path):
-                    continue
-
-                normalized_path = os.path.normpath(path)
-                in_sandbox = False
-                for sandbox in sandbox_paths:
-                    normalized_sandbox = os.path.normpath(sandbox)
-                    if normalized_path.lower().startswith(normalized_sandbox.lower()):
-                        in_sandbox = True
-                        break
-
-                if not in_sandbox:
-                    return False, f"路径 '{path}' 不在沙盒目录内，操作被拒绝"
-
-        return True, ""
+        return self.workspace_service._check_paths_in_command(command)
 
     def _build_llm_settings(self, model_config: ModelConfig) -> LLMSettings:
         return LLMSettings(
