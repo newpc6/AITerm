@@ -153,6 +153,10 @@ async function handleSubmit(payload: ToolCreate) {
 }
 
 async function handleDelete(tool: Tool) {
+  if (tool.is_builtin) {
+    ElMessage.warning('内置工具不可删除，如需禁用请点击"禁用"按钮')
+    return
+  }
   try {
     await ElMessageBox.confirm(`确定要删除工具 "${tool.display_name || tool.name}" 吗？`, '删除确认', {
       type: 'warning'

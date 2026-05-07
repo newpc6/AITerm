@@ -56,6 +56,12 @@ function handleSelectionChange(selection: Tool[]) {
           </el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="来源" width="90">
+        <template #default="{ row }">
+          <el-tag v-if="row.is_builtin" type="primary" size="small" effect="dark">内置</el-tag>
+          <span v-else class="custom-tag">自定义</span>
+        </template>
+      </el-table-column>
       <el-table-column label="操作" width="280" fixed="right">
         <template #default="{ row }">
           <el-button type="primary" link :icon="Edit" @click="emit('edit', row)">编辑</el-button>
@@ -63,7 +69,12 @@ function handleSelectionChange(selection: Tool[]) {
           <el-button type="primary" link @click="emit('toggleEnabled', row)">
             {{ row.enabled ? '禁用' : '启用' }}
           </el-button>
-          <el-button type="danger" link :icon="Delete" @click="emit('delete', row)">删除</el-button>
+          <el-tooltip v-if="row.is_builtin" content="内置工具不可删除" placement="top">
+            <span class="delete-wrapper">
+              <el-button type="danger" link :icon="Delete" disabled>删除</el-button>
+            </span>
+          </el-tooltip>
+          <el-button v-else type="danger" link :icon="Delete" @click="emit('delete', row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -78,5 +89,15 @@ function handleSelectionChange(selection: Tool[]) {
 .mono {
   font-family: 'Consolas', 'Monaco', monospace;
   color: var(--color-accent-primary);
+}
+
+.custom-tag {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.delete-wrapper {
+  display: inline-block;
+  cursor: not-allowed;
 }
 </style>

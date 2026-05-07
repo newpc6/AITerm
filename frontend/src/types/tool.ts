@@ -34,6 +34,7 @@ export interface Tool {
   config_schema?: ToolConfigSchema
   enabled: boolean
   sandbox_only: boolean
+  is_builtin: boolean
   created_at?: string
   updated_at?: string
 }
