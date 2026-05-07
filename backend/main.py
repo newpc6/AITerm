@@ -1,6 +1,7 @@
 import os
 import sys
 import asyncio
+import json
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -92,6 +93,8 @@ async def ensure_bootstrap_data():
         await model_repo.create_model(default_model)
         logger.info("Created default model config")
 
+    await ensure_builtin_tools()
+
     async with async_session_maker() as session:
         result = await session.execute(select(AuthSettingsModel))
         auth_settings = result.scalar_one_or_none()
@@ -108,6 +111,62 @@ async def ensure_bootstrap_data():
             auth_settings.enabled = 1
             await session.commit()
             logger.info("Updated auth settings to enabled=True")
+
+
+async def ensure_builtin_tools():
+    from app.repositories.tool import ToolRepository
+
+    tools_dir = Path(__file__).parent / "tools"
+    if not tools_dir.exists():
+        logger.warning(f"Built-in tools directory not found: {tools_dir}")
+        return
+
+    tool_repo = ToolRepository()
+    imported_count = 0
+    skipped_count = 0
+
+    for file_path in sorted(tools_dir.glob("*.json")):
+        try:
+            content = file_path.read_text(encoding='utf-8')
+            data = json.loads(content)
+            name = data.get('name', file_path.stem)
+            if not name:
+                logger.warning(
+                    f"Tool name missing in {file_path.name}, skipping")
+                continue
+
+            existing = await tool_repo.get_tool_by_name(name)
+            if existing:
+                if not existing.is_builtin:
+                    await tool_repo.update_tool(
+                        tool_id=existing.id,
+                        is_builtin=True
+                    )
+                    logger.info(f"Marked existing tool as builtin: {name}")
+                else:
+                    skipped_count += 1
+                continue
+
+            await tool_repo.create_tool(
+                name=name,
+                display_name=data.get('display_name'),
+                description=data.get('description'),
+                code=data.get('code', ''),
+                parameters=data.get('parameters'),
+                config_schema=data.get('config_schema'),
+                enabled=data.get('enabled', True),
+                sandbox_only=data.get('sandbox_only', False),
+                is_builtin=True
+            )
+            imported_count += 1
+            logger.info(f"Imported built-in tool: {name}")
+        except Exception as e:
+            logger.error(
+                f"Failed to import built-in tool {file_path.name}: {e}")
+
+    if imported_count > 0:
+        logger.info(
+            f"Imported {imported_count} built-in tools ({skipped_count} already exist)")
 
 
 @asynccontextmanager

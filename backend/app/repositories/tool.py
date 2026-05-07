@@ -58,7 +58,8 @@ class ToolRepository:
         parameters: Union[ToolParameters, dict] = None,
         config_schema: Union[ToolConfigSchema, dict] = None,
         enabled: bool = True,
-        sandbox_only: bool = False
+        sandbox_only: bool = False,
+        is_builtin: bool = False
     ) -> Optional[Tool]:
         params_json = _serialize_parameters(parameters)
         schema_json = _serialize_config_schema(config_schema)
@@ -72,7 +73,8 @@ class ToolRepository:
                 parameters=params_json,
                 config_schema=schema_json,
                 enabled=enabled,
-                sandbox_only=sandbox_only
+                sandbox_only=sandbox_only,
+                is_builtin=is_builtin
             )
             session.add(model)
             await session.commit()
@@ -89,7 +91,8 @@ class ToolRepository:
         parameters: Union[ToolParameters, dict] = None,
         config_schema: Union[ToolConfigSchema, dict] = None,
         enabled: bool = None,
-        sandbox_only: bool = None
+        sandbox_only: bool = None,
+        is_builtin: bool = None
     ) -> Optional[Tool]:
         params_json = _serialize_parameters(
             parameters) if parameters is not None else None
@@ -120,6 +123,8 @@ class ToolRepository:
                 model.enabled = enabled
             if sandbox_only is not None:
                 model.sandbox_only = sandbox_only
+            if is_builtin is not None:
+                model.is_builtin = is_builtin
 
             await session.commit()
             await session.refresh(model)
@@ -173,6 +178,7 @@ class ToolRepository:
             config_schema=config_schema,
             enabled=model.enabled,
             sandbox_only=model.sandbox_only,
+            is_builtin=bool(model.is_builtin),
             created_at=model.created_at.isoformat() if model.created_at else None,
             updated_at=model.updated_at.isoformat() if model.updated_at else None
         )

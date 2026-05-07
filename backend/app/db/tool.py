@@ -16,5 +16,6 @@ class ToolModel(Base):
     config_schema = Column(Text, nullable=True)
     enabled = Column(Boolean, default=True, nullable=False)
     sandbox_only = Column(Boolean, default=False, nullable=False)
+    is_builtin = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())

@@ -39,6 +39,7 @@ class Tool(BaseModel):
     config_schema: Optional[ToolConfigSchema] = None
     enabled: bool = True
     sandbox_only: bool = False
+    is_builtin: bool = False
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -52,6 +53,7 @@ class ToolCreate(BaseModel):
     config_schema: Optional[ToolConfigSchema] = None
     enabled: bool = True
     sandbox_only: bool = False
+    is_builtin: bool = False
 
 
 class ToolUpdate(BaseModel):
@@ -98,6 +100,7 @@ class ToolExport(BaseModel):
     config_schema: Optional[ToolConfigSchema] = None
     enabled: bool = True
     sandbox_only: bool = False
+    is_builtin: bool = False
 
 
 class ToolImportResult(BaseModel):

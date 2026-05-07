@@ -90,6 +90,11 @@ async def update_tool(tool_id: str, payload: ToolUpdate):
 
 @router.delete("/{tool_id}", response_model=Response[bool])
 async def delete_tool(tool_id: str):
+    tool = await tool_repo.get_tool(tool_id)
+    if not tool:
+        raise HTTPException(status_code=404, detail="Tool not found")
+    if tool.is_builtin:
+        raise HTTPException(status_code=403, detail="Built-in tools cannot be deleted")
     deleted = await tool_repo.delete_tool(tool_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Tool not found")

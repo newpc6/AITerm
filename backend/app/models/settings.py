@@ -61,6 +61,7 @@ class GlobalSettings(BaseModel):
     execution_command_whitelist: List[str] = []
     sandbox_paths: List[str] = []
     sandbox_rules_prompt: str = ""
+    sandbox_mode: str = "sandbox"
     llm_debug_logging: bool = False
 
 
@@ -81,4 +82,5 @@ class GlobalSettingsUpdate(BaseModel):
     execution_command_whitelist: Optional[List[str]] = None
     sandbox_paths: Optional[List[str]] = None
     sandbox_rules_prompt: Optional[str] = None
+    sandbox_mode: Optional[str] = None
     llm_debug_logging: Optional[bool] = None

@@ -29,6 +29,7 @@ CONFIG_KEYS = [
     "execution_command_whitelist",
     "sandbox_paths",
     "sandbox_rules_prompt",
+    "sandbox_mode",
     "llm_debug_logging",
 ]
 
@@ -39,6 +40,7 @@ DEFAULT_VALUES = {
     "execution_command_blacklist": "[]",
     "execution_command_whitelist": "[]",
     "sandbox_paths": "[]",
+    "sandbox_mode": "sandbox",
     "llm_debug_logging": "false",
 }
 
@@ -75,6 +77,7 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
                 "execution_command_whitelist": json.dumps(settings.execution_command_whitelist),
                 "sandbox_paths": json.dumps(settings.sandbox_paths),
                 "sandbox_rules_prompt": settings.sandbox_rules_prompt,
+                "sandbox_mode": settings.sandbox_mode,
                 "llm_debug_logging": "true" if settings.llm_debug_logging else "false",
             }
 
@@ -163,6 +166,7 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
             execution_command_whitelist=whitelist,
             sandbox_paths=sandbox_paths,
             sandbox_rules_prompt=get_value("sandbox_rules_prompt"),
+            sandbox_mode=get_value("sandbox_mode", "sandbox"),
             llm_debug_logging=llm_debug_logging,
         )
 
