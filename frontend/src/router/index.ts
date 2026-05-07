@@ -33,7 +33,7 @@ const router = createRouter({
 
     // 组织管理
     { path: '/system/users', component: () => import('@/views/users'), meta: { adminOnly: true } },
-    { path: '/system/teams', component: () => import('@/views/placeholders/workspace'), meta: { adminOnly: true } },
+    { path: '/system/teams', component: () => import('@/views/teams'), meta: { adminOnly: true } },
 
     // 系统管理
     { path: '/system/nodes', component: () => import('@/views/nodes'), meta: { adminOnly: true } },

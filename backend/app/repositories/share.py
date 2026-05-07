@@ -33,7 +33,8 @@ class ShareRepository:
         show_thinking: bool = True,
         show_tools: bool = True,
         show_answer: bool = True,
-        show_full_input: bool = False
+        show_full_input: bool = False,
+        user_id: int = None,
     ) -> Share:
         async with async_session_maker() as session:
             share_id = generate_share_id()
@@ -57,7 +58,8 @@ class ShareRepository:
                 show_thinking=show_thinking,
                 show_tools=show_tools,
                 show_answer=show_answer,
-                show_full_input=show_full_input
+                show_full_input=show_full_input,
+                user_id=user_id
             )
             session.add(model)
             await session.commit()
@@ -80,16 +82,23 @@ class ShareRepository:
             model = result.scalar_one_or_none()
             return self._to_domain(model) if model else None
 
-    async def list_shares(self, page: int = 1, page_size: int = 20) -> Tuple[List[ShareListItem], int]:
+    async def list_shares(self, page: int = 1, page_size: int = 20, user_id: int = None) -> Tuple[List[ShareListItem], int]:
         async with async_session_maker() as session:
-            count_result = await session.execute(
-                select(func.count(ShareModel.id))
-            )
+            if user_id is not None:
+                count_query = select(func.count(ShareModel.id)).where(
+                    ShareModel.user_id == user_id)
+                items_query = select(ShareModel).where(
+                    ShareModel.user_id == user_id)
+            else:
+                count_query = select(func.count(ShareModel.id))
+                items_query = select(ShareModel)
+
+            count_result = await session.execute(count_query)
             total = count_result.scalar() or 0
 
             offset = (page - 1) * page_size
             result = await session.execute(
-                select(ShareModel)
+                items_query
                 .order_by(ShareModel.created_at.desc())
                 .offset(offset)
                 .limit(page_size)

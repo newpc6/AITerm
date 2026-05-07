@@ -9,16 +9,25 @@ from app.utils import now_iso
 
 
 class ModelConfigRepository:
-    async def list_models(self, page: int = 1, page_size: int = 20) -> Tuple[List[ModelConfig], int]:
+    async def list_models(self, page: int = 1, page_size: int = 20, user_id: int = None) -> Tuple[List[ModelConfig], int]:
         async with async_session_maker() as session:
-            count_result = await session.execute(
-                select(func.count(ModelConfigModel.id))
-            )
+            if user_id:
+                count_query = select(func.count(ModelConfigModel.id)).where(
+                    ModelConfigModel.user_id == user_id
+                )
+                items_query = select(ModelConfigModel).where(
+                    ModelConfigModel.user_id == user_id
+                )
+            else:
+                count_query = select(func.count(ModelConfigModel.id))
+                items_query = select(ModelConfigModel)
+
+            count_result = await session.execute(count_query)
             total = count_result.scalar() or 0
 
             offset = (page - 1) * page_size
             result = await session.execute(
-                select(ModelConfigModel)
+                items_query
                 .order_by(
                     ModelConfigModel.is_default.desc(),
                     ModelConfigModel.name
@@ -63,6 +72,8 @@ class ModelConfigRepository:
                 extra_body_json=json.dumps(model.extra_body),
                 extra_headers_json=json.dumps(model.extra_headers),
                 is_default=1 if model.is_default else 0,
+                user_id=int(model.user_id) if model.user_id else None,
+                scope=model.scope or "private",
                 created_at=now,
                 updated_at=now
             )
@@ -169,6 +180,9 @@ class ModelConfigRepository:
             extra_body=extra_body,
             extra_headers=extra_headers,
             is_default=bool(model.is_default),
+            user_id=str(model.user_id) if model.user_id else None,
+            scope=model.scope or "private",
+            team_id=str(model.team_id) if model.team_id else None,
             created_at=model.created_at,
             updated_at=model.updated_at
         )

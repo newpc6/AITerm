@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean
+from sqlalchemy import Column, Integer, String, Text, DateTime, Boolean, ForeignKey
 from datetime import datetime, timezone
 
 from app.db.base import Base
@@ -21,6 +21,7 @@ class ShareModel(Base):
     show_tools = Column(Boolean, nullable=False, default=True)
     show_answer = Column(Boolean, nullable=False, default=True)
     show_full_input = Column(Boolean, nullable=False, default=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
 
     def to_dict(self):
         created_at_str = None

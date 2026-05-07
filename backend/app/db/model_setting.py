@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text
+from sqlalchemy import Column, Integer, String, Text, ForeignKey
 from app.db.base import Base
 
 
@@ -18,6 +18,9 @@ class ModelConfigModel(Base):
     extra_body_json = Column(Text, nullable=False, default="{}")
     extra_headers_json = Column(Text, nullable=False, default="{}")
     is_default = Column(Integer, nullable=False, default=0)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
+    scope = Column(String(20), nullable=False, default="private")
+    team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
     created_at = Column(String(50), nullable=False)
     updated_at = Column(String(50), nullable=False)
 

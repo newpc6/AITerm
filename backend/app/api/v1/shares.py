@@ -8,6 +8,7 @@ from app.models.common import PaginatedResponse
 from app.repositories.share import ShareRepository
 from app.repositories.chat import ChatRepository
 from app.repositories.message import MessageRepository
+from app.api.deps import get_current_user
 
 router = APIRouter(prefix="/shares", tags=["shares"])
 logger = logging.getLogger("aiterm")
@@ -81,7 +82,7 @@ def filter_message_content(msg: dict, show_input: bool, show_thinking: bool, sho
 
 
 @router.post("")
-async def create_share(request: ShareCreate):
+async def create_share(request: ShareCreate, user=Depends(get_current_user)):
     chat = await chat_repo.get_chat(request.chat_id)
     if not chat:
         return Response(code=4040, message="chat not found")
@@ -101,7 +102,8 @@ async def create_share(request: ShareCreate):
         show_thinking=request.show_thinking if request.show_thinking is not None else True,
         show_tools=request.show_tools if request.show_tools is not None else True,
         show_answer=request.show_answer if request.show_answer is not None else True,
-        show_full_input=request.show_full_input if request.show_full_input is not None else False
+        show_full_input=request.show_full_input if request.show_full_input is not None else False,
+        user_id=int(user.id) if user else None,
     )
     return Response(data=share.model_dump())
 
@@ -225,8 +227,9 @@ async def delete_share_by_chat(chat_id: str):
 
 
 @router.get("")
-async def list_shares(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100)):
-    items, total = await share_repo.list_shares(page, page_size)
+async def list_shares(page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100), user=Depends(get_current_user)):
+    uid = int(user.id) if user and user.role != "admin" else None
+    items, total = await share_repo.list_shares(page, page_size, user_id=uid)
     return Response(data=PaginatedResponse.create(
         items=[item.model_dump() for item in items],
         total=total,

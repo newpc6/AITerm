@@ -4,11 +4,13 @@ from datetime import datetime
 from app.models import Node, NodeStatus
 from app.repositories import INodeRepository
 from app.services.command import describe_node
+from app.services.crypto_service import CryptoService
 
 
 class NodeService:
     def __init__(self, repo: INodeRepository):
         self.repo = repo
+        self._crypto = CryptoService.get_instance()
 
     async def list_nodes(self, page: int = 1, page_size: int = 20) -> Tuple[List[Node], int]:
         nodes, total = await self.repo.list_nodes(page, page_size)
@@ -18,7 +20,8 @@ class NodeService:
                 name="local",
                 host="127.0.0.1",
                 port=22,
-                status=NodeStatus.ONLINE
+                status=NodeStatus.ONLINE,
+                node_type="local",
             )
             await self.repo.create_node(local_node)
             return [local_node], 1
@@ -27,14 +30,16 @@ class NodeService:
     async def get_node(self, node_id: str) -> Optional[Node]:
         return await self.repo.get_node(node_id)
 
-    async def create_node(self, name: str, host: str, port: int) -> Node:
-        node = Node(
-            id="0",
-            name=name,
-            host=host,
-            port=port,
-            status=NodeStatus.ONLINE
+    async def create_node(self, name: str, host: str, port: int, **kwargs) -> Node:
+        node_data = dict(
+            id="0", name=name, host=host, port=port, status=NodeStatus.ONLINE,
         )
+        for k in ("node_type", "api_base_url", "auth_username", "use_tls"):
+            if k in kwargs and kwargs[k] is not None:
+                node_data[k] = kwargs[k]
+        if "password" in kwargs and kwargs.get("password"):
+            node_data["encrypted_password"] = self._crypto.encrypt(kwargs["password"])
+        node = Node(**node_data)
         return await self.repo.create_node(node)
 
     async def update_node(self, node_id: str, **kwargs) -> Optional[Node]:
@@ -42,7 +47,9 @@ class NodeService:
         if not node:
             return None
         for key, value in kwargs.items():
-            if hasattr(node, key) and value is not None:
+            if key == "password" and value:
+                node.encrypted_password = self._crypto.encrypt(value)
+            elif hasattr(node, key) and value is not None:
                 setattr(node, key, value)
         return await self.repo.update_node(node_id, node)
 

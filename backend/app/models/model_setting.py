@@ -30,6 +30,9 @@ class ModelConfig(BaseModel):
     extra_body: Dict[str, Any] = {}
     extra_headers: Dict[str, Any] = {}
     is_default: bool = False
+    user_id: Optional[str] = None
+    scope: str = "private"
+    team_id: Optional[str] = None
     created_at: str
     updated_at: str
 

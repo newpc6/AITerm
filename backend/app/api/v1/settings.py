@@ -72,7 +72,7 @@ async def list_models(
     service: ModelConfigService = Depends(get_model_config_service),
     current_user=Depends(get_current_user)
 ):
-    items, total = await service.list_models(page, page_size)
+    items, total = await service.list_models(page, page_size, user_id=int(current_user.id) if current_user else None)
     paginated = PaginatedResponse.create(
         items=[m.model_dump() for m in items],
         total=total,
@@ -98,10 +98,10 @@ async def get_model(
 async def create_model(
     request: ModelConfigCreate,
     service: ModelConfigService = Depends(get_model_config_service),
-    current_user=Depends(require_admin)
+    current_user=Depends(get_current_user)
 ):
     try:
-        model = await service.create_model(request)
+        model = await service.create_model(request, user_id=int(current_user.id) if current_user else None)
         return Response(data=model.model_dump())
     except Exception as e:
         return Response(code=1002, message=str(e))
@@ -168,7 +168,8 @@ async def test_model(
             "stream": False
         }
         if model.extra_body:
-            payload.update({k: v for k, v in model.extra_body.items() if k != "stream"})
+            payload.update(
+                {k: v for k, v in model.extra_body.items() if k != "stream"})
 
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.post(url, headers=headers, json=payload)
@@ -182,7 +183,8 @@ async def test_model(
                 return Response(code=1005, message=error_data.get("error", {}).get("message", f"HTTP {response.status_code}"))
 
             data = response.json()
-            reply = data.get("choices", [{}])[0].get("message", {}).get("content", "")
+            reply = data.get("choices", [{}])[0].get(
+                "message", {}).get("content", "")
             usage = data.get("usage", {})
 
             result = {

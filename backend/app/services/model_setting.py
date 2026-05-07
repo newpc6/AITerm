@@ -8,8 +8,8 @@ class ModelConfigService:
     def __init__(self, repo: ModelConfigRepository = None):
         self.repo = repo or ModelConfigRepository()
 
-    async def list_models(self, page: int = 1, page_size: int = 20) -> Tuple[List[ModelConfig], int]:
-        return await self.repo.list_models(page, page_size)
+    async def list_models(self, page: int = 1, page_size: int = 20, user_id: int = None) -> Tuple[List[ModelConfig], int]:
+        return await self.repo.list_models(page, page_size, user_id=user_id)
 
     async def get_model(self, model_id: str) -> Optional[ModelConfig]:
         return await self.repo.get_model(model_id)
@@ -17,7 +17,7 @@ class ModelConfigService:
     async def get_default_model(self) -> Optional[ModelConfig]:
         return await self.repo.get_default_model()
 
-    async def create_model(self, data: ModelConfigCreate) -> ModelConfig:
+    async def create_model(self, data: ModelConfigCreate, user_id: int = None) -> ModelConfig:
         now = now_iso()
         model = ModelConfig(
             id="0",
@@ -33,6 +33,8 @@ class ModelConfigService:
             extra_body=data.extra_body or {},
             extra_headers=data.extra_headers or {},
             is_default=data.is_default,
+            user_id=str(user_id) if user_id else None,
+            scope="private" if user_id else "public",
             created_at=now,
             updated_at=now
         )

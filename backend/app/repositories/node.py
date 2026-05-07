@@ -80,5 +80,12 @@ class NodeRepository(INodeRepository):
             name=model.name,
             host=model.host,
             port=model.port,
-            status=NodeStatus(model.status) if model.status else NodeStatus.ONLINE
+            status=NodeStatus(model.status) if model.status else NodeStatus.ONLINE,
+            node_type=model.node_type or "local",
+            api_base_url=model.api_base_url,
+            auth_username=model.auth_username,
+            encrypted_password=model.encrypted_password,
+            use_tls=bool(model.use_tls) if model.use_tls is not None else True,
+            is_connected=bool(model.is_connected),
+            last_connected=model.last_connected,
         )

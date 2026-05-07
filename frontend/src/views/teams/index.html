@@ -1,0 +1,37 @@
+<section class="page">
+  <div class="hero"><p class="label">组织管理</p><h1>团队管理</h1><p>创建和管理团队，添加成员，共享智能体、技能、工具和模型。</p></div>
+  <div class="card">
+    <div class="page-header"><div><p class="label">团队列表</p><div class="value">{{ teams.length }} 个团队</div></div><el-button type="primary" @click="openCreate">新建团队</el-button></div>
+    <el-table :data="teams" v-loading="loading" empty-text="暂无团队">
+      <el-table-column prop="name" label="名称" width="180" />
+      <el-table-column prop="description" label="描述" min-width="200" show-overflow-tooltip />
+      <el-table-column prop="owner_name" label="创建者" width="120" />
+      <el-table-column prop="member_count" label="成员数" width="80" />
+      <el-table-column label="操作" width="220"><template #default="{row}">
+        <el-button type="primary" link size="small" @click="showMembers(row.id)">成员</el-button>
+        <el-button link size="small" @click="openEdit(row)">编辑</el-button>
+        <el-button type="danger" link size="small" @click="handleDelete(row.id)">删除</el-button>
+      </template></el-table-column>
+    </el-table>
+  </div>
+  <el-dialog v-model="dialogVisible" :title="editingId?'编辑团队':'新建团队'" width="500px" destroy-on-close>
+    <el-form label-position="top">
+      <el-form-item label="名称"><el-input v-model="form.name" :disabled="saving" /></el-form-item>
+      <el-form-item label="描述"><el-input v-model="form.description" type="textarea" :rows="3" :disabled="saving" /></el-form-item>
+    </el-form>
+    <template #footer><el-button @click="dialogVisible=false">取消</el-button><el-button type="primary" :loading="saving" @click="handleSave">保存</el-button></template>
+  </el-dialog>
+  <el-dialog v-model="memberDialogVisible" title="团队成员" width="600px">
+    <div v-loading="memberLoading">
+      <div style="display:flex;gap:8px;margin-bottom:12px">
+        <el-input v-model="addUserForm.user_id" placeholder="用户ID" size="small" style="width:120px" />
+        <el-select v-model="addUserForm.role" size="small" style="width:100px"><el-option value="admin" label="管理员" /><el-option value="member" label="成员" /></el-select>
+        <el-button size="small" type="primary" @click="addMember">添加</el-button>
+      </div>
+      <div v-for="m in members" :key="m.id" style="display:flex;justify-content:space-between;align-items:center;padding:8px;border-bottom:1px solid var(--color-border-primary)">
+        <div><span style="font-weight:500">{{ m.display_name || m.username }}</span><el-tag size="small" style="margin-left:8px" :type="m.role==='owner'?'danger':'info'">{{ m.role }}</el-tag></div>
+        <el-button v-if="m.role!=='owner'" type="danger" link size="small" @click="removeMember(m.user_id)">移除</el-button>
+      </div>
+    </div>
+  </el-dialog>
+</section>
