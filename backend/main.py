@@ -168,7 +168,8 @@ async def ensure_builtin_tools():
                 config_schema=data.get('config_schema'),
                 enabled=data.get('enabled', True),
                 sandbox_only=data.get('sandbox_only', False),
-                is_builtin=is_builtin
+                is_builtin=is_builtin,
+                scope="public",
             )
             imported_count += 1
             label = "builtin" if is_builtin else "normal"

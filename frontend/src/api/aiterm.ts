@@ -656,6 +656,61 @@ export async function getOpenAIToolsSchema() {
   return data.data
 }
 
+export async function getLibraryTools(type?: string) {
+  const { data } = await http.get<ApiResponse<import('@/types/tool').Tool[]>>('/api/v1/tools/library', { params: type ? { type } : {} })
+  return data.data
+}
+
+export async function createLibraryTool(payload: import('@/types/tool').ToolCreate) {
+  const { data } = await http.post<ApiResponse<import('@/types/tool').Tool>>('/api/v1/tools/library', payload)
+  return data.data
+}
+
+export async function updateLibraryTool(toolId: string, payload: import('@/types/tool').ToolUpdate) {
+  const { data } = await http.put<ApiResponse<import('@/types/tool').Tool>>(`/api/v1/tools/library/${toolId}`, payload)
+  return data.data
+}
+
+export async function deleteLibraryTool(toolId: string) {
+  const { data } = await http.delete<ApiResponse<boolean>>(`/api/v1/tools/library/${toolId}`)
+  return data.data
+}
+
+export async function getMyTools() {
+  const { data } = await http.get<ApiResponse<import('@/types/tool').UserTool[]>>('/api/v1/tools/my')
+  return data.data
+}
+
+export async function createMyTool(payload: import('@/types/tool').ToolCreate) {
+  const { data } = await http.post<ApiResponse<import('@/types/tool').Tool>>('/api/v1/tools/my', payload)
+  return data.data
+}
+
+export async function updateMyTool(toolId: string, payload: import('@/types/tool').ToolUpdate) {
+  const { data } = await http.put<ApiResponse<import('@/types/tool').Tool>>(`/api/v1/tools/my/${toolId}`, payload)
+  return data.data
+}
+
+export async function deleteMyTool(toolId: string) {
+  const { data } = await http.delete<ApiResponse<boolean>>(`/api/v1/tools/my/${toolId}`)
+  return data.data
+}
+
+export async function toggleMyTool(toolId: string) {
+  const { data } = await http.post<ApiResponse<import('@/types/tool').UserTool>>(`/api/v1/tools/my/${toolId}/toggle`)
+  return data.data
+}
+
+export async function getTemplates() {
+  const { data } = await http.get<ApiResponse<import('@/types/tool').Tool[]>>('/api/v1/tools/templates')
+  return data.data
+}
+
+export async function importTemplates(toolIds: string[]) {
+  const { data } = await http.post<ApiResponse<{ imported: number }>>('/api/v1/tools/templates/import', { tool_ids: toolIds })
+  return data.data
+}
+
 export interface FileItem {
   id: string
   uuid: string

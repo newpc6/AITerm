@@ -35,6 +35,24 @@ export interface Tool {
   enabled: boolean
   sandbox_only: boolean
   is_builtin: boolean
+  user_id?: string | null
+  scope: string
+  is_template: boolean
+  team_id?: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface UserTool {
+  id: string
+  user_id: string
+  tool_id: string
+  tool_name?: string
+  tool_display_name?: string
+  tool_description?: string
+  enabled: boolean
+  is_builtin: boolean
+  scope: string
   created_at?: string
   updated_at?: string
 }

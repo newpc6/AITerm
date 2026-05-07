@@ -1,0 +1,101 @@
+<section class="page">
+  <div class="hero">
+    <p class="label">工具</p>
+    <h1>我的工具</h1>
+    <p>管理自己的工具，内置核心工具可禁用，可导入公共模板。</p>
+  </div>
+
+  <div class="card">
+    <div class="page-header">
+      <div>
+        <p class="label">工具列表</p>
+        <div class="value">{{ tools.length }} 个工具</div>
+      </div>
+      <div class="page-header__actions">
+        <el-select v-model="filterEnabled" style="width: 120px" @change="applyFilter">
+          <el-option label="全部" value="all" />
+          <el-option label="已启用" value="enabled" />
+          <el-option label="已禁用" value="disabled" />
+        </el-select>
+        <el-button @click="openTemplateDialog">导入公共模板</el-button>
+        <el-button type="primary" @click="openCreateDialog">新建工具</el-button>
+      </div>
+    </div>
+
+    <el-table :data="filteredTools" v-loading="loading" empty-text="暂无工具">
+      <el-table-column prop="tool_name" label="工具名称" width="180">
+        <template #default="{ row }">
+          <span style="font-family: monospace; color: var(--color-accent-primary)">{{ row.tool_name }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column prop="tool_display_name" label="显示名称" width="160">
+        <template #default="{ row }">{{ row.tool_display_name || '-' }}</template>
+      </el-table-column>
+      <el-table-column prop="tool_description" label="描述" show-overflow-tooltip min-width="200">
+        <template #default="{ row }">{{ row.tool_description || '-' }}</template>
+      </el-table-column>
+      <el-table-column label="来源" width="80">
+        <template #default="{ row }">
+          <el-tag v-if="row.is_builtin" type="primary" size="small" effect="dark">内置</el-tag>
+          <el-tag v-else-if="row.scope === 'private'" type="info" size="small">私有</el-tag>
+          <el-tag v-else type="success" size="small">模板</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="状态" width="90">
+        <template #default="{ row }">
+          <el-tag :type="row.enabled ? 'success' : 'info'" size="small">{{ row.enabled ? '已启用' : '已禁用' }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="220" fixed="right">
+        <template #default="{ row }">
+          <el-button v-if="!row.is_builtin && row.scope === 'private'" type="primary" link @click="openEditDialog(row)">编辑</el-button>
+          <el-button type="primary" link @click="handleToggle(row)">{{ row.enabled ? '禁用' : '启用' }}</el-button>
+          <el-button v-if="!row.is_builtin && row.scope === 'private'" type="danger" link @click="handleDelete(row)">删除</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
+  </div>
+
+  <el-dialog v-model="createDialogVisible" :title="createTitle" width="60%" top="5vh" :close-on-click-modal="false" destroy-on-close>
+    <el-form label-position="top">
+      <el-form-item label="工具名称">
+        <el-input v-model="form.name" placeholder="工具唯一标识符" :disabled="!!editingId || saving" />
+      </el-form-item>
+      <el-form-item label="显示名称">
+        <el-input v-model="form.display_name" placeholder="可选，前端展示用" :disabled="saving" />
+      </el-form-item>
+      <el-form-item label="描述">
+        <el-input v-model="form.description" :disabled="saving" placeholder="工具用途说明" />
+      </el-form-item>
+      <el-form-item label="代码">
+        <el-input v-model="form.code" type="textarea" :rows="10" resize="vertical" :disabled="saving" />
+        <div class="form-item-hint">必须包含 execute(arguments) 函数</div>
+      </el-form-item>
+      <el-form-item label="沙盒限制">
+        <el-switch v-model="form.sandbox_only" :disabled="saving" active-text="是" inactive-text="否" />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="createDialogVisible = false">取消</el-button>
+      <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="templateDialogVisible" title="导入公共模板" width="700px">
+    <div v-loading="templateLoading">
+      <el-checkbox-group v-model="selectedTemplates" style="display: flex; flex-direction: column; gap: 12px">
+        <div v-for="tpl in templates" :key="tpl.id" style="display: flex; align-items: center; gap: 12px">
+          <el-checkbox :value="tpl.id">
+            <span style="font-weight: 500">{{ tpl.display_name || tpl.name }}</span>
+            <span style="color: var(--color-text-muted); font-size: 12px; margin-left: 8px">{{ tpl.description || '' }}</span>
+          </el-checkbox>
+        </div>
+      </el-checkbox-group>
+      <div v-if="templates.length === 0" style="padding: 40px; text-align: center; color: var(--color-text-muted)">暂无公共模板</div>
+    </div>
+    <template #footer>
+      <el-button @click="templateDialogVisible = false">取消</el-button>
+      <el-button type="primary" :disabled="selectedTemplates.length === 0" @click="handleImportTemplates">导入 ({{ selectedTemplates.length }})</el-button>
+    </template>
+  </el-dialog>
+</section>

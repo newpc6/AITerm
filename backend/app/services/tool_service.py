@@ -60,8 +60,11 @@ class ToolService:
 
         return True, ""
 
-    async def get_openai_tools(self) -> List[Dict[str, Any]]:
-        tools = await self.tool_repo.list_tools(enabled_only=True)
+    async def get_openai_tools(self, user_id: int = None) -> List[Dict[str, Any]]:
+        if user_id:
+            tools = await self.tool_repo.get_user_enabled_tools(user_id=user_id)
+        else:
+            tools = await self.tool_repo.list_tools(enabled_only=True)
         openai_tools = []
         for tool in tools:
             if not tool.enabled and not tool.is_builtin:

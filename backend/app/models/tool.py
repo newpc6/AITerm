@@ -40,6 +40,10 @@ class Tool(BaseModel):
     enabled: bool = True
     sandbox_only: bool = False
     is_builtin: bool = False
+    user_id: Optional[str] = None
+    scope: str = "public"
+    is_template: bool = False
+    team_id: Optional[str] = None
     created_at: Optional[str] = None
     updated_at: Optional[str] = None
 
@@ -54,6 +58,8 @@ class ToolCreate(BaseModel):
     enabled: bool = True
     sandbox_only: bool = False
     is_builtin: bool = False
+    scope: str = "private"
+    is_template: bool = False
 
 
 class ToolUpdate(BaseModel):
@@ -65,6 +71,8 @@ class ToolUpdate(BaseModel):
     config_schema: Optional[ToolConfigSchema] = None
     enabled: Optional[bool] = None
     sandbox_only: Optional[bool] = None
+    scope: Optional[str] = None
+    is_template: Optional[bool] = None
 
 
 class ToolExecuteRequest(BaseModel):
@@ -123,3 +131,21 @@ class BuiltinTool(BaseModel):
     display_name: Optional[str] = None
     description: Optional[str] = None
     filename: str
+
+
+class UserTool(BaseModel):
+    id: str
+    user_id: str
+    tool_id: str
+    tool_name: Optional[str] = None
+    tool_display_name: Optional[str] = None
+    tool_description: Optional[str] = None
+    enabled: bool = True
+    is_builtin: bool = False
+    scope: str = "public"
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
+
+
+class TemplateImportRequest(BaseModel):
+    tool_ids: List[str]

@@ -5,7 +5,7 @@ from app.db.chat import ChatModel
 from app.db.session import SessionModel
 from app.db.user import UserModel
 from app.db.node import NodeModel
-from app.db.tool import ToolModel
+from app.db.tool import ToolModel, UserToolModel
 from app.db.file import FileModel
 from app.db.share import ShareModel
 from app.db.sandbox_config import (
@@ -62,6 +62,7 @@ ALL_MODELS: List[Type[Base]] = [
     SystemDictModel,
     AuthSettingsModel,
     ToolModel,
+    UserToolModel,
     FileModel,
     ShareModel,
     SandboxConfigModel,

@@ -26,7 +26,7 @@ const router = createRouter({
 
     // 工具
     { path: '/tools/library', component: () => import('@/views/tools/index.vue'), meta: { adminOnly: true } },
-    { path: '/tools/my', component: () => import('@/views/placeholders/workspace') },
+    { path: '/tools/my', component: () => import('@/views/tools/my') },
 
     // 个人
     { path: '/profile', component: () => import('@/views/profile') },
