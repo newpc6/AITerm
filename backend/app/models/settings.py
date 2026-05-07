@@ -61,12 +61,6 @@ class GlobalSettings(BaseModel):
     execution_command_whitelist: List[str] = []
     sandbox_paths: List[str] = []
     sandbox_rules_prompt: str = ""
-    sandbox_mode: str = "sandbox"
-    docker_image: str = "python:3.11-slim"
-    docker_network: str = "none"
-    docker_memory_limit: str = "512m"
-    docker_cpu_limit: float = 1.0
-    docker_timeout_seconds: int = 300
     llm_debug_logging: bool = False
 
 
@@ -87,10 +81,4 @@ class GlobalSettingsUpdate(BaseModel):
     execution_command_whitelist: Optional[List[str]] = None
     sandbox_paths: Optional[List[str]] = None
     sandbox_rules_prompt: Optional[str] = None
-    sandbox_mode: Optional[str] = None
-    docker_image: Optional[str] = None
-    docker_network: Optional[str] = None
-    docker_memory_limit: Optional[str] = None
-    docker_cpu_limit: Optional[float] = None
-    docker_timeout_seconds: Optional[int] = None
     llm_debug_logging: Optional[bool] = None

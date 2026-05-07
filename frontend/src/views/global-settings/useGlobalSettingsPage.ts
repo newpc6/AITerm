@@ -25,12 +25,6 @@ export function useGlobalSettingsPage() {
     execution_command_whitelist: [],
     sandbox_paths: [],
     sandbox_rules_prompt: '',
-    sandbox_mode: 'sandbox',
-    docker_image: 'python:3.11-slim',
-    docker_network: 'none',
-    docker_memory_limit: '512m',
-    docker_cpu_limit: 1.0,
-    docker_timeout_seconds: 300,
     llm_debug_logging: false,
   })
 
@@ -59,12 +53,6 @@ export function useGlobalSettingsPage() {
       execution_command_whitelist: data.execution_command_whitelist ?? [],
       sandbox_paths: data.sandbox_paths ?? [],
       sandbox_rules_prompt: data.sandbox_rules_prompt ?? '',
-      sandbox_mode: data.sandbox_mode ?? 'sandbox',
-      docker_image: data.docker_image ?? 'python:3.11-slim',
-      docker_network: data.docker_network ?? 'none',
-      docker_memory_limit: data.docker_memory_limit ?? '512m',
-      docker_cpu_limit: data.docker_cpu_limit ?? 1.0,
-      docker_timeout_seconds: data.docker_timeout_seconds ?? 300,
       llm_debug_logging: data.llm_debug_logging ?? false,
     }
   }

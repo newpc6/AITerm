@@ -29,12 +29,6 @@ CONFIG_KEYS = [
     "execution_command_whitelist",
     "sandbox_paths",
     "sandbox_rules_prompt",
-    "sandbox_mode",
-    "docker_image",
-    "docker_network",
-    "docker_memory_limit",
-    "docker_cpu_limit",
-    "docker_timeout_seconds",
     "llm_debug_logging",
 ]
 
@@ -45,12 +39,6 @@ DEFAULT_VALUES = {
     "execution_command_blacklist": "[]",
     "execution_command_whitelist": "[]",
     "sandbox_paths": "[]",
-    "sandbox_mode": "sandbox",
-    "docker_image": "python:3.11-slim",
-    "docker_network": "none",
-    "docker_memory_limit": "512m",
-    "docker_cpu_limit": "1.0",
-    "docker_timeout_seconds": "300",
     "llm_debug_logging": "false",
 }
 
@@ -87,12 +75,6 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
                 "execution_command_whitelist": json.dumps(settings.execution_command_whitelist),
                 "sandbox_paths": json.dumps(settings.sandbox_paths),
                 "sandbox_rules_prompt": settings.sandbox_rules_prompt,
-                "sandbox_mode": settings.sandbox_mode,
-                "docker_image": settings.docker_image,
-                "docker_network": settings.docker_network,
-                "docker_memory_limit": settings.docker_memory_limit,
-                "docker_cpu_limit": str(settings.docker_cpu_limit),
-                "docker_timeout_seconds": str(settings.docker_timeout_seconds),
                 "llm_debug_logging": "true" if settings.llm_debug_logging else "false",
             }
 
@@ -181,13 +163,6 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
             execution_command_whitelist=whitelist,
             sandbox_paths=sandbox_paths,
             sandbox_rules_prompt=get_value("sandbox_rules_prompt"),
-            sandbox_mode=get_value("sandbox_mode", "sandbox"),
-            docker_image=get_value("docker_image", "python:3.11-slim"),
-            docker_network=get_value("docker_network", "none"),
-            docker_memory_limit=get_value("docker_memory_limit", "512m"),
-            docker_cpu_limit=float(get_value("docker_cpu_limit", "1.0")),
-            docker_timeout_seconds=int(
-                get_value("docker_timeout_seconds", "300")),
             llm_debug_logging=llm_debug_logging,
         )
 
