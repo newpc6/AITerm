@@ -266,18 +266,6 @@ export async function getChatMessages(chatId: string, params?: PaginationParams)
   return data.data
 }
 
-export function buildChatStreamUrl(chatId: string, message: string) {
-  const baseUrl = getApiBaseUrl().trim()
-  const eventPath = `/api/v1/chats/${chatId}/stream`
-  const url = baseUrl ? new URL(eventPath, baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`) : new URL(eventPath, window.location.origin)
-  url.searchParams.set('message', message)
-  const token = getAuthToken()
-  if (token) {
-    url.searchParams.set('access_token', token)
-  }
-  return url.toString()
-}
-
 export async function streamChat(
   payload: ChatCreatePayload,
   handlers: {

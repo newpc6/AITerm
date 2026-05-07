@@ -177,34 +177,6 @@ async def create_message(
     return Response(data=message.model_dump())
 
 
-@router.get("/{chat_id}/stream")
-async def continue_stream_chat(
-    chat_id: str,
-    message: str = Query(..., description="用户消息"),
-    orchestrator: ChatOrchestrator = Depends(get_chat_orchestrator)
-):
-    chat = await chat_repo.get_chat(chat_id)
-    if not chat:
-        return Response(code=4040, message="chat not found")
-
-    async def event_generator():
-        async for event in orchestrator.continue_chat(
-            chat_id,
-            message
-        ):
-            yield f"event: {event['event']}\n"
-            yield f"data: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
-
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream; charset=utf-8",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive"
-        }
-    )
-
-
 @router.post("/{chat_id}/confirm")
 async def confirm_execution(
     chat_id: str,
