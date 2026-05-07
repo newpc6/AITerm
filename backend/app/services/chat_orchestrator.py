@@ -426,6 +426,7 @@ class ChatOrchestrator:
             iteration_content = ""
             iteration_reasoning = ""
             iteration_tool_calls = None
+            iteration_usage = {}
             iteration_reasoning_started = False
             iteration_reasoning_duration = 0
             iteration_start_time = datetime.now()
