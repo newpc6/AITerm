@@ -7,7 +7,7 @@ from typing import List, Dict, Any, Optional
 
 from app.repositories.tool import ToolRepository
 from app.models.tool import Tool
-from app.services.workspace_service import WorkspaceService
+from app.services.sandbox_manager import SandboxManager, SandboxMode
 
 logger = logging.getLogger("aiterm")
 
@@ -16,16 +16,16 @@ class ToolService:
     def __init__(self, sandbox_paths: List[str] = None):
         self.tool_repo = ToolRepository()
         self.sandbox_paths = sandbox_paths or []
-        self._workspace_service = None
+        self._sandbox = None
 
     @property
-    def workspace_service(self):
-        if self._workspace_service is None:
+    def sandbox(self):
+        if self._sandbox is None:
             from app.config import get_settings
             settings = get_settings()
             from app.repositories.settings import GlobalSettingsRepository
-            self._workspace_service = WorkspaceService(settings)
-        return self._workspace_service
+            self._sandbox = SandboxManager(settings)
+        return self._sandbox
 
     def validate_path_in_sandbox(self, path: str) -> bool:
         if not self.sandbox_paths:
@@ -42,7 +42,7 @@ class ToolService:
         if not tool.sandbox_only:
             return True, ""
 
-        if self.workspace_service.sandbox_mode == "host":
+        if self.sandbox.mode == SandboxMode.HOST:
             return True, "Host mode: sandbox checks bypassed"
 
         path_keys = ["path", "file_path", "dir_path",

@@ -227,6 +227,12 @@ export type GlobalSettingsData = {
   execution_command_whitelist: string[]
   sandbox_paths: string[]
   sandbox_rules_prompt: string
+  sandbox_mode: string
+  docker_image: string
+  docker_network: string
+  docker_memory_limit: string
+  docker_cpu_limit: number
+  docker_timeout_seconds: number
   llm_debug_logging: boolean
 }
 
@@ -247,6 +253,12 @@ export type GlobalSettingsPayload = {
   execution_command_whitelist?: string[]
   sandbox_paths?: string[]
   sandbox_rules_prompt?: string
+  sandbox_mode?: string
+  docker_image?: string
+  docker_network?: string
+  docker_memory_limit?: string
+  docker_cpu_limit?: number
+  docker_timeout_seconds?: number
   llm_debug_logging?: boolean
 }
 

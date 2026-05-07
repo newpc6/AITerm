@@ -12,7 +12,7 @@ from app.repositories.chat import ChatRepository
 from app.repositories.message import MessageRepository
 from app.services.llm import LLMClient, ExecutePlanner, ExecuteRepairer, ExecuteSummarizer, ExecuteStep
 from app.services.command import execute_command, describe_node, cancel_command
-from app.services.workspace_service import WorkspaceService
+from app.services.sandbox_manager import SandboxManager, SandboxMode
 from app.config import LLMSettings
 
 logger = logging.getLogger("aiterm")
@@ -30,7 +30,7 @@ class ExecuteService:
         self.settings = settings
         self.chat_repo = ChatRepository()
         self.message_repo = MessageRepository()
-        self.workspace_service = WorkspaceService(settings)
+        self.sandbox = SandboxManager(settings)
         self._running_executions: Dict[str, asyncio.Task] = {}
         self._cancelled_executions: set = set()
         self._execution_steps: Dict[str, List[ExecuteStep]] = {}
@@ -112,25 +112,21 @@ class ExecuteService:
         return chat_id in self._cancelled_executions
 
     def _check_command_risk(self, command: str) -> tuple:
-        blacklist = [
-            "rm -rf /", "del /s /q", "format", "mkfs",
-            "dd if=", "> /dev/sd", "shutdown", "reboot",
-            "init 0", "halt", "poweroff"
-        ]
-        for pattern in blacklist:
-            if pattern in command.lower():
-                if self.workspace_service.sandbox_mode != "host":
-                    return True, f"Dangerous command detected: {pattern}"
+        if self.sandbox.mode == SandboxMode.HOST:
+            return False, ""
+        is_dangerous, reason = self.sandbox._check_dangerous_command(command)
+        if is_dangerous:
+            return True, f"Dangerous command detected: {reason}"
         return False, ""
 
     def _check_sandbox_path(self, command: str) -> tuple:
-        if self.workspace_service.sandbox_mode == "host":
-            is_dangerous, reason = self._check_command_risk(command)
+        if self.sandbox.mode == SandboxMode.HOST:
+            is_dangerous, reason = self.sandbox._check_dangerous_command(
+                command)
             if is_dangerous:
                 return False, f"Dangerous in host mode: {reason}"
             return True, ""
-
-        return self.workspace_service._check_paths_in_command(command)
+        return self.sandbox._check_paths_in_command(command)
 
     def _build_llm_settings(self, model_config: ModelConfig) -> LLMSettings:
         return LLMSettings(
