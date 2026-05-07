@@ -845,6 +845,10 @@ export function useChatPage() {
         controller.signal,
       )
 
+      chatStreaming.value = false
+      executeStreaming.value = false
+      chatStreamController = null
+
       await reloadSidebarData()
     } catch (error) {
       if ((error as Error).name === 'AbortError') {
