@@ -58,17 +58,6 @@ class BaseLLMProvider(ABC):
         pass
 
     @abstractmethod
-    def _build_payload(self, messages: List[Dict[str, Any]],
-                       tools: Optional[List[Dict[str, Any]]] = None,
-                       stream: bool = True,
-                       temperature: Optional[float] = None) -> Dict[str, Any]:
-        pass
-
-    @abstractmethod
-    def _parse_stream_chunk(self, data: dict) -> Dict[str, Any]:
-        pass
-
-    @abstractmethod
     async def chat(
         self,
         messages: List[Dict[str, str]],
