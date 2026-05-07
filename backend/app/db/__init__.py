@@ -8,6 +8,10 @@ from app.db.node import NodeModel
 from app.db.tool import ToolModel
 from app.db.file import FileModel
 from app.db.share import ShareModel
+from app.db.sandbox_config import (
+    SandboxConfigModel, SandboxPathModel, SandboxDangerousPatternModel,
+    SandboxCommandBlacklistModel, SandboxCommandWhitelistModel
+)
 import os
 import logging
 from typing import List, Set, Dict, Any, Type
@@ -60,6 +64,11 @@ ALL_MODELS: List[Type[Base]] = [
     ToolModel,
     FileModel,
     ShareModel,
+    SandboxConfigModel,
+    SandboxPathModel,
+    SandboxDangerousPatternModel,
+    SandboxCommandBlacklistModel,
+    SandboxCommandWhitelistModel,
 ]
 
 

@@ -94,6 +94,7 @@ async def ensure_bootstrap_data():
         logger.info("Created default model config")
 
     await ensure_builtin_tools()
+    await ensure_sandbox_config()
 
     async with async_session_maker() as session:
         result = await session.execute(select(AuthSettingsModel))
@@ -179,6 +180,78 @@ async def ensure_builtin_tools():
         logger.info(
             f"Tools bootstrap: {imported_count} imported, {corrected_count} corrected, {skipped_count} already exist"
         )
+
+
+async def ensure_sandbox_config():
+    from datetime import datetime, timezone
+    from sqlalchemy import select, func
+    from app.repositories.sandbox_config import SandboxConfigRepository
+    from app.db.sandbox_config import (
+        SandboxConfigModel, SandboxDangerousPatternModel,
+        SandboxCommandBlacklistModel
+    )
+    from app.db import async_session_maker
+
+    def _now():
+        return datetime.now(timezone.utc).isoformat()
+
+    repo = SandboxConfigRepository()
+    config = await repo.get_config()
+    if not config:
+        await repo.update_config(
+            mode="sandbox", require_confirm=True, max_file_size_mb=100,
+            docker_image="python:3.11-slim", docker_network="none",
+            docker_memory="512m", docker_cpu=1.0, docker_timeout=300,
+            docker_auto_remove=True, updated_by="system"
+        )
+        logger.info("Created default sandbox config")
+
+    async with async_session_maker() as session:
+        result = await session.execute(select(func.count(SandboxDangerousPatternModel.id)))
+        pattern_count = result.scalar() or 0
+        if pattern_count == 0:
+            defaults = [
+                ("rm -rf /", "system-wide deletion", "server"),
+                ("del /s /q C:\\\\", "system-wide deletion", "server"),
+                ("format ", "disk formatting", "server"),
+                ("mkfs.", "filesystem creation", "server"),
+                ("dd if=", "raw disk write", "server"),
+                ("> /dev/sd", "raw disk write", "server"),
+                ("shutdown", "system shutdown", "server"),
+                ("reboot", "system reboot", "server"),
+                ("init 0", "system shutdown", "server"),
+                ("halt", "system halt", "server"),
+                ("poweroff", "power off", "server"),
+                ("chmod 777 /", "permissive root permissions", "server"),
+                (":(){ :|:& };:", "fork bomb", "server"),
+                ("wget -O /etc/", "system config overwrite", "server"),
+                ("curl.*> /etc/", "system config overwrite", "server"),
+            ]
+            now = _now()
+            for pat, desc, scope in defaults:
+                session.add(SandboxDangerousPatternModel(
+                    pattern=pat, description=desc, scope=scope, created_at=now, updated_at=now))
+            await session.commit()
+            logger.info(f"Created {len(defaults)} default dangerous patterns")
+
+        bl_result = await session.execute(select(func.count(SandboxCommandBlacklistModel.id)))
+        bl_count = bl_result.scalar() or 0
+        if bl_count == 0:
+            defaults = [
+                ("rm -rf", "server"),
+                ("shutdown", "server"),
+                ("reboot", "server"),
+                ("format", "server"),
+                ("mkfs", "server"),
+                ("dd", "server"),
+                ("poweroff", "server"),
+            ]
+            now = _now()
+            for cmd, scope in defaults:
+                session.add(SandboxCommandBlacklistModel(
+                    command=cmd, scope=scope, created_at=now, updated_at=now))
+            await session.commit()
+            logger.info(f"Created {len(defaults)} default blacklist entries")
 
 
 @asynccontextmanager

@@ -1,0 +1,25 @@
+@use '@/styles/global.scss';
+
+.tag-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.rule-tag {
+  cursor: default;
+}
+
+.scope-label {
+  font-size: 11px;
+  opacity: 0.7;
+  margin-left: 2px;
+}
+
+.tag-hint,
+.form-item-hint {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  margin-top: 4px;
+}

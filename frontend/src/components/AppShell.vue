@@ -27,6 +27,7 @@ const systemConfigLinks = [
   { to: '/global-settings', label: '全局配置' },
   { to: '/nodes', label: '节点管理' },
   { to: '/tools', label: '工具管理' },
+  { to: '/sandbox', label: '沙盒配置', adminOnly: true },
 ]
 
 const showShell = computed(() => route.path !== '/login' && !route.path.match(/^\/share\/[^/]+$/))

@@ -10,6 +10,7 @@ from app.repositories.chat import ChatRepository
 from app.repositories.message import MessageRepository
 from app.services.llm import ChatService, LLMClient
 from app.services.tool_service import ToolService
+from app.services.sandbox_manager import SandboxManager
 from app.services.langchain import get_skill_registry
 from app.utils import now_iso
 
@@ -34,9 +35,10 @@ class ChatOrchestrator:
         self.model_repo = model_repo
         self.execute_service = execute_service
         self.settings = settings
+        self.sandbox = SandboxManager()
         self.chat_repo = ChatRepository()
         self.message_repo = MessageRepository()
-        self.tool_service = ToolService(sandbox_paths=settings.sandbox_paths)
+        self.tool_service = ToolService(sandbox_paths=self.sandbox.base_paths)
 
     async def create_conversation(
         self,
@@ -334,14 +336,14 @@ class ChatOrchestrator:
             tool_info = "\n".join(tool_info_list)
             system_prompt += f"\n\n你可以使用以下工具来获取信息或执行操作：\n{tool_info}\n\n当用户问题需要使用这些工具时，请直接调用工具，不要只是思考或提及工具。"
 
-        sandbox_paths = self.settings.sandbox_paths or []
+        sandbox_paths = self.sandbox.base_paths
         if sandbox_paths:
             sandbox_paths_str = ", ".join(sandbox_paths)
-            sandbox_prompt = self.settings.sandbox_rules_prompt or ""
+            sandbox_prompt = await self.sandbox.get_rules_prompt()
             sandbox_prompt = sandbox_prompt.replace(
                 "{{sandbox_paths}}", sandbox_paths_str)
             system_prompt += f"\n\n{sandbox_prompt}"
-            system_prompt += "\n\n当前chat_id: " + chat_id + "\n"
+            system_prompt += f"\n\n当前chat_id: {chat_id}\n"
 
         messages = [
             {"role": "system", "content": system_prompt}]
@@ -714,9 +716,9 @@ class ChatOrchestrator:
             self.settings.chat_system_prompt or "你是一个中文AI助手"
         )
 
-        sandbox_paths = self.settings.sandbox_paths or []
+        sandbox_paths = self.sandbox.base_paths
         if sandbox_paths:
-            sandbox_prompt = self.settings.sandbox_rules_prompt or ""
+            sandbox_prompt = await self.sandbox.get_rules_prompt()
             sandbox_prompt = sandbox_prompt.replace(
                 "{{sandbox_paths}}", ", ".join(sandbox_paths))
             skill_prompt += f"\n\n{sandbox_prompt}"

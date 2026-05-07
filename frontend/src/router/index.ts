@@ -19,6 +19,7 @@ const router = createRouter({
     { path: '/models', component: () => import('@/views/models'), meta: { adminOnly: true } },
     { path: '/global-settings', component: () => import('@/views/global-settings'), meta: { adminOnly: true } },
     { path: '/tools', component: () => import('@/views/tools/index.vue'), meta: { adminOnly: true } },
+    { path: '/sandbox', component: () => import('@/views/sandbox'), meta: { adminOnly: true } },
   ],
 })
 

@@ -30,7 +30,7 @@ class ExecuteService:
         self.settings = settings
         self.chat_repo = ChatRepository()
         self.message_repo = MessageRepository()
-        self.sandbox = SandboxManager(settings)
+        self.sandbox = SandboxManager()
         self._running_executions: Dict[str, asyncio.Task] = {}
         self._cancelled_executions: set = set()
         self._execution_steps: Dict[str, List[ExecuteStep]] = {}
@@ -111,22 +111,23 @@ class ExecuteService:
     def _is_cancelled(self, chat_id: str) -> bool:
         return chat_id in self._cancelled_executions
 
-    def _check_command_risk(self, command: str) -> tuple:
-        if self.sandbox.mode == SandboxMode.HOST:
+    async def _check_command_risk(self, command: str) -> tuple:
+        mode = self.sandbox.mode_sync()
+        if mode == SandboxMode.HOST:
             return False, ""
-        is_dangerous, reason = self.sandbox._check_dangerous_command(command)
+        is_dangerous, reason = await self.sandbox._check_dangerous(command)
         if is_dangerous:
             return True, f"Dangerous command detected: {reason}"
         return False, ""
 
-    def _check_sandbox_path(self, command: str) -> tuple:
-        if self.sandbox.mode == SandboxMode.HOST:
-            is_dangerous, reason = self.sandbox._check_dangerous_command(
-                command)
+    async def _check_sandbox_path(self, command: str) -> tuple:
+        mode = self.sandbox.mode_sync()
+        if mode == SandboxMode.HOST:
+            is_dangerous, reason = await self.sandbox._check_dangerous(command)
             if is_dangerous:
                 return False, f"Dangerous in host mode: {reason}"
             return True, ""
-        return self.sandbox._check_paths_in_command(command)
+        return await self.sandbox._check_paths_in_command(command)
 
     def _build_llm_settings(self, model_config: ModelConfig) -> LLMSettings:
         return LLMSettings(
@@ -135,7 +136,7 @@ class ExecuteService:
             model=model_config.model,
             temperature=model_config.temperature,
             extra_params=model_config.extra_params or {},
-            sandbox_paths=getattr(self.settings, 'sandbox_paths', []) or []
+            sandbox_paths=self.sandbox.base_paths
         )
 
     async def stop_execution(self, chat_id: str) -> Optional[Chat]:
@@ -279,7 +280,7 @@ class ExecuteService:
 
         blacklist_risks = []
         for step in steps:
-            is_risky, risk_msg = self._check_command_risk(step.command)
+            is_risky, risk_msg = await self._check_command_risk(step.command)
             if is_risky:
                 blacklist_risks.append(risk_msg)
 
@@ -342,7 +343,7 @@ class ExecuteService:
             if not step.command.strip():
                 continue
 
-            sandbox_ok, sandbox_error = self._check_sandbox_path(step.command)
+            sandbox_ok, sandbox_error = await self._check_sandbox_path(step.command)
             if not sandbox_ok:
                 step.status = "failed"
                 steps[index] = step

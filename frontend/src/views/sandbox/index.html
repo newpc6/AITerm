@@ -1,0 +1,221 @@
+<section class="page">
+  <div class="hero">
+    <p class="label">安全</p>
+    <h1>沙盒和安全配置</h1>
+    <p>配置命令执行隔离模式、危险命令检测、Docker 容器等安全策略。仅管理员可操作。</p>
+  </div>
+
+  <el-form v-loading="loading" label-position="top">
+    <div class="card" style="margin-bottom: 20px">
+      <div class="card-header">
+        <p class="label">基本配置</p>
+      </div>
+
+      <el-form-item label="沙盒模式">
+        <el-select v-model="form.mode" :disabled="loading || saving" style="width: 320px">
+          <el-option label="sandbox - 路径限制（轻量，单机推荐）" value="sandbox" />
+          <el-option label="host - 直接执行（管理员专用，危险命令弹确认）" value="host" />
+          <el-option label="docker - 容器隔离（多用户生产环境推荐）" value="docker" />
+        </el-select>
+        <div class="form-item-hint">sandbox 通过路径白名单限制文件访问；host 直接操作宿主机；docker 为每个用户启动独立容器</div>
+      </el-form-item>
+
+      <el-form-item label="危险命令需确认">
+        <el-switch v-model="form.require_confirm" :disabled="loading || saving" active-text="开启" inactive-text="关闭" />
+        <div class="form-item-hint">检测到危险命令时是否需要用户手动确认</div>
+      </el-form-item>
+
+      <el-form-item label="最大文件大小 (MB)">
+        <el-input-number v-model="form.max_file_size_mb" :min="1" :max="10240" :step="10" :disabled="loading || saving" />
+        <div class="form-item-hint">单文件最大读取/写入大小限制</div>
+      </el-form-item>
+    </div>
+
+    <div class="card" style="margin-bottom: 20px">
+      <div class="card-header">
+        <p class="label">沙盒路径</p>
+      </div>
+
+      <el-form-item label="允许路径">
+        <div class="tag-container">
+          <el-tag v-for="(item, index) in paths" :key="item.id" type="warning" closable
+            :disable-transitions="false" @close="handleDeletePath(item.id)" class="rule-tag">
+            {{ item.path }}
+          </el-tag>
+          <el-button size="small" type="primary" plain @click="showPathDialog = true" :disabled="loading || saving">
+            + 添加
+          </el-button>
+        </div>
+        <div class="tag-hint">所有文件读写操作必须在这些路径内（host 模式除外）</div>
+      </el-form-item>
+
+      <el-form-item label="规则提示词">
+        <el-input v-model="form.rules_prompt" type="textarea" :rows="6" resize="vertical"
+          placeholder="沙盒规则提示词模板，可用 {{sandbox_paths}} 占位符" :disabled="loading || saving" />
+      </el-form-item>
+    </div>
+
+    <div class="card" style="margin-bottom: 20px">
+      <div class="card-header">
+        <p class="label">危险命令模式</p>
+        <el-button size="small" type="primary" plain @click="openPatternDialog()" :disabled="loading || saving">添加</el-button>
+      </div>
+
+      <el-table :data="dangerousPatterns" size="small">
+        <el-table-column prop="pattern" label="匹配模式" min-width="180" />
+        <el-table-column prop="description" label="描述" min-width="200" />
+        <el-table-column label="作用范围" width="100">
+          <template #default="{ row }">
+            <el-tag :type="row.scope === 'server' ? 'danger' : 'warning'" size="small">{{ row.scope === 'server' ? '全局' : '沙盒' }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="140">
+          <template #default="{ row }">
+            <el-button type="primary" link size="small" @click="openPatternDialog(row)">编辑</el-button>
+            <el-button type="danger" link size="small" @click="handleDeletePattern(row.id)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </div>
+
+    <div class="card" style="margin-bottom: 20px">
+      <div class="card-header">
+        <p class="label">命令黑名单</p>
+        <el-button size="small" type="danger" plain @click="openBlacklistDialog()" :disabled="loading || saving">添加</el-button>
+      </div>
+
+      <div class="tag-container">
+        <el-tag v-for="item in blacklist" :key="item.id" type="danger" closable
+          :disable-transitions="false" @close="handleDeleteBlacklist(item.id)" class="rule-tag">
+          {{ item.command }}
+          <span class="scope-label">({{ item.scope === 'server' ? '全局' : '沙盒' }})</span>
+        </el-tag>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom: 20px">
+      <div class="card-header">
+        <p class="label">命令白名单</p>
+        <el-button size="small" type="success" plain @click="openWhitelistDialog()" :disabled="loading || saving">添加</el-button>
+      </div>
+
+      <div class="tag-container">
+        <el-tag v-for="item in whitelist" :key="item.id" type="success" closable
+          :disable-transitions="false" @close="handleDeleteWhitelist(item.id)" class="rule-tag">
+          {{ item.command }}
+          <span class="scope-label">({{ item.scope === 'server' ? '全局' : '沙盒' }})</span>
+        </el-tag>
+      </div>
+    </div>
+
+    <template v-if="form.mode === 'docker'">
+      <div class="card" style="margin-bottom: 20px">
+        <div class="card-header">
+          <p class="label">Docker 容器配置</p>
+        </div>
+
+        <el-form-item label="Docker 镜像">
+          <el-input v-model="form.docker_image" placeholder="python:3.11-slim" :disabled="loading || saving" style="width: 300px" />
+        </el-form-item>
+
+        <el-form-item label="网络模式">
+          <el-select v-model="form.docker_network" :disabled="loading || saving" style="width: 200px">
+            <el-option label="none - 无网络（最安全）" value="none" />
+            <el-option label="bridge - 可访问网络" value="bridge" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="内存限制">
+          <el-input v-model="form.docker_memory" placeholder="512m" :disabled="loading || saving" style="width: 200px" />
+        </el-form-item>
+
+        <el-form-item label="CPU 限制（核）">
+          <el-input-number v-model="form.docker_cpu" :min="0.1" :max="16" :step="0.5" :disabled="loading || saving" />
+        </el-form-item>
+
+        <el-form-item label="命令超时（秒）">
+          <el-input-number v-model="form.docker_timeout" :min="10" :max="3600" :step="10" :disabled="loading || saving" />
+        </el-form-item>
+
+        <el-form-item label="自动清理容器">
+          <el-switch v-model="form.docker_auto_remove" :disabled="loading || saving" active-text="开启" inactive-text="关闭" />
+          <div class="form-item-hint">用户登出时自动删除 Docker 容器和 workspace</div>
+        </el-form-item>
+      </div>
+    </template>
+
+    <div class="form-actions">
+      <el-button :disabled="loading || saving" @click="resetForm">重置</el-button>
+      <el-button type="primary" :loading="saving" @click="saveSettings">保存配置</el-button>
+    </div>
+  </el-form>
+
+  <el-dialog v-model="showPathDialog" title="添加沙盒路径" width="500px">
+    <el-form @submit.prevent="handleAddPath">
+      <el-form-item label="路径">
+        <el-input v-model="newPath" placeholder="I:\sandbox 或 /data/sandbox" @keyup.enter="handleAddPath" autofocus />
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showPathDialog = false">取消</el-button>
+      <el-button type="primary" @click="handleAddPath">添加</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="showPatternDialog" :title="editingPatternId ? '编辑危险命令模式' : '添加危险命令模式'" width="500px">
+    <el-form @submit.prevent="handleSavePattern">
+      <el-form-item label="匹配模式">
+        <el-input v-model="patternForm.pattern" placeholder="rm -rf /" autofocus />
+      </el-form-item>
+      <el-form-item label="描述">
+        <el-input v-model="patternForm.description" placeholder="系统级删除" />
+      </el-form-item>
+      <el-form-item label="作用范围">
+        <el-select v-model="patternForm.scope" style="width: 200px">
+          <el-option label="server - 全局生效" value="server" />
+          <el-option label="sandbox - 仅沙盒模式" value="sandbox" />
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showPatternDialog = false">取消</el-button>
+      <el-button type="primary" @click="handleSavePattern">{{ editingPatternId ? '保存' : '添加' }}</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="showBlacklistDialog" :title="editingBlacklistId ? '编辑黑名单' : '添加黑名单'" width="450px">
+    <el-form @submit.prevent="handleSaveBlacklist">
+      <el-form-item label="命令">
+        <el-input v-model="blacklistForm.command" placeholder="shutdown" autofocus />
+      </el-form-item>
+      <el-form-item label="作用范围">
+        <el-select v-model="blacklistForm.scope" style="width: 200px">
+          <el-option label="server - 全局生效" value="server" />
+          <el-option label="sandbox - 仅沙盒模式" value="sandbox" />
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showBlacklistDialog = false">取消</el-button>
+      <el-button type="primary" @click="handleSaveBlacklist">{{ editingBlacklistId ? '保存' : '添加' }}</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="showWhitelistDialog" :title="editingWhitelistId ? '编辑白名单' : '添加白名单'" width="450px">
+    <el-form @submit.prevent="handleSaveWhitelist">
+      <el-form-item label="命令">
+        <el-input v-model="whitelistForm.command" placeholder="ls" autofocus />
+      </el-form-item>
+      <el-form-item label="作用范围">
+        <el-select v-model="whitelistForm.scope" style="width: 200px">
+          <el-option label="server - 全局生效" value="server" />
+          <el-option label="sandbox - 仅沙盒模式" value="sandbox" />
+        </el-select>
+      </el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="showWhitelistDialog = false">取消</el-button>
+      <el-button type="primary" @click="handleSaveWhitelist">{{ editingWhitelistId ? '保存' : '添加' }}</el-button>
+    </template>
+  </el-dialog>
+</section>

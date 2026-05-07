@@ -42,7 +42,7 @@ class ToolService:
         if not tool.sandbox_only:
             return True, ""
 
-        if self.sandbox.mode == SandboxMode.HOST:
+        if self.sandbox.mode_sync() == SandboxMode.HOST:
             return True, "Host mode: sandbox checks bypassed"
 
         path_keys = ["path", "file_path", "dir_path",

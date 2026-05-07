@@ -262,6 +262,79 @@ export type GlobalSettingsPayload = {
   llm_debug_logging?: boolean
 }
 
+export type SandboxConfigData = {
+  id: string
+  mode: string
+  rules_prompt: string
+  require_confirm: boolean
+  max_file_size_mb: number
+  docker_image: string
+  docker_network: string
+  docker_memory: string
+  docker_cpu: number
+  docker_timeout: number
+  docker_auto_remove: boolean
+  updated_by?: string
+  created_at: string
+  updated_at: string
+}
+
+export type SandboxConfigUpdate = {
+  mode?: string
+  rules_prompt?: string
+  require_confirm?: boolean
+  max_file_size_mb?: number
+  docker_image?: string
+  docker_network?: string
+  docker_memory?: string
+  docker_cpu?: number
+  docker_timeout?: number
+  docker_auto_remove?: boolean
+}
+
+export type SandboxPath = {
+  id: string
+  path: string
+  created_at: string
+  updated_at: string
+}
+
+export type SandboxDangerousPattern = {
+  id: string
+  pattern: string
+  description: string
+  scope: string
+  created_at: string
+  updated_at: string
+}
+
+export type SandboxDangerousPatternPayload = {
+  pattern: string
+  description?: string
+  scope?: string
+}
+
+export type SandboxCommandItem = {
+  id: string
+  command: string
+  scope: string
+  created_at: string
+  updated_at: string
+}
+
+export type SandboxCommandPayload = {
+  command: string
+  scope?: string
+}
+
+export type SandboxFullConfig = {
+  config: SandboxConfigData
+  paths: SandboxPath[]
+  dangerous_patterns: SandboxDangerousPattern[]
+  command_blacklist: SandboxCommandItem[]
+  command_whitelist: SandboxCommandItem[]
+}
+
 export type AuthSettingsData = {
   enabled: boolean
   allow_password_login: boolean

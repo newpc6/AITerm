@@ -37,6 +37,13 @@ import type {
   UserResetPasswordPayload,
   UserUpdatePayload,
   PaginatedData,
+  SandboxFullConfig,
+  SandboxConfigUpdate,
+  SandboxPath,
+  SandboxDangerousPattern,
+  SandboxDangerousPatternPayload,
+  SandboxCommandItem,
+  SandboxCommandPayload,
 } from '@/types/api'
 
 export type PaginationParams = {
@@ -834,5 +841,70 @@ export async function listShares(page: number = 1, pageSize: number = 20) {
 
 export async function batchDeleteShares(shareIds: string[]) {
   const { data } = await http.post<ApiResponse<{ deleted_count: number }>>('/api/v1/shares/batch-delete', shareIds)
+  return data.data
+}
+
+export async function getSandboxConfig() {
+  const { data } = await http.get<ApiResponse<SandboxFullConfig>>('/api/v1/sandbox/config')
+  return data.data
+}
+
+export async function updateSandboxConfig(payload: SandboxConfigUpdate) {
+  const { data } = await http.put<ApiResponse<{ id: string }>>('/api/v1/sandbox/config', payload)
+  return data.data
+}
+
+export async function addSandboxPath(path: string) {
+  const { data } = await http.post<ApiResponse<SandboxPath>>('/api/v1/sandbox/paths', { path })
+  return data.data
+}
+
+export async function deleteSandboxPath(pathId: string) {
+  const { data } = await http.delete<ApiResponse<{ status: string }>>(`/api/v1/sandbox/paths/${pathId}`)
+  return data.data
+}
+
+export async function addDangerousPattern(payload: SandboxDangerousPatternPayload) {
+  const { data } = await http.post<ApiResponse<SandboxDangerousPattern>>('/api/v1/sandbox/dangerous-patterns', payload)
+  return data.data
+}
+
+export async function updateDangerousPattern(patternId: string, payload: SandboxDangerousPatternPayload) {
+  const { data } = await http.put<ApiResponse<SandboxDangerousPattern>>(`/api/v1/sandbox/dangerous-patterns/${patternId}`, payload)
+  return data.data
+}
+
+export async function deleteDangerousPattern(patternId: string) {
+  const { data } = await http.delete<ApiResponse<{ status: string }>>(`/api/v1/sandbox/dangerous-patterns/${patternId}`)
+  return data.data
+}
+
+export async function addBlacklistItem(payload: SandboxCommandPayload) {
+  const { data } = await http.post<ApiResponse<SandboxCommandItem>>('/api/v1/sandbox/blacklist', payload)
+  return data.data
+}
+
+export async function updateBlacklistItem(itemId: string, payload: SandboxCommandPayload) {
+  const { data } = await http.put<ApiResponse<SandboxCommandItem>>(`/api/v1/sandbox/blacklist/${itemId}`, payload)
+  return data.data
+}
+
+export async function deleteBlacklistItem(itemId: string) {
+  const { data } = await http.delete<ApiResponse<{ status: string }>>(`/api/v1/sandbox/blacklist/${itemId}`)
+  return data.data
+}
+
+export async function addWhitelistItem(payload: SandboxCommandPayload) {
+  const { data } = await http.post<ApiResponse<SandboxCommandItem>>('/api/v1/sandbox/whitelist', payload)
+  return data.data
+}
+
+export async function updateWhitelistItem(itemId: string, payload: SandboxCommandPayload) {
+  const { data } = await http.put<ApiResponse<SandboxCommandItem>>(`/api/v1/sandbox/whitelist/${itemId}`, payload)
+  return data.data
+}
+
+export async function deleteWhitelistItem(itemId: string) {
+  const { data } = await http.delete<ApiResponse<{ status: string }>>(`/api/v1/sandbox/whitelist/${itemId}`)
   return data.data
 }
