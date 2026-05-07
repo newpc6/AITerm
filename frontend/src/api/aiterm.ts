@@ -711,6 +711,101 @@ export async function importTemplates(toolIds: string[]) {
   return data.data
 }
 
+export async function getAgents() {
+  const { data } = await http.get<ApiResponse<import('@/types/api').AgentItem[]>>('/api/v1/agents')
+  return data.data
+}
+
+export async function createAgent(payload: import('@/types/api').AgentPayload) {
+  const { data } = await http.post<ApiResponse<import('@/types/api').AgentItem>>('/api/v1/agents', payload)
+  return data.data
+}
+
+export async function updateAgent(agentId: string, payload: import('@/types/api').AgentPayload) {
+  const { data } = await http.put<ApiResponse<import('@/types/api').AgentItem>>(`/api/v1/agents/${agentId}`, payload)
+  return data.data
+}
+
+export async function deleteAgent(agentId: string) {
+  const { data } = await http.delete<ApiResponse<{ status: string }>>(`/api/v1/agents/${agentId}`)
+  return data.data
+}
+
+export async function cloneAgent(agentId: string) {
+  const { data } = await http.post<ApiResponse<import('@/types/api').AgentItem>>(`/api/v1/agents/${agentId}/clone`)
+  return data.data
+}
+
+export async function setDefaultAgent(agentId: string) {
+  const { data } = await http.post<ApiResponse<{ status: string }>>(`/api/v1/agents/${agentId}/default`)
+  return data.data
+}
+
+export async function runAgentWorkbench(payload: import('@/types/api').AgentWorkbenchRequest, onEvent: (event: string, data: Record<string, unknown>) => void, signal?: AbortSignal) {
+  const response = await fetch(`${getApiBaseUrl()}/api/v1/agents/workbench/run`, {
+    method: 'POST',
+    signal,
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: getAuthToken() ? `Bearer ${getAuthToken()}` : '',
+    },
+    body: JSON.stringify(payload),
+  })
+
+  if (!response.ok || !response.body) {
+    throw new Error(`HTTP ${response.status}`)
+  }
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  let currentEvent = ''
+  let dataLines: string[] = []
+
+  const flushEvent = () => {
+    const data = dataLines.join('\n').trim()
+    dataLines = []
+    if (!data) {
+      currentEvent = ''
+      return
+    }
+    try {
+      const parsed = JSON.parse(data) as Record<string, unknown>
+      onEvent(currentEvent, parsed)
+    } catch {
+      /* skip malformed */
+    }
+    currentEvent = ''
+  }
+
+  while (true) {
+    const { done, value } = await reader.read()
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done })
+
+    let boundaryIndex = buffer.indexOf('\n')
+    while (boundaryIndex >= 0) {
+      const line = buffer.slice(0, boundaryIndex).replace(/\r$/, '')
+      buffer = buffer.slice(boundaryIndex + 1)
+      if (!line.trim()) {
+        flushEvent()
+      } else if (line.startsWith('event:')) {
+        currentEvent = line.slice(6).trim()
+      } else if (line.startsWith('data:')) {
+        dataLines.push(line.slice(5).trim())
+      }
+      boundaryIndex = buffer.indexOf('\n')
+    }
+
+    if (done) {
+      if (buffer.trim() && buffer.trim().startsWith('data:')) {
+        dataLines.push(buffer.trim().slice(5).trim())
+      }
+      flushEvent()
+      break
+    }
+  }
+}
+
 export interface FileItem {
   id: string
   uuid: string

@@ -323,6 +323,49 @@ export type SandboxFullConfig = {
   command_whitelist: SandboxCommandItem[]
 }
 
+export type AgentItem = {
+  id: string
+  user_id: string
+  name: string
+  description: string
+  icon: string
+  model_id?: string
+  model_name?: string
+  skill_ids: number[]
+  system_prompt: string
+  temperature: number
+  max_iterations: number
+  extra_body_json: string
+  is_default: boolean
+  is_public: boolean
+  is_template: boolean
+  scope: string
+  team_id?: string
+  created_at: string
+  updated_at: string
+}
+
+export type AgentPayload = {
+  name: string
+  description?: string
+  icon?: string
+  model_id?: string
+  skill_ids?: number[]
+  system_prompt?: string
+  temperature?: number
+  max_iterations?: number
+  extra_body_json?: string
+  is_public?: boolean
+  is_template?: boolean
+  scope?: string
+}
+
+export type AgentWorkbenchRequest = {
+  agent_ids: string[]
+  message: string
+  node_id?: string
+}
+
 export type AuthSettingsData = {
   enabled: boolean
   allow_password_login: boolean

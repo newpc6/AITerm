@@ -1,0 +1,74 @@
+<section class="page">
+  <div class="hero">
+    <p class="label">AI 对话</p>
+    <h1>智能体工作台</h1>
+    <p>勾选多个智能体，输入消息后全部并行执行，实时查看过程和对比结果。</p>
+  </div>
+
+  <div class="card" style="margin-bottom: 16px">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
+      <span class="label">选择智能体 ({{ selectedAgentIds.length }}/{{ agents.length }})</span>
+      <el-button size="small" link @click="selectAll">{{ selectedAgentIds.length === agents.length ? '取消全选' : '全选' }}</el-button>
+    </div>
+    <div style="display: flex; flex-wrap: wrap; gap: 8px">
+      <el-checkbox
+        v-for="agent in agents"
+        :key="agent.id"
+        :model-value="selectedAgentIds.includes(agent.id)"
+        :label="`${agent.name} (${agent.model_name || '无模型'})`"
+        :disabled="running"
+        @change="toggleAgent(agent.id)"
+        style="margin-right: 0"
+      />
+    </div>
+    <div style="display: flex; gap: 12px; margin-top: 12px">
+      <el-input v-model="message" type="textarea" :rows="3" placeholder="输入统一消息，将发送给所有选中的智能体..." :disabled="running" style="flex: 1" />
+      <div style="display: flex; flex-direction: column; gap: 8px; justify-content: flex-end">
+        <el-button v-if="!running" type="primary" size="large" :disabled="!message.trim() || selectedAgentIds.length === 0" @click="start">🚀 全部执行</el-button>
+        <el-button v-else type="danger" size="large" @click="stop">⏹ 停止</el-button>
+      </div>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px">
+    <div v-for="run in runs" :key="run.agentId" class="card" :style="{ borderColor: run.status === 'running' ? 'var(--color-accent-primary)' : run.status === 'error' ? 'var(--color-danger)' : 'transparent' }">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
+        <div>
+          <span style="font-weight: 600">{{ run.agentName }}</span>
+          <span style="font-size: 12px; color: var(--color-text-muted); margin-left: 8px">{{ run.modelName || '无模型' }}</span>
+        </div>
+        <div>
+          <el-tag v-if="run.status === 'idle'" type="info" size="small">等待</el-tag>
+          <el-tag v-else-if="run.status === 'running'" type="primary" size="small">执行中</el-tag>
+          <el-tag v-else-if="run.status === 'done'" type="success" size="small">已完成</el-tag>
+          <el-tag v-else type="danger" size="small">错误</el-tag>
+        </div>
+      </div>
+
+      <div v-if="run.toolCalls.length > 0" style="margin-bottom: 8px; padding: 8px; background: var(--color-bg-input); border-radius: 6px; font-size: 12px">
+        <div v-for="(tc, i) in run.toolCalls" :key="i" style="margin-bottom: 4px">
+          <span style="color: var(--color-accent-secondary)">🔧 {{ tc.tool }}</span>
+          <span style="color: var(--color-text-muted)">({{ Object.entries(tc.args).map(([k,v]) => `${k}: ${v}`).join(', ') }})</span>
+        </div>
+      </div>
+
+      <div v-if="run.status === 'running' || run.status === 'done'" style="padding: 8px; background: var(--color-bg-input); border-radius: 6px; min-height: 60px; max-height: 300px; overflow-y: auto; font-size: 13px; white-space: pre-wrap; word-break: break-word">
+        {{ run.reply || run.delta || '等待响应...' }}
+      </div>
+
+      <div v-if="run.status === 'error'" style="color: var(--color-danger); font-size: 13px; padding: 8px">
+        {{ run.error || '执行出错' }}
+      </div>
+
+      <div v-if="run.status === 'idle'" style="text-align: center; padding: 32px; color: var(--color-text-muted)">
+        等待执行...
+      </div>
+    </div>
+
+    <div v-if="runs.length === 0" style="grid-column: 1/-1; padding: 60px; text-align: center; color: var(--color-text-muted)">
+      <div style="font-size: 40px; margin-bottom: 12px">🤖</div>
+      <div>选择上方智能体并输入消息后点击执行</div>
+      <div style="font-size: 12px; margin-top: 4px">多个智能体会并行执行，结果实时展示</div>
+    </div>
+  </div>
+</section>

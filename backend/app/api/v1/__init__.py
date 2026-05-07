@@ -11,6 +11,7 @@ from .files import router as files_router
 from .shares import router as shares_router
 from .skills import router as skills_router
 from .sandbox import router as sandbox_router
+from .agents import router as agents_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -26,5 +27,6 @@ api_router.include_router(files_router)
 api_router.include_router(shares_router)
 api_router.include_router(skills_router)
 api_router.include_router(sandbox_router)
+api_router.include_router(agents_router)
 
 __all__ = ["api_router"]

@@ -12,14 +12,14 @@ const router = createRouter({
 
     // AI 对话
     { path: '/chat', component: () => import('@/views/chat') },
-    { path: '/agents/workbench', component: () => import('@/views/placeholders/workbench') },
+    { path: '/agents/workbench', component: () => import('@/views/agents/workbench') },
     { path: '/history', component: () => import('@/views/history') },
     { path: '/terminal', component: () => import('@/views/terminal') },
     { path: '/shares', component: () => import('@/views/shares/index.vue') },
 
     // 工作空间
     { path: '/workspace/files', component: () => import('@/views/placeholders/workspace') },
-    { path: '/workspace/agents', component: () => import('@/views/placeholders/workspace') },
+    { path: '/workspace/agents', component: () => import('@/views/agents') },
     { path: '/workspace/skills', component: () => import('@/views/placeholders/workspace') },
     { path: '/workspace/scheduler', component: () => import('@/views/placeholders/workspace') },
     { path: '/workspace/models', component: () => import('@/views/models') },

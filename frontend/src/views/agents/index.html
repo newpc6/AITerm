@@ -1,0 +1,97 @@
+<section class="page">
+  <div class="hero">
+    <p class="label">工作空间</p>
+    <h1>智能体管理</h1>
+    <p>创建和管理智能体，绑定模型、技能和系统提示词。</p>
+  </div>
+
+  <div class="card">
+    <div class="page-header">
+      <div>
+        <el-radio-group v-model="filterScope" size="small" @change="applyFilter">
+          <el-radio-button value="my">我的</el-radio-button>
+          <el-radio-button value="public">公共</el-radio-button>
+          <el-radio-button value="template">模板</el-radio-button>
+          <el-radio-button value="all">全部</el-radio-button>
+        </el-radio-group>
+      </div>
+      <el-button type="primary" @click="openCreate">新建智能体</el-button>
+    </div>
+
+    <div v-loading="loading" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-top: 16px">
+      <div v-for="agent in filteredAgents" :key="agent.id" class="card card--interactive" style="padding: 16px">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px">
+          <div>
+            <div style="font-weight: 600; font-size: 15px">{{ agent.name }}</div>
+            <div style="font-size: 12px; color: var(--color-text-muted); margin-top: 2px">
+              {{ agent.model_name || '未绑定模型' }} · 迭代 {{ agent.max_iterations }}
+            </div>
+          </div>
+          <div style="display: flex; gap: 4px">
+            <el-tag v-if="agent.is_default" type="success" size="small">默认</el-tag>
+            <el-tag v-if="agent.is_template" type="warning" size="small">模板</el-tag>
+            <el-tag v-if="agent.is_public" type="primary" size="small">公共</el-tag>
+          </div>
+        </div>
+        <div style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 12px; min-height: 36px">
+          {{ agent.description || '暂无描述' }}
+        </div>
+        <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px">
+          <el-tag v-for="sid in agent.skill_ids.slice(0,5)" :key="sid" size="small" type="info">技能#{{ sid }}</el-tag>
+          <span v-if="agent.skill_ids.length === 0" style="font-size:11px;color:var(--color-text-muted)">无技能</span>
+        </div>
+        <div style="display: flex; gap: 8px; border-top: 1px solid var(--color-border-primary); padding-top: 8px">
+          <el-button size="small" link type="primary" @click="openEdit(agent)">编辑</el-button>
+          <el-button size="small" link type="primary" @click="handleClone(agent.id)">克隆</el-button>
+          <el-button v-if="!agent.is_default" size="small" link @click="handleSetDefault(agent.id)">设为默认</el-button>
+          <el-button size="small" link type="danger" @click="handleDelete(agent.id)">删除</el-button>
+        </div>
+      </div>
+      <div v-if="filteredAgents.length === 0 && !loading" style="grid-column: 1/-1; padding: 40px; text-align: center; color: var(--color-text-muted)">
+        暂无智能体，点击"新建智能体"创建
+      </div>
+    </div>
+  </div>
+
+  <el-dialog v-model="dialogVisible" :title="dialogTitle" width="60%" top="5vh" :close-on-click-modal="false" destroy-on-close>
+    <el-form label-position="top">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px">
+        <el-form-item label="智能体名称">
+          <el-input v-model="form.name" placeholder="例如：代码助手" :disabled="saving" />
+        </el-form-item>
+        <el-form-item label="绑定模型">
+          <el-select v-model="form.model_id" :disabled="saving" style="width: 100%">
+            <el-option v-for="m in models" :key="m.id" :label="`${m.name} (${m.model})`" :value="m.id" />
+          </el-select>
+        </el-form-item>
+      </div>
+      <el-form-item label="描述">
+        <el-input v-model="form.description" placeholder="智能体用途说明" :disabled="saving" />
+      </el-form-item>
+      <el-form-item label="系统提示词">
+        <el-input v-model="form.system_prompt" type="textarea" :rows="6" resize="vertical" :disabled="saving"
+          placeholder="你是一个专业的代码助手..." />
+      </el-form-item>
+      <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px">
+        <el-form-item label="温度">
+          <el-input-number v-model="form.temperature" :min="0" :max="2" :step="0.1" :disabled="saving" />
+        </el-form-item>
+        <el-form-item label="最大迭代">
+          <el-input-number v-model="form.max_iterations" :min="1" :max="50" :step="1" :disabled="saving" />
+        </el-form-item>
+      </div>
+      <div style="display: flex; gap: 16px">
+        <el-form-item label="公共可见">
+          <el-switch v-model="form.is_public" :disabled="saving" />
+        </el-form-item>
+        <el-form-item label="模板">
+          <el-switch v-model="form.is_template" :disabled="saving" />
+        </el-form-item>
+      </div>
+    </el-form>
+    <template #footer>
+      <el-button @click="dialogVisible = false">取消</el-button>
+      <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
+    </template>
+  </el-dialog>
+</section>
