@@ -328,7 +328,7 @@ onMounted(() => {
     <div class="hero">
       <p class="label">工具</p>
       <h1>工具管理</h1>
-      <p>管理自定义工具，支持大模型调用工具获取信息或执行操作。</p>
+      <p>管理系统工具。内置核心工具（文件读写、命令执行、获取时间等）会自动注册且不可删除，可禁用。</p>
     </div>
 
     <el-alert v-if="errorMessage" :title="errorMessage" type="warning" show-icon :closable="false" />
@@ -342,7 +342,7 @@ onMounted(() => {
         </div>
         <div class="page-header__actions">
           <el-button :loading="loading" @click="loadTools">刷新</el-button>
-          <el-button @click="openBuiltinDialog">导入内置工具</el-button>
+          <el-button @click="openBuiltinDialog">导入预设工具</el-button>
           <el-button @click="openImportDialog">导入</el-button>
           <el-button @click="handleExportSelected" :disabled="selectedTools.length === 0">
             导出选中 ({{ selectedTools.length }})
@@ -403,10 +403,10 @@ onMounted(() => {
       </template>
     </el-dialog>
 
-    <el-dialog v-model="builtinDialogVisible" title="导入内置工具" width="800px" :close-on-click-modal="false">
+    <el-dialog v-model="builtinDialogVisible" title="导入预设工具" width="800px" :close-on-click-modal="false">
       <div v-loading="builtinLoading">
         <div class="builtin-hint">
-          内置工具是系统预置的工具JSON文件，存放在 <code>backend/tools/</code> 目录下。选择需要的工具导入到数据库中即可使用。
+          预设工具是存放在 <code>backend/tools/</code> 目录下的工具JSON文件。仅内置核心工具会自动注册（不可删除），其他预设工具需手动导入。
         </div>
         <div class="builtin-header">
           <span class="builtin-count">共 {{ builtinTools.length }} 个内置工具</span>

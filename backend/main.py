@@ -116,6 +116,11 @@ async def ensure_bootstrap_data():
 async def ensure_builtin_tools():
     from app.repositories.tool import ToolRepository
 
+    BUILTIN_TOOL_NAMES = {
+        "read_file", "write_file", "execute_command", "get_current_time",
+        "list_directory", "create_directory", "delete_file", "copy_file", "move_file",
+    }
+
     tools_dir = Path(__file__).parent / "tools"
     if not tools_dir.exists():
         logger.warning(f"Built-in tools directory not found: {tools_dir}")
@@ -124,6 +129,7 @@ async def ensure_builtin_tools():
     tool_repo = ToolRepository()
     imported_count = 0
     skipped_count = 0
+    corrected_count = 0
 
     for file_path in sorted(tools_dir.glob("*.json")):
         try:
@@ -135,14 +141,19 @@ async def ensure_builtin_tools():
                     f"Tool name missing in {file_path.name}, skipping")
                 continue
 
+            is_builtin = name in BUILTIN_TOOL_NAMES
+
             existing = await tool_repo.get_tool_by_name(name)
             if existing:
-                if not existing.is_builtin:
+                if existing.is_builtin != is_builtin:
                     await tool_repo.update_tool(
                         tool_id=existing.id,
-                        is_builtin=True
+                        is_builtin=is_builtin
                     )
-                    logger.info(f"Marked existing tool as builtin: {name}")
+                    corrected_count += 1
+                    label = "builtin" if is_builtin else "normal"
+                    logger.info(
+                        f"Corrected tool '{name}' is_builtin -> {label}")
                 else:
                     skipped_count += 1
                 continue
@@ -156,17 +167,18 @@ async def ensure_builtin_tools():
                 config_schema=data.get('config_schema'),
                 enabled=data.get('enabled', True),
                 sandbox_only=data.get('sandbox_only', False),
-                is_builtin=True
+                is_builtin=is_builtin
             )
             imported_count += 1
-            logger.info(f"Imported built-in tool: {name}")
+            label = "builtin" if is_builtin else "normal"
+            logger.info(f"Imported {label} tool: {name}")
         except Exception as e:
-            logger.error(
-                f"Failed to import built-in tool {file_path.name}: {e}")
+            logger.error(f"Failed to import tool {file_path.name}: {e}")
 
-    if imported_count > 0:
+    if imported_count > 0 or corrected_count > 0:
         logger.info(
-            f"Imported {imported_count} built-in tools ({skipped_count} already exist)")
+            f"Tools bootstrap: {imported_count} imported, {corrected_count} corrected, {skipped_count} already exist"
+        )
 
 
 @asynccontextmanager

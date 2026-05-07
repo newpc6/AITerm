@@ -61,9 +61,11 @@ class ToolService:
         return True, ""
 
     async def get_openai_tools(self) -> List[Dict[str, Any]]:
-        tools = await self.tool_repo.list_tools(enabled_only=True)
+        tools = await self.tool_repo.list_tools(enabled_only=False)
         openai_tools = []
         for tool in tools:
+            if not tool.enabled and not tool.is_builtin:
+                continue
             if tool.parameters:
                 if hasattr(tool.parameters, 'model_dump'):
                     parameters = tool.parameters.model_dump()

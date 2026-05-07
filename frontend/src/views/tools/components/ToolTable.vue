@@ -59,7 +59,7 @@ function handleSelectionChange(selection: Tool[]) {
       <el-table-column label="来源" width="90">
         <template #default="{ row }">
           <el-tag v-if="row.is_builtin" type="primary" size="small" effect="dark">内置</el-tag>
-          <span v-else class="custom-tag">自定义</span>
+          <el-tag v-else type="info" size="small">普通</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="操作" width="280" fixed="right">
@@ -89,11 +89,6 @@ function handleSelectionChange(selection: Tool[]) {
 .mono {
   font-family: 'Consolas', 'Monaco', monospace;
   color: var(--color-accent-primary);
-}
-
-.custom-tag {
-  font-size: 12px;
-  color: var(--color-text-secondary);
 }
 
 .delete-wrapper {
