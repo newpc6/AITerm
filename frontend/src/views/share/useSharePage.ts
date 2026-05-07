@@ -4,6 +4,46 @@ import { ElMessage } from 'element-plus'
 import { getSharePreview, verifyShare, type ShareDetailData } from '@/api/aiterm'
 import type { ChatMessage } from '@/types/chat'
 
+function createMessageFromApi(item: { id: string; role: string; content: string; type?: string; created_at: string | null }): ChatMessage {
+  let content = item.content
+  let metadata: Record<string, unknown> | undefined = undefined
+
+  try {
+    const parsed = JSON.parse(item.content)
+    if (typeof parsed === 'object' && parsed !== null) {
+      if (typeof parsed.answer === 'string') {
+        content = parsed.answer
+        metadata = {
+          thinking: parsed.thinking,
+          reasoning_duration: parsed.reasoning_duration,
+          total_duration: parsed.total_duration,
+          tool_calls: parsed.tool_calls,
+          iterations: parsed.iterations,
+          full_input: parsed.full_input,
+          usage: parsed.usage,
+        }
+      } else if (typeof parsed.message === 'string') {
+        content = parsed.message
+        const { message, ...rest } = parsed
+        if (Object.keys(rest).length > 0) {
+          metadata = rest
+        }
+      }
+    }
+  } catch {
+    // JSON parse failed, use raw content
+  }
+
+  return {
+    id: item.id,
+    role: item.role as ChatMessage['role'],
+    content,
+    type: item.type as ChatMessage['type'],
+    metadata,
+    createdAt: item.created_at || new Date().toISOString(),
+  }
+}
+
 export function useSharePage() {
   const route = useRoute()
   const router = useRouter()
@@ -20,15 +60,15 @@ export function useSharePage() {
 
   const messages = computed<ChatMessage[]>(() => {
     if (!shareData.value?.messages) return []
-    return shareData.value.messages.map((msg) => {
-      return {
+    return shareData.value.messages.map((msg) =>
+      createMessageFromApi({
         id: msg.id,
-        role: msg.role as 'user' | 'assistant',
+        role: msg.role,
         content: msg.content,
-        type: msg.type as ChatMessage['type'],
-        createdAt: msg.created_at || new Date().toISOString(),
-      }
-    })
+        type: msg.type,
+        created_at: msg.created_at,
+      }),
+    )
   })
 
   const actionableMessageIds = computed(() => {
@@ -115,17 +155,7 @@ export function useSharePage() {
       return
     }
 
-    let textToCopy = message.content
-    if (message.role === 'assistant') {
-      try {
-        const parsed = JSON.parse(message.content)
-        if (typeof parsed === 'object' && parsed !== null && typeof parsed.answer === 'string') {
-          textToCopy = parsed.answer
-        }
-      } catch {
-        // Not JSON, use as-is
-      }
-    }
+    const textToCopy = message.content
 
     try {
       await navigator.clipboard.writeText(textToCopy)
