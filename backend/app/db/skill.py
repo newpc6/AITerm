@@ -23,7 +23,7 @@ class SkillTemplateModel(Base):
     is_default = Column(Integer, default=0)
     is_public = Column(Integer, default=0)
     scope = Column(String(20), default="private")
-    team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
+    team_id = Column(Integer, nullable=True)
     created_at = Column(String(50), nullable=False)
     updated_at = Column(String(50), nullable=False)
 
@@ -33,7 +33,8 @@ class UserSkillModel(Base):
 
     id = Column(Integer, primary_key=True, autoincrement=True)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
-    template_id = Column(Integer, ForeignKey("skill_templates.id"), nullable=False)
+    template_id = Column(Integer, ForeignKey(
+        "skill_templates.id"), nullable=False)
     is_active = Column(Integer, default=1)
     created_at = Column(String(50), nullable=False)
     updated_at = Column(String(50), nullable=False)

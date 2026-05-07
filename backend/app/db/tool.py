@@ -20,7 +20,7 @@ class ToolModel(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     scope = Column(String(20), default="public", nullable=False)
     is_template = Column(Boolean, default=False, nullable=False)
-    team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
+    team_id = Column(Integer, nullable=True)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(),
                         onupdate=func.now())

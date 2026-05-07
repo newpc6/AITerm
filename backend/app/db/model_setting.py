@@ -20,7 +20,7 @@ class ModelConfigModel(Base):
     is_default = Column(Integer, nullable=False, default=0)
     user_id = Column(Integer, ForeignKey("users.id"), nullable=True)
     scope = Column(String(20), nullable=False, default="private")
-    team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
+    team_id = Column(Integer, nullable=True)
     created_at = Column(String(50), nullable=False)
     updated_at = Column(String(50), nullable=False)
 

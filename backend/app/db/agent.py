@@ -22,6 +22,6 @@ class AgentModel(Base):
     is_public = Column(Integer, default=0)
     is_template = Column(Integer, default=0)
     scope = Column(String(20), default="private")
-    team_id = Column(Integer, ForeignKey("teams.id"), nullable=True)
+    team_id = Column(Integer, nullable=True)
     created_at = Column(String(50), nullable=False)
     updated_at = Column(String(50), nullable=False)
