@@ -1,7 +1,8 @@
 import json
 import logging
-import httpx
 from typing import AsyncGenerator, Dict, Any, List, Optional
+
+from openai import AsyncOpenAI
 
 from app.services.llm_providers.base import BaseLLMProvider
 
@@ -20,172 +21,48 @@ class OpenAIProvider(BaseLLMProvider):
             return url
         return f"{url}/chat/completions"
 
-    def _get_headers(self) -> Dict[str, str]:
-        headers = super()._get_headers()
-        headers["Accept"] = "application/json, text/event-stream"
+    def _get_client(self) -> AsyncOpenAI:
+        return AsyncOpenAI(
+            base_url=self.config.api_url.rstrip("/"),
+            api_key=self.config.api_key or "EMPTY",
+            timeout=self.timeout,
+            default_headers=self._get_headers_dict(),
+        )
+
+    def _get_headers_dict(self) -> Dict[str, str]:
+        headers = {}
+        if hasattr(self.config, 'extra_headers') and self.config.extra_headers:
+            headers.update(self.config.extra_headers)
         return headers
 
-    def _build_payload(self, messages: List[Dict[str, Any]],
-                       tools: Optional[List[Dict[str, Any]]] = None,
-                       stream: bool = True,
-                       temperature: Optional[float] = None) -> Dict[str, Any]:
+    def _build_extra_body(self, tools=None) -> Dict[str, Any]:
+        extra_body = {}
+
         thinking_type = getattr(self.config, 'thinking_type', 'default')
-        payload = {
-            "model": self.model,
-            "messages": messages,
-            "temperature": temperature or self.temperature or 0.7,
-            "stream": stream,
-        }
-
         if thinking_type == "enabled":
-            payload["thinking"] = {"type": "enabled"}
-            payload["reasoning_effort"] = "high"
+            extra_body["thinking"] = {"type": "enabled"}
 
-        if tools:
-            payload["tools"] = tools
-            payload["tool_choice"] = "auto"
+        if hasattr(self.config, 'extra_body') and self.config.extra_body:
+            extra_body.update(self.config.extra_body)
 
-        if self.extra_params:
-            payload.update(self.extra_params)
+        return extra_body
 
-        if self.extra_body:
-            for k, v in self.extra_body.items():
-                if k not in payload:
-                    payload[k] = v
+    def _build_extra_params(self) -> Dict[str, Any]:
+        extra_params = {}
+        if hasattr(self.config, 'extra_params') and self.config.extra_params:
+            extra_params.update(self.config.extra_params)
+        return extra_params
 
-        return payload
-
-    def _parse_stream_chunk(self, data: dict) -> Dict[str, Any]:
-        result = {}
-        if data.get("usage"):
-            result["usage"] = data["usage"]
-
-        if "choices" in data and len(data["choices"]) > 0:
-            delta = data["choices"][0].get("delta", {})
-
-            if delta.get("reasoning_content"):
-                result["type"] = "reasoning"
-                result["delta"] = delta["reasoning_content"]
-                return result
-
-            if delta.get("content"):
-                result["type"] = "content"
-                result["delta"] = delta["content"]
-                return result
-
-            if delta.get("tool_calls"):
-                result["tool_calls"] = delta["tool_calls"]
-                result["type"] = "tool_calls"
-
-        return result
-
-    async def chat(
-        self,
-        messages: List[Dict[str, str]],
-        temperature: Optional[float] = None,
-        stream: bool = True
-    ) -> str:
-        if not self.api_url or not self.model:
-            raise ValueError("LLM setting incomplete")
-
-        payload = self._build_payload(messages, stream=False, temperature=temperature)
-
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            response = await client.post(
-                self._get_chat_url(),
-                headers=self._get_headers(),
-                json=payload
-            )
-
-            if response.status_code >= 400:
-                error_data = {}
-                try:
-                    error_data = response.json()
-                except:
-                    pass
-                if "error" in error_data and error_data["error"].get("message"):
-                    raise ValueError(error_data["error"]["message"])
-                raise ValueError(f"Model request failed: HTTP {response.status_code}")
-
-            data = response.json()
-            if "choices" not in data or len(data["choices"]) == 0:
-                raise ValueError("Model returned no valid response")
-            content = data["choices"][0].get("message", {}).get("content", "")
-            if isinstance(content, list):
-                content = "\n".join(
-                    item.get("text", "") for item in content
-                    if isinstance(item, dict) and "text" in item
-                )
-            if not content.strip():
-                raise ValueError("Model returned empty content")
-            return content.strip()
-
-    async def chat_stream(
-        self,
-        messages: List[Dict[str, str]],
-        temperature: Optional[float] = None
-    ) -> AsyncGenerator[Dict[str, Any], None]:
-        if not self.api_url or not self.model:
-            raise ValueError("LLM setting incomplete")
-
-        payload = self._build_payload(messages, stream=True, temperature=temperature)
-
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream(
-                "POST",
-                self._get_chat_url(),
-                headers=self._get_headers(),
-                json=payload
-            ) as response:
-                if response.status_code >= 400:
-                    body = await response.aread()
-                    try:
-                        error_data = json.loads(body)
-                        if "error" in error_data and error_data["error"].get("message"):
-                            raise ValueError(error_data["error"]["message"])
-                    except json.JSONDecodeError:
-                        pass
-                    raise ValueError(f"Model request failed: HTTP {response.status_code}")
-
-                usage = {}
-                async for line in response.aiter_lines():
-                    if not line or not line.startswith("data:"):
-                        continue
-                    data_str = line[5:].strip()
-                    if data_str == "[DONE]":
-                        break
-
-                    try:
-                        data = json.loads(data_str)
-                    except json.JSONDecodeError:
-                        continue
-
-                    parsed = self._parse_stream_chunk(data)
-                    if parsed.get("type") == "reasoning":
-                        yield {"type": "reasoning", "content": parsed["delta"], "reasoning_done": False}
-                    elif parsed.get("type") == "content":
-                        yield {"type": "content", "content": parsed["delta"], "reasoning_done": True}
-                    elif parsed.get("usage"):
-                        usage = parsed["usage"]
-
-                if usage:
-                    yield {"type": "usage", "usage": usage}
-
-    async def chat_with_tools_stream(
-        self,
-        messages: List[Dict[str, Any]],
-        tools: List[Dict[str, Any]],
-        temperature: Optional[float] = None
-    ) -> AsyncGenerator[Dict[str, Any], None]:
-        if not self.api_url or not self.model:
-            raise ValueError("LLM setting incomplete")
-
-        payload = self._build_payload(messages, tools=tools, stream=True, temperature=temperature)
-
+    def _clean_tools(self, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        cleaned = []
         for tool in tools:
-            if "function" in tool and "parameters" in tool["function"]:
-                params = tool["function"]["parameters"]
-                if "required" in params and params["required"] is None:
+            t = {
+                "type": tool.get("type", "function"),
+                "function": dict(tool.get("function", {}))
+            }
+            if "parameters" in t["function"]:
+                params = dict(t["function"]["parameters"])
+                if "required" not in params or params["required"] is None:
                     params["required"] = []
                 if "properties" in params and params["properties"]:
                     for prop_name, prop in params["properties"].items():
@@ -194,78 +71,186 @@ class OpenAIProvider(BaseLLMProvider):
                                 del prop["enum"]
                             if "default" in prop and prop["default"] is None:
                                 del prop["default"]
+                t["function"]["parameters"] = params
+            cleaned.append(t)
+        return cleaned
 
-        async with httpx.AsyncClient(timeout=self.timeout) as client:
-            async with client.stream(
-                "POST",
-                self._get_chat_url(),
-                headers=self._get_headers(),
-                json=payload
-            ) as response:
-                if response.status_code >= 400:
-                    body = await response.aread()
-                    try:
-                        error_data = json.loads(body)
-                        if "error" in error_data and error_data["error"].get("message"):
-                            raise ValueError(error_data["error"]["message"])
-                    except json.JSONDecodeError:
-                        pass
-                    raise ValueError(f"Model request failed: HTTP {response.status_code}")
+    async def chat(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: Optional[float] = None,
+        stream: bool = True
+    ) -> str:
+        if not self.config.api_url or not self.config.model:
+            raise ValueError("LLM setting incomplete")
 
-                full_content = ""
-                full_reasoning = ""
-                tool_calls_data = {}
-                usage_data = {}
+        client = self._get_client()
+        extra_body = self._build_extra_body()
+        extra_params = self._build_extra_params()
 
-                async for line in response.aiter_lines():
-                    if not line or line == "data: [DONE]":
+        try:
+            response = await client.chat.completions.create(
+                model=self.config.model,
+                messages=messages,
+                temperature=temperature or self.config.temperature or 0.7,
+                stream=False,
+                extra_body=extra_body if extra_body else None,
+                **extra_params
+            )
+            if not response.choices:
+                raise ValueError("Model returned no valid response")
+            content = response.choices[0].message.content or ""
+            if not content.strip():
+                raise ValueError("Model returned empty content")
+            return content.strip()
+        except Exception as e:
+            logger.error(f"Chat error: {e}")
+            raise ValueError(str(e))
+
+    async def chat_stream(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: Optional[float] = None
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        if not self.config.api_url or not self.config.model:
+            raise ValueError("LLM setting incomplete")
+
+        client = self._get_client()
+        extra_body = self._build_extra_body()
+        extra_params = self._build_extra_params()
+
+        try:
+            stream = await client.chat.completions.create(
+                model=self.config.model,
+                messages=messages,
+                temperature=temperature or self.config.temperature or 0.7,
+                stream=True,
+                extra_body=extra_body if extra_body else None,
+                **extra_params
+            )
+
+            usage = {}
+            async for chunk in stream:
+                if self.debug_logging:
+                    logger.debug(
+                        f"Stream chunk: {chunk.model_dump_json(exclude_none=True)}")
+
+                if chunk.usage:
+                    usage = {
+                        "prompt_tokens": chunk.usage.prompt_tokens or 0,
+                        "completion_tokens": chunk.usage.completion_tokens or 0,
+                        "total_tokens": chunk.usage.total_tokens or 0,
+                    }
+
+                if chunk.choices:
+                    delta = chunk.choices[0].delta
+
+                    if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
+                        yield {"type": "reasoning", "content": delta.reasoning_content, "reasoning_done": False}
                         continue
-                    if line.startswith("data: "):
-                        data_str = line[6:]
-                        try:
-                            data = json.loads(data_str)
-                        except json.JSONDecodeError:
-                            continue
 
-                        if data.get("usage"):
-                            usage_data = data["usage"]
+                    if delta.content:
+                        yield {"type": "content", "content": delta.content, "reasoning_done": True}
 
-                        if "choices" in data and len(data["choices"]) > 0:
-                            delta = data["choices"][0].get("delta", {})
+            if usage:
+                yield {"type": "usage", "usage": usage}
 
-                            if delta.get("reasoning_content"):
-                                chunk = delta["reasoning_content"]
-                                full_reasoning += chunk
-                                yield {"type": "reasoning", "delta": chunk}
+        except Exception as e:
+            logger.error(f"Chat stream error: {e}")
+            raise ValueError(str(e))
 
-                            if delta.get("content"):
-                                chunk = delta["content"]
-                                full_content += chunk
-                                yield {"type": "content", "delta": chunk}
+    async def chat_with_tools_stream(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        temperature: Optional[float] = None
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        if not self.config.api_url or not self.config.model:
+            raise ValueError("LLM setting incomplete")
 
-                            if delta.get("tool_calls"):
-                                for tc in delta["tool_calls"]:
-                                    idx = tc.get("index", 0)
-                                    if idx not in tool_calls_data:
-                                        tool_calls_data[idx] = {
-                                            "id": "",
-                                            "name": "",
-                                            "arguments": ""
-                                        }
-                                    if tc.get("id"):
-                                        tool_calls_data[idx]["id"] = tc["id"]
-                                    if tc.get("function"):
-                                        if tc["function"].get("name"):
-                                            tool_calls_data[idx]["name"] = tc["function"]["name"]
-                                        if tc["function"].get("arguments"):
-                                            tool_calls_data[idx]["arguments"] += tc["function"]["arguments"]
+        client = self._get_client()
+        cleaned_tools = self._clean_tools(tools)
+        extra_body = self._build_extra_body()
+        extra_params = self._build_extra_params()
 
-                tool_calls_list = list(tool_calls_data.values()) if tool_calls_data else None
+        try:
+            extra = {}
+            if extra_body:
+                extra["extra_body"] = extra_body
+            extra.update(extra_params)
 
-                yield {
-                    "type": "done",
-                    "content": full_content,
-                    "reasoning_content": full_reasoning,
-                    "tool_calls": tool_calls_list,
-                    "usage": usage_data
-                }
+            stream = await client.chat.completions.create(
+                model=self.config.model,
+                messages=messages,
+                temperature=temperature or self.config.temperature or 0.7,
+                stream=True,
+                tools=cleaned_tools,
+                tool_choice="auto",
+                **extra
+            )
+
+            full_content = ""
+            full_reasoning = ""
+            tool_calls_data: Dict[int, dict] = {}
+            usage_data = {}
+
+            async for chunk in stream:
+                if self.debug_logging:
+                    logger.debug(
+                        f"Tool stream chunk: {chunk.model_dump_json(exclude_none=True)}")
+
+                if chunk.usage:
+                    usage_data = {
+                        "prompt_tokens": chunk.usage.prompt_tokens or 0,
+                        "completion_tokens": chunk.usage.completion_tokens or 0,
+                        "total_tokens": chunk.usage.total_tokens or 0,
+                    }
+
+                if chunk.choices:
+                    delta = chunk.choices[0].delta
+
+                    if hasattr(delta, 'reasoning_content') and delta.reasoning_content:
+                        chunk_text = delta.reasoning_content
+                        full_reasoning += chunk_text
+                        yield {"type": "reasoning", "delta": chunk_text}
+
+                    if delta.content:
+                        chunk_text = delta.content
+                        full_content += chunk_text
+                        yield {"type": "content", "delta": chunk_text}
+
+                    if delta.tool_calls:
+                        for tc in delta.tool_calls:
+                            idx = tc.index or 0
+                            if idx not in tool_calls_data:
+                                tool_calls_data[idx] = {
+                                    "id": tc.id or "",
+                                    "type": "function",
+                                    "function": {"name": "", "arguments": ""}
+                                }
+                            if tc.id:
+                                tool_calls_data[idx]["id"] = tc.id
+                            if tc.function:
+                                if tc.function.name:
+                                    tool_calls_data[idx]["function"]["name"] += tc.function.name
+                                if tc.function.arguments:
+                                    tool_calls_data[idx]["function"]["arguments"] += tc.function.arguments
+
+                if chunk.choices and chunk.choices[0].finish_reason == "tool_calls":
+                    tool_calls = [
+                        tool_calls_data[i]
+                        for i in sorted(tool_calls_data.keys())
+                    ]
+                    yield {
+                        "type": "done",
+                        "tool_calls": tool_calls,
+                        "content": full_content,
+                        "usage": usage_data,
+                    }
+
+            if usage_data:
+                yield {"type": "usage", "usage": usage_data}
+
+        except Exception as e:
+            logger.error(f"Chat with tools stream error: {e}")
+            raise ValueError(str(e))

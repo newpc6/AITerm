@@ -2,7 +2,6 @@ import json
 import re
 from typing import List, Optional, Dict, Any, AsyncGenerator, Union, TypedDict
 from datetime import datetime
-import httpx
 
 from app.config import LLMSettings
 from app.models import (
