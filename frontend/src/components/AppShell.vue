@@ -162,11 +162,11 @@ async function submitPasswordChange() {
 <template>
   <slot v-if="!showShell" />
   <div v-else class="shell-v2">
-    <AppTopBar :current-user="currentUser" :breadcrumb="breadcrumb" @open-password-dialog="openPasswordDialog" />
-    <AppTagsView :tabs="openTabs" @close="closeTab" @close-others="closeOthers" @close-all="closeAll"
-      @close-left="closeLeft" @close-right="closeRight" />
-    <div class="shell-v2__body">
-      <AppSidebar :is-admin="isAdmin" />
+    <AppSidebar :is-admin="isAdmin" />
+    <div class="shell-v2__right">
+      <AppTopBar :current-user="currentUser" :breadcrumb="breadcrumb" @open-password-dialog="openPasswordDialog" />
+      <AppTagsView :tabs="openTabs" @close="closeTab" @close-others="closeOthers" @close-all="closeAll"
+        @close-left="closeLeft" @close-right="closeRight" />
       <main class="shell-v2__main">
         <router-view />
       </main>
@@ -196,13 +196,13 @@ async function submitPasswordChange() {
 <style scoped>
 .shell-v2 {
   display: flex;
-  flex-direction: column;
   min-height: 100vh;
   background: linear-gradient(180deg, var(--color-bg-secondary) 0%, var(--color-bg-tertiary) 100%);
 }
 
-.shell-v2__body {
+.shell-v2__right {
   display: flex;
+  flex-direction: column;
   flex: 1;
   overflow: hidden;
 }

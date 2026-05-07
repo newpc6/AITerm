@@ -86,10 +86,15 @@ const menuGroups: MenuGroup[] = [
   },
 ]
 
-const expandedGroup = ref<string>('ai-chat')
+const expandedGroups = ref<Set<string>>(new Set(['ai-chat']))
 
 function toggleGroup(key: string) {
-  expandedGroup.value = expandedGroup.value === key ? '' : key
+  if (expandedGroups.value.has(key)) {
+    expandedGroups.value.delete(key)
+  } else {
+    expandedGroups.value.add(key)
+  }
+  expandedGroups.value = new Set(expandedGroups.value)
 }
 
 function isActive(path: string) {
@@ -113,34 +118,26 @@ function navigate(path: string) {
   <aside class="sidebar" :class="{ 'sidebar--collapsed': collapsed }">
     <div class="sidebar__toggle" @click="collapsed = !collapsed">
       <svg viewBox="0 0 24 24" fill="currentColor" width="18" height="18">
-        <path v-if="collapsed" d="M10 6l6 6-6 6z"/>
-        <path v-else d="M14 6l-6 6 6 6z"/>
+        <path v-if="collapsed" d="M10 6l6 6-6 6z" />
+        <path v-else d="M14 6l-6 6 6 6z" />
       </svg>
     </div>
 
     <div v-for="group in menuGroups" :key="group.key" class="sidebar__group">
-      <div
-        class="sidebar__group-title"
-        :class="{ 'is-expanded': expandedGroup === group.key }"
-        @click="toggleGroup(group.key)"
-      >
+      <div class="sidebar__group-title" :class="{ 'is-expanded': expandedGroups.has(group.key) }"
+        @click="toggleGroup(group.key)">
         <component :is="group.icon" class="sidebar__group-icon" />
         <span v-show="!collapsed" class="sidebar__group-label">{{ group.label }}</span>
-        <svg v-show="!collapsed" class="sidebar__group-arrow" :class="{ 'is-rotated': expandedGroup === group.key }" viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
-          <path d="M7 10l5 5 5-5z"/>
+        <svg v-show="!collapsed" class="sidebar__group-arrow" :class="{ 'is-rotated': expandedGroups.has(group.key) }"
+          viewBox="0 0 24 24" fill="currentColor" width="14" height="14">
+          <path d="M7 10l5 5 5-5z" />
         </svg>
       </div>
 
       <Transition name="sidebar-collapse">
-        <div v-show="expandedGroup === group.key && !collapsed" class="sidebar__group-items">
-          <div
-            v-for="item in visibleItems(group.items)"
-            :key="item.path"
-            class="sidebar__item"
-            :class="{ 'is-active': isActive(item.path) }"
-            :title="item.label"
-            @click="navigate(item.path)"
-          >
+        <div v-show="expandedGroups.has(group.key) && !collapsed" class="sidebar__group-items">
+          <div v-for="item in visibleItems(group.items)" :key="item.path" class="sidebar__item"
+            :class="{ 'is-active': isActive(item.path) }" :title="item.label" @click="navigate(item.path)">
             <component :is="item.icon" class="sidebar__item-icon" />
             <span v-show="!collapsed" class="sidebar__item-label">{{ item.label }}</span>
           </div>
