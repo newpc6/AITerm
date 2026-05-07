@@ -72,7 +72,9 @@ async def list_models(
     service: ModelConfigService = Depends(get_model_config_service),
     current_user=Depends(get_current_user)
 ):
-    items, total = await service.list_models(page, page_size, user_id=int(current_user.id) if current_user else None)
+    is_admin = current_user and current_user.role == "admin"
+    uid = None if is_admin else (int(current_user.id) if current_user else None)
+    items, total = await service.list_models(page, page_size, user_id=uid)
     paginated = PaginatedResponse.create(
         items=[m.model_dump() for m in items],
         total=total,
