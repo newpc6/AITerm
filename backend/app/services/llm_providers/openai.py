@@ -236,10 +236,14 @@ class OpenAIProvider(BaseLLMProvider):
                                     tool_calls_data[idx]["function"]["arguments"] += tc.function.arguments
 
                 if chunk.choices and chunk.choices[0].finish_reason == "tool_calls":
-                    tool_calls = [
-                        tool_calls_data[i]
-                        for i in sorted(tool_calls_data.keys())
-                    ]
+                    tool_calls = []
+                    for i in sorted(tool_calls_data.keys()):
+                        tc = tool_calls_data[i]
+                        tool_calls.append({
+                            "id": tc.get("id", ""),
+                            "name": tc["function"]["name"],
+                            "arguments": tc["function"]["arguments"],
+                        })
                     yield {
                         "type": "done",
                         "tool_calls": tool_calls,
