@@ -9,6 +9,7 @@ from .terminal import router as terminal_router
 from .tools import router as tools_router
 from .files import router as files_router
 from .shares import router as shares_router
+from .skills import router as skills_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -22,5 +23,6 @@ api_router.include_router(terminal_router)
 api_router.include_router(tools_router)
 api_router.include_router(files_router)
 api_router.include_router(shares_router)
+api_router.include_router(skills_router)
 
 __all__ = ["api_router"]

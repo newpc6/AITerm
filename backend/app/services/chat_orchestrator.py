@@ -10,6 +10,7 @@ from app.repositories.chat import ChatRepository
 from app.repositories.message import MessageRepository
 from app.services.llm import ChatService, LLMClient
 from app.services.tool_service import ToolService
+from app.services.langchain import SkillRegistry, get_skill_registry
 from app.utils import now_iso
 
 logger = logging.getLogger("aiterm")
@@ -727,6 +728,20 @@ class ChatOrchestrator:
             }
         }
 
+        tools = await self.tool_service.get_openai_tools()
+        if tools:
+            skill_registry = get_skill_registry()
+            node = await self.node_repo.get_node(chat.node_id)
+            messages_list = await self.message_repo.list_messages(chat_id, page=1, page_size=50)
+            history = [{"role": m.role, "content": m.content}
+                       for m in messages_list]
+
+            async for event in self._handle_chat_with_tools(
+                chat_id, model_config, node, history, message, tools
+            ):
+                yield event
+            return
+
         if mode == "execute":
             async for event in self.execute_service.execute(chat_id, chat.node_id, message, model_config):
                 yield event
@@ -791,3 +806,106 @@ class ChatOrchestrator:
                     "usage": usage
                 }
             }
+
+    async def _handle_chat_with_langchain_agent(
+        self,
+        chat_id: str,
+        model_config: ModelConfig,
+        node: Node,
+        history: List[Dict[str, Any]],
+        message: str,
+        tools: List[Dict[str, Any]],
+        skill_name: str = "general_assistant"
+    ) -> AsyncGenerator[Dict[str, Any], None]:
+        from app.services.langchain.agent_manager import LangChainAgentManager
+
+        skill_registry = get_skill_registry()
+        skill_prompt = skill_registry.get_aggregated_prompt(
+            [skill_name],
+            self.settings.chat_system_prompt or "你是一个中文AI助手"
+        )
+
+        sandbox_paths = self.settings.sandbox_paths or []
+        if sandbox_paths:
+            sandbox_prompt = self.settings.sandbox_rules_prompt or ""
+            sandbox_prompt = sandbox_prompt.replace(
+                "{{sandbox_paths}}", ", ".join(sandbox_paths))
+            skill_prompt += f"\n\n{sandbox_prompt}"
+            skill_prompt += f"\n\n当前chat_id: {chat_id}\n"
+
+        agent_manager = LangChainAgentManager(
+            model_config=model_config,
+            tools=tools,
+            system_prompt=skill_prompt,
+            max_iterations=self.settings.max_iterations or 10,
+            tool_service=self.tool_service,
+            chat_id=chat_id,
+        )
+
+        full_response = []
+        total_start_time = datetime.now()
+
+        try:
+            async for event in agent_manager.stream(message, history):
+                if event["type"] == "content":
+                    full_response.append(event["delta"])
+                    yield {
+                        "event": "conversation.delta",
+                        "data": {
+                            "chat_id": chat_id,
+                            "delta": event["delta"],
+                            "iteration": event.get("iteration", 1),
+                        }
+                    }
+                elif event["type"] == "tool_start":
+                    yield {
+                        "event": "conversation.tool_call",
+                        "data": {
+                            "chat_id": chat_id,
+                            "tool": event["tool"],
+                            "input": event["input"],
+                            "iteration": event.get("iteration", 1),
+                        }
+                    }
+                elif event["type"] == "tool_end":
+                    yield {
+                        "event": "conversation.tool_result",
+                        "data": {
+                            "chat_id": chat_id,
+                            "output": event["output"],
+                            "iteration": event.get("iteration", 1),
+                        }
+                    }
+                elif event["type"] == "error":
+                    raise Exception(event["error"])
+        except Exception as e:
+            logger.error(f"LangChain agent error: {e}")
+            yield {
+                "event": "conversation.error",
+                "data": {"chat_id": chat_id, "error": str(e)}
+            }
+            return
+
+        complete_response = "".join(full_response)
+        total_duration = (datetime.now() - total_start_time).total_seconds()
+
+        await self.message_repo.create_message(
+            chat_id=chat_id,
+            role="assistant",
+            content=json.dumps({
+                "answer": complete_response,
+                "total_duration": round(total_duration, 2),
+            }, ensure_ascii=False),
+            type="text"
+        )
+
+        yield {
+            "event": "conversation.done",
+            "data": {
+                "chat_id": chat_id,
+                "reply": complete_response,
+                "model_id": model_config.id,
+                "model_name": model_config.name,
+                "total_duration": round(total_duration, 2),
+            }
+        }
