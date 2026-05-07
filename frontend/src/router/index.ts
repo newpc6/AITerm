@@ -18,10 +18,10 @@ const router = createRouter({
     { path: '/shares', component: () => import('@/views/shares/index.vue') },
 
     // 工作空间
-    { path: '/workspace/files', component: () => import('@/views/placeholders/workspace') },
+    { path: '/workspace/files', component: () => import('@/views/files/workspace') },
     { path: '/workspace/agents', component: () => import('@/views/agents') },
-    { path: '/workspace/skills', component: () => import('@/views/placeholders/workspace') },
-    { path: '/workspace/scheduler', component: () => import('@/views/placeholders/workspace') },
+    { path: '/workspace/skills', component: () => import('@/views/skills') },
+    { path: '/workspace/scheduler', component: () => import('@/views/scheduler') },
     { path: '/workspace/models', component: () => import('@/views/models') },
 
     // 工具

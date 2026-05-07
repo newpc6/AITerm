@@ -12,6 +12,8 @@ from .shares import router as shares_router
 from .skills import router as skills_router
 from .sandbox import router as sandbox_router
 from .agents import router as agents_router
+from .scheduler import router as scheduler_router
+from .workspace import router as workspace_files_router
 
 api_router = APIRouter(prefix="/api/v1")
 
@@ -28,5 +30,7 @@ api_router.include_router(shares_router)
 api_router.include_router(skills_router)
 api_router.include_router(sandbox_router)
 api_router.include_router(agents_router)
+api_router.include_router(scheduler_router)
+api_router.include_router(workspace_files_router)
 
 __all__ = ["api_router"]

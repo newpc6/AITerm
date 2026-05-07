@@ -123,6 +123,17 @@ class UserRepository(IUserRepository):
             )
             return result.scalar() or 0
 
+    async def get_first_admin(self):
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(UserModel).where(
+                    UserModel.role == UserRole.ADMIN.value,
+                    UserModel.status == UserStatus.ACTIVE.value
+                ).limit(1)
+            )
+            model = result.scalar_one_or_none()
+            return self._to_domain(model) if model else None
+
     def _to_domain(self, model: UserModel) -> User:
         return User(
             id=str(model.id),

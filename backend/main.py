@@ -95,6 +95,7 @@ async def ensure_bootstrap_data():
 
     await ensure_builtin_tools()
     await ensure_sandbox_config()
+    await ensure_default_skills()
 
     async with async_session_maker() as session:
         result = await session.execute(select(AuthSettingsModel))
@@ -255,6 +256,17 @@ async def ensure_sandbox_config():
             logger.info(f"Created {len(defaults)} default blacklist entries")
 
 
+async def ensure_default_skills():
+    from app.repositories.skill import SkillRepository
+    from app.repositories.user import UserRepository
+    user_repo = UserRepository()
+    repo = SkillRepository()
+    admin = await user_repo.get_first_admin()
+    if admin:
+        await repo.create_default_skills(admin_user_id=int(admin.id))
+        logger.info("Default skills bootstrap completed")
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
@@ -264,6 +276,10 @@ async def lifespan(app: FastAPI):
     await init_db()
 
     await ensure_bootstrap_data()
+
+    from app.services.scheduler_engine import start_scheduler
+    import asyncio as _asyncio
+    _asyncio.create_task(start_scheduler())
 
     logger.info(f"AITerm server starting on port {settings.port}")
     logger.info(

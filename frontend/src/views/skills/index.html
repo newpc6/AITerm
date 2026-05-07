@@ -1,0 +1,62 @@
+<section class="page">
+  <div class="hero">
+    <p class="label">工作空间</p>
+    <h1>技能</h1>
+    <p>创建和管理技能模板，定义工具组合和专属提示词。管理员可审核发布为公共模板。</p>
+  </div>
+
+  <div class="card">
+    <div class="page-header">
+      <div>
+        <el-radio-group v-model="scope" size="small" @change="load">
+          <el-radio-button value="my">我的</el-radio-button>
+          <el-radio-button value="installed">已安装</el-radio-button>
+          <el-radio-button value="public">公共</el-radio-button>
+          <el-radio-button value="pending">待审核</el-radio-button>
+        </el-radio-group>
+      </div>
+      <el-button type="primary" @click="openCreate">新建技能</el-button>
+    </div>
+
+    <div v-loading="loading" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-top: 16px">
+      <div v-for="s in skills" :key="s.id" class="card card--interactive" style="padding: 16px">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px">
+          <div>
+            <div style="font-weight:600;font-size:15px">{{ s.display_name || s.name }}</div>
+            <div style="font-size:12px;color:var(--color-text-muted)">{{ s.category }} · v{{ s.version || '1.0.0' }}</div>
+          </div>
+          <el-tag :type="s.status === 'approved' ? 'success' : s.status === 'pending' ? 'warning' : s.status === 'rejected' ? 'danger' : 'info'" size="small">{{ statusLabel[s.status] || s.status }}</el-tag>
+        </div>
+        <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:8px;min-height:36px">{{ s.description || '暂无描述' }}</div>
+        <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
+          <el-tag v-for="t in s.tool_names.slice(0,6)" :key="t" size="small" type="info">{{ t }}</el-tag>
+        </div>
+        <div style="display:flex;gap:8px;border-top:1px solid var(--color-border-primary);padding-top:8px">
+          <el-button v-if="s.status==='draft'||s.status==='rejected'" size="small" link type="primary" @click="openEdit(s)">编辑</el-button>
+          <el-button v-if="s.status==='draft'" size="small" link type="warning" @click="handleSubmit(s.id)">提交审核</el-button>
+          <el-button v-if="s.status==='pending'" size="small" link type="success" @click="handleReview(s.id,true)">通过</el-button>
+          <el-button v-if="s.status==='pending'" size="small" link type="danger" @click="handleReview(s.id,false)">驳回</el-button>
+          <el-button v-if="s.status==='approved'&&scope==='public'" size="small" link type="primary" @click="handleInstall(s.id)">安装</el-button>
+          <el-button size="small" link type="danger" @click="handleDelete(s.id)">删除</el-button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <el-dialog v-model="dialogVisible" :title="dialogTitle" width="60%" top="5vh" :close-on-click-modal="false" destroy-on-close>
+    <el-form label-position="top">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <el-form-item label="名称"><el-input v-model="form.name" placeholder="技能唯一标识" :disabled="saving" /></el-form-item>
+        <el-form-item label="显示名称"><el-input v-model="form.display_name" placeholder="前端展示名" :disabled="saving" /></el-form-item>
+      </div>
+      <el-form-item label="描述"><el-input v-model="form.description" placeholder="用途说明" :disabled="saving" /></el-form-item>
+      <el-form-item label="分类"><el-select v-model="form.category" :disabled="saving" style="width:200px"><el-option v-for="c in ['general','development','system','network','data','custom']" :key="c" :label="c" :value="c" /></el-select></el-form-item>
+      <el-form-item label="系统提示词"><el-input v-model="form.system_prompt" type="textarea" :rows="6" resize="vertical" :disabled="saving" placeholder="定义该技能的行为..." /></el-form-item>
+      <el-form-item label="工具列表"><el-input v-model="form.tool_names_text" placeholder="逗号分隔的工具名，如 read_file,write_file" :disabled="saving" /></el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="dialogVisible = false">取消</el-button>
+      <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
+    </template>
+  </el-dialog>
+</section>

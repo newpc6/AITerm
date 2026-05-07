@@ -1,0 +1,45 @@
+<section class="page">
+  <div class="hero"><p class="label">工作空间</p><h1>定时任务</h1><p>创建定时任务，绑定智能体后在指定时间自动执行对话。</p></div>
+  <div class="card">
+    <div class="page-header"><div><p class="label">任务列表</p><div class="value">{{ tasks.length }} 个任务</div></div><el-button type="primary" @click="openCreate">新建任务</el-button></div>
+    <el-table :data="tasks" v-loading="loading" empty-text="暂无定时任务">
+      <el-table-column prop="name" label="名称" width="160" />
+      <el-table-column prop="agent_name" label="智能体" width="120" />
+      <el-table-column prop="cron_expression" label="Cron" width="120" />
+      <el-table-column label="状态" width="80"><template #default="{row}"><el-tag :type="row.enabled?'success':'info'" size="small">{{ row.enabled?'启用':'禁用' }}</el-tag></template></el-table-column>
+      <el-table-column prop="last_result" label="上次结果" width="100" />
+      <el-table-column prop="last_run_at" label="上次执行" width="160" />
+      <el-table-column prop="next_run_at" label="下次执行" width="160" />
+      <el-table-column label="操作" width="220"><template #default="{row}">
+        <el-button type="primary" link size="small" @click="handleRun(row.id)">执行</el-button>
+        <el-button link size="small" @click="showLogs(row.id)">日志</el-button>
+        <el-button link size="small" @click="openEdit(row)">编辑</el-button>
+        <el-button type="danger" link size="small" @click="handleDelete(row.id)">删除</el-button>
+      </template></el-table-column>
+    </el-table>
+  </div>
+  <el-dialog v-model="dialogVisible" :title="editingId?'编辑任务':'新建任务'" width="50%" top="5vh" destroy-on-close>
+    <el-form label-position="top">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <el-form-item label="名称"><el-input v-model="form.name" :disabled="saving" /></el-form-item>
+        <el-form-item label="智能体"><el-select v-model="form.agent_id" :disabled="saving" style="width:100%"><el-option v-for="a in agents" :key="a.id" :label="a.name" :value="a.id" /></el-select></el-form-item>
+      </div>
+      <el-form-item label="输入消息"><el-input v-model="form.input_message" type="textarea" :rows="3" :disabled="saving" /></el-form-item>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
+        <el-form-item label="Cron 表达式"><el-input v-model="form.cron_expression" placeholder="0 8 * * *" :disabled="saving" /></el-form-item>
+        <el-form-item label="超时(秒)"><el-input-number v-model="form.timeout_seconds" :min="10" :max="3600" :disabled="saving" /></el-form-item>
+      </div>
+    </el-form>
+    <template #footer><el-button @click="dialogVisible=false">取消</el-button><el-button type="primary" :loading="saving" @click="handleSave">保存</el-button></template>
+  </el-dialog>
+  <el-dialog v-model="logDialogVisible" title="执行日志" width="700px">
+    <div v-loading="logLoading">
+      <div v-for="l in logs" :key="l.id" style="padding:8px;border-bottom:1px solid var(--color-border-primary);margin-bottom:8px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><el-tag :type="l.status==='success'?'success':l.status==='running'?'warning':'danger'" size="small">{{ l.status }}</el-tag><span style="font-size:12px;color:var(--color-text-muted)">{{ l.started_at }}</span></div>
+        <div v-if="l.output" style="max-height:200px;overflow:auto;font-size:12px;white-space:pre-wrap;background:var(--color-bg-input);padding:8px;border-radius:4px">{{ l.output }}</div>
+        <div v-if="l.error" style="color:var(--color-danger);font-size:12px">{{ l.error }}</div>
+      </div>
+      <div v-if="logs.length===0" style="text-align:center;padding:20px;color:var(--color-text-muted)">暂无日志</div>
+    </div>
+  </el-dialog>
+</section>

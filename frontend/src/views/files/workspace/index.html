@@ -1,0 +1,28 @@
+<section class="page">
+  <div class="hero"><p class="label">工作空间</p><h1>文件浏览</h1><p>浏览、编辑和管理工作区文件。</p></div>
+  <div class="card" style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+      <el-button size="small" @click="goUp" :disabled="!currentPath">⬆ 上级</el-button>
+      <el-input :model-value="currentPath||'/'" readonly style="flex:1;font-family:monospace;font-size:13px" />
+      <el-button size="small" @click="loadDir()" :loading="loading">🔄</el-button>
+    </div>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <el-input v-model="newItemName" placeholder="新文件/文件夹名" size="small" style="width:200px" @keyup.enter="createFile" />
+      <el-button size="small" @click="createFile" :disabled="creating||!newItemName">新建文件</el-button>
+      <el-button size="small" @click="createDir" :disabled="creating||!newItemName">新建文件夹</el-button>
+    </div>
+    <el-table :data="items" v-loading="loading" size="small" empty-text="空目录">
+      <el-table-column label="名称" min-width="300"><template #default="{row}"><span :style="{cursor:'pointer',color:row.is_dir?'var(--color-accent-primary)':'inherit'}" @click="navigate(row)">{{ row.is_dir ? '📁' : '📄' }} {{ row.name }}</span></template></el-table-column>
+      <el-table-column label="大小" width="100"><template #default="{row}">{{ row.is_dir ? '-' : (row.size||0).toLocaleString()+' B' }}</template></el-table-column>
+      <el-table-column label="修改时间" width="170"><template #default="{row}">{{ row.modified || '-' }}</template></el-table-column>
+      <el-table-column label="操作" width="80"><template #default="{row}"><el-button v-if="!row.is_dir" type="danger" link size="small" @click="deleteItem(row.path)">删除</el-button></template></el-table-column>
+    </el-table>
+  </div>
+  <div v-if="editingFile" class="card">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="font-family:monospace;font-size:13px">{{ editingFile }}</span>
+      <div style="display:flex;gap:8px"><el-button type="primary" size="small" :loading="saving" @click="saveFile">保存</el-button><el-button size="small" @click="closeEditor">关闭</el-button></div>
+    </div>
+    <el-input v-model="fileContent" type="textarea" :rows="20" resize="vertical" style="font-family:monospace;font-size:13px" />
+  </div>
+</section>

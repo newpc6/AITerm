@@ -7,6 +7,8 @@ from app.db.user import UserModel
 from app.db.node import NodeModel
 from app.db.tool import ToolModel, UserToolModel
 from app.db.agent import AgentModel
+from app.db.skill import SkillTemplateModel, UserSkillModel
+from app.db.scheduler import ScheduledTaskModel, ScheduledTaskLogModel
 from app.db.file import FileModel
 from app.db.share import ShareModel
 from app.db.sandbox_config import (
@@ -65,6 +67,10 @@ ALL_MODELS: List[Type[Base]] = [
     ToolModel,
     UserToolModel,
     AgentModel,
+    SkillTemplateModel,
+    UserSkillModel,
+    ScheduledTaskModel,
+    ScheduledTaskLogModel,
     FileModel,
     ShareModel,
     SandboxConfigModel,
