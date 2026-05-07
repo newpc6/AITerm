@@ -9,6 +9,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.outputs import ChatGeneration, ChatGenerationChunk, ChatResult
 from openai import AsyncOpenAI
+from pydantic import ConfigDict
 
 from app.models.model_setting import ModelConfig
 
@@ -16,11 +17,10 @@ logger = logging.getLogger("aiterm")
 
 
 class AITermChatModel(BaseChatModel):
-    model_config: ModelConfig
+    model_setting: ModelConfig
     _client: Optional[AsyncOpenAI] = None
 
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @property
     def _llm_type(self) -> str:
@@ -28,16 +28,16 @@ class AITermChatModel(BaseChatModel):
 
     @property
     def _identifying_params(self) -> Dict[str, Any]:
-        return {"model": self.model_config.model, "api_url": self.model_config.api_url}
+        return {"model": self.model_setting.model, "api_url": self.model_setting.api_url}
 
     def _get_client(self) -> AsyncOpenAI:
         if self._client is None:
             headers = {}
-            if self.model_config.extra_headers:
-                headers.update(self.model_config.extra_headers)
+            if self.model_setting.extra_headers:
+                headers.update(self.model_setting.extra_headers)
             self._client = AsyncOpenAI(
-                base_url=self.model_config.api_url.rstrip("/"),
-                api_key=self.model_config.api_key or "EMPTY",
+                base_url=self.model_setting.api_url.rstrip("/"),
+                api_key=self.model_setting.api_key or "EMPTY",
                 timeout=90.0,
                 default_headers=headers,
             )
@@ -67,11 +67,11 @@ class AITermChatModel(BaseChatModel):
 
     def _build_extra_body(self) -> Dict[str, Any]:
         extra_body = {}
-        thinking_type = getattr(self.model_config, 'thinking_type', 'default')
+        thinking_type = getattr(self.model_setting, 'thinking_type', 'default')
         if thinking_type == "enabled":
             extra_body["thinking"] = {"type": "enabled"}
-        if self.model_config.extra_body:
-            extra_body.update(self.model_config.extra_body)
+        if self.model_setting.extra_body:
+            extra_body.update(self.model_setting.extra_body)
         return extra_body
 
     def _generate(
@@ -93,15 +93,15 @@ class AITermChatModel(BaseChatModel):
         client = self._get_client()
         converted = self._convert_messages(messages)
         extra_body = self._build_extra_body()
-        extra_params = self.model_config.extra_params or {}
+        extra_params = self.model_setting.extra_params or {}
 
         tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
 
         params: Dict[str, Any] = {
-            "model": self.model_config.model,
+            "model": self.model_setting.model,
             "messages": converted,
-            "temperature": self.model_config.temperature,
+            "temperature": self.model_setting.temperature,
             "stream": False,
         }
         if extra_body:
@@ -155,15 +155,15 @@ class AITermChatModel(BaseChatModel):
         client = self._get_client()
         converted = self._convert_messages(messages)
         extra_body = self._build_extra_body()
-        extra_params = self.model_config.extra_params or {}
+        extra_params = self.model_setting.extra_params or {}
 
         tools = kwargs.get("tools")
         tool_choice = kwargs.get("tool_choice")
 
         params: Dict[str, Any] = {
-            "model": self.model_config.model,
+            "model": self.model_setting.model,
             "messages": converted,
-            "temperature": self.model_config.temperature,
+            "temperature": self.model_setting.temperature,
             "stream": True,
             "stream_options": {"include_usage": True},
         }
@@ -214,4 +214,4 @@ class AITermChatModel(BaseChatModel):
 
 
 def create_chat_model(model_config: ModelConfig) -> AITermChatModel:
-    return AITermChatModel(model_config=model_config)
+    return AITermChatModel(model_setting=model_config)

@@ -10,7 +10,7 @@ from app.repositories.chat import ChatRepository
 from app.repositories.message import MessageRepository
 from app.services.llm import ChatService, LLMClient
 from app.services.tool_service import ToolService
-from app.services.langchain import SkillRegistry, get_skill_registry
+from app.services.langchain import get_skill_registry
 from app.utils import now_iso
 
 logger = logging.getLogger("aiterm")

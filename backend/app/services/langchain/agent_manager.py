@@ -1,7 +1,7 @@
 import logging
 from typing import Any, AsyncGenerator, Dict, List, Optional
 
-from langchain.agents import AgentExecutor, create_openai_tools_agent
+from langchain_classic.agents import AgentExecutor, create_openai_tools_agent
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
@@ -31,12 +31,14 @@ class LangChainAgentManager:
         self.chat_model = create_chat_model(model_config)
 
         self.langchain_tools = [
-            AITermToolAdapter(tool_data=t, tool_service=tool_service, chat_id=chat_id)
+            AITermToolAdapter(
+                tool_data=t, tool_service=tool_service, chat_id=chat_id)
             for t in tools
         ]
 
         self.prompt = self._build_prompt()
-        self.agent = create_openai_tools_agent(self.chat_model, self.langchain_tools, self.prompt)
+        self.agent = create_openai_tools_agent(
+            self.chat_model, self.langchain_tools, self.prompt)
         self.executor = AgentExecutor(
             agent=self.agent,
             tools=self.langchain_tools,
