@@ -108,17 +108,6 @@ function messagesToCards(msgs: AgentMsg[]): StepCard[] {
   for (var i = 0; i < msgs.length; i++) {
     var m = msgs[i]
     if (m.parts && m.parts.length > 0) {
-      if (m.role === 'assistant' && m.full_input && showFullInput.value) {
-        var fiCard: StepCard = {
-          id: m.id + '_fi',
-          role: 'assistant',
-          type: 'full_input',
-          text: m.full_input,
-          time: m.created_at,
-        }
-        initExpanded(fiCard)
-        result.push(fiCard)
-      }
       for (var j = 0; j < m.parts.length; j++) {
         var p = m.parts[j] as Record<string, any>
         if (p.type === 'input' && !showInput.value) continue
@@ -134,6 +123,16 @@ function messagesToCards(msgs: AgentMsg[]): StepCard[] {
         }
         initExpanded(card)
         result.push(card)
+      }
+      if (m.role === 'assistant' && m.full_input && showFullInput.value) {
+        var fiText = m.full_input
+        try { fiText = JSON.stringify(JSON.parse(m.full_input), null, 2) } catch { /* keep raw */ }
+        var fiCard: StepCard = {
+          id: m.id + '_fi', role: 'assistant', type: 'full_input',
+          text: fiText, time: m.created_at,
+        }
+        initExpanded(fiCard)
+        result.push(fiCard)
       }
     } else if (m.content) {
       result.push({
@@ -275,6 +274,8 @@ async function send() {
           }
         }
       } else if (currentEvent === 'done') {
+        liveCards.value = []
+        streaming.value = false
         loading.value = true
         loadMessages().finally(function () { loading.value = false })
       } else if (currentEvent === 'error') {
