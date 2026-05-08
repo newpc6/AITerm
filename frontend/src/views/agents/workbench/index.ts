@@ -1,4 +1,5 @@
 import { defineComponent } from 'vue'
+import './index.scss'
 import template from './index.html?raw'
 import { useWorkbenchPage } from './useWorkbenchPage'
 import AgentChatPanel from './AgentChatPanel.vue'
