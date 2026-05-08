@@ -203,7 +203,8 @@ async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user
             user_tools = await tool_service.tool_repo.get_user_enabled_tools(user_id=int(user.id))
             openai_tools = []
             for t in user_tools:
-                params = t.parameters.model_dump() if t.parameters else {"type": "object", "properties": {}, "required": []}
+                params = t.parameters.model_dump() if t.parameters else {
+                    "type": "object", "properties": {}, "required": []}
                 openai_tools.append({
                     "type": "function",
                     "function": {"name": t.name, "description": t.description or t.display_name or t.name, "parameters": params},
@@ -232,40 +233,115 @@ async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user
                 content="", full_input=message,
             )
             state.msg_id = int(state.msg.id)
+            part_seq = 0
 
-            full_content = ""
-            thinking_content = ""
+            all_thinking = ""
+            all_answer = ""
+            all_tool_calls_data = []
+
+            # First LLM call
+            thinking_first = ""
+            answer_first = ""
+            tool_calls_first = []
 
             async for chunk in llm_client.chat_with_tools_stream(llm_messages, openai_tools):
                 if chunk["type"] == "reasoning":
-                    thinking_content += chunk.get("delta", "")
+                    thinking_first += chunk.get("delta", "")
                     yield {"event": "reasoning", "data": json.dumps({"delta": chunk.get("delta", "")})}
                 elif chunk["type"] == "content":
-                    full_content += chunk.get("delta", "")
+                    answer_first += chunk.get("delta", "")
                     yield {"event": "delta", "data": json.dumps({"delta": chunk.get("delta", "")})}
                 elif chunk["type"] == "done":
                     if chunk.get("content"):
-                        full_content = chunk.get("content", full_content)
-
-                    seq = 0
-                    if thinking_content:
-                        await msg_repo.add_part(message_id=state.msg_id, seq=seq, content={"type": "thinking", "text": thinking_content})
-                        seq += 1
-
+                        answer_first = chunk.get("content", answer_first)
                     if chunk.get("tool_calls"):
-                        tool_calls_list = [{"name": tc.get("name", ""), "arguments": tc.get("arguments", "")} for tc in chunk["tool_calls"]]
-                        await msg_repo.add_part(message_id=state.msg_id, seq=seq, content={"type": "tools", "calls": tool_calls_list})
-                        seq += 1
-                        for tc in chunk["tool_calls"]:
-                            yield {"event": "tool_call", "data": json.dumps({"tool": tc.get("name", ""), "args": tc.get("arguments", "")})}
+                        tool_calls_first = chunk["tool_calls"]
 
-                    if full_content:
-                        await msg_repo.add_part(message_id=state.msg_id, seq=seq, content={"type": "answer", "text": full_content})
-                        seq += 1
+            if thinking_first:
+                await msg_repo.add_part(message_id=state.msg_id, seq=part_seq, content={"type": "thinking", "text": thinking_first})
+                part_seq += 1
+                all_thinking = thinking_first
+                yield {"event": "thinking_done", "data": json.dumps({"text": thinking_first})}
 
-                    await msg_repo.update_message_content(message_id=state.msg_id, content=full_content)
+            # If model wants to call tools, execute them
+            if tool_calls_first:
+                tc_list = [{"name": tc.get("name", ""), "arguments": tc.get(
+                    "arguments", "")} for tc in tool_calls_first]
+                await msg_repo.add_part(message_id=state.msg_id, seq=part_seq, content={"type": "tools", "calls": tc_list})
+                part_seq += 1
+                all_tool_calls_data.extend(tc_list)
 
-                    yield {"event": "done", "data": json.dumps({"reply": full_content})}
+                for tc in tool_calls_first:
+                    yield {"event": "tool_call", "data": json.dumps({"tool": tc.get("name", ""), "args": tc.get("arguments", "")})}
+
+                # Build assistant tool_calls message for LLM context
+                assistant_tool_msg = {
+                    "role": "assistant",
+                    "content": answer_first or "",
+                    "tool_calls": [
+                        {"id": tc.get("id", "call_" + str(i)), "type": "function",
+                         "function": {"name": tc["name"], "arguments": tc["arguments"]}}
+                        for i, tc in enumerate(tool_calls_first)
+                    ]
+                }
+                if thinking_first:
+                    assistant_tool_msg["reasoning_content"] = thinking_first
+                llm_messages.append(assistant_tool_msg)
+
+                # Execute tools
+                tool_results = await tool_service.process_tool_calls(tool_calls_first)
+                executed_tools = []
+                for i, tr in enumerate(tool_results):
+                    result_content = tr.get("content", "")
+                    executed_tools.append({
+                        "name": tr.get("name", ""),
+                        "arguments": tc_list[i]["arguments"] if i < len(tc_list) else "{}",
+                        "result": result_content[:2000],
+                        "success": '"success": true' in result_content.lower() if result_content else False,
+                    })
+                    llm_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tr.get("tool_call_id", ""),
+                        "content": result_content,
+                    })
+                    yield {"event": "tool_result", "data": json.dumps({"tool": tr.get("name", ""), "result": result_content[:500]})}
+
+                await msg_repo.add_part(message_id=state.msg_id, seq=part_seq, content={"type": "tools_result", "calls": executed_tools})
+                part_seq += 1
+
+                # Second LLM call with tool results
+                thinking_second = ""
+                answer_second = ""
+                async for chunk in llm_client.chat_with_tools_stream(llm_messages, openai_tools):
+                    if chunk["type"] == "reasoning":
+                        thinking_second += chunk.get("delta", "")
+                        yield {"event": "reasoning", "data": json.dumps({"delta": chunk.get("delta", "")})}
+                    elif chunk["type"] == "content":
+                        answer_second += chunk.get("delta", "")
+                        yield {"event": "delta", "data": json.dumps({"delta": chunk.get("delta", "")})}
+                    elif chunk["type"] == "done":
+                        if chunk.get("content"):
+                            answer_second = chunk.get("content", answer_second)
+
+                if thinking_second:
+                    await msg_repo.add_part(message_id=state.msg_id, seq=part_seq, content={"type": "thinking", "text": thinking_second})
+                    part_seq += 1
+                    all_thinking += ("\n\n" + thinking_second)
+
+                if answer_second:
+                    await msg_repo.add_part(message_id=state.msg_id, seq=part_seq, content={"type": "answer", "text": answer_second})
+                    part_seq += 1
+                    all_answer = answer_second
+            else:
+                # No tool calls, just a direct answer
+                if answer_first:
+                    await msg_repo.add_part(message_id=state.msg_id, seq=part_seq, content={"type": "answer", "text": answer_first})
+                    part_seq += 1
+                    all_answer = answer_first
+
+            final_content = all_answer or answer_first or ""
+            await msg_repo.update_message_content(message_id=state.msg_id, content=final_content)
+            yield {"event": "done", "data": json.dumps({"reply": final_content})}
 
         except Exception as e:
             logger.error(f"Agent chat error: {e}")

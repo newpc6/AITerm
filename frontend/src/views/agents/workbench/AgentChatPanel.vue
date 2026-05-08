@@ -6,9 +6,9 @@ import { http } from '@/api/http'
 import type { ApiResponse } from '@/types/api'
 
 interface PartItem {
-  type: 'input' | 'thinking' | 'tools' | 'answer'
+  type: 'input' | 'thinking' | 'tools' | 'tools_result' | 'answer'
   text?: string
-  calls?: { name: string; arguments: string }[]
+  calls?: { name: string; arguments: string; result?: string; success?: boolean }[]
   _expanded?: boolean
 }
 
@@ -16,12 +16,9 @@ interface AgentMsg {
   id: string
   role: string
   content: string
-  full_input?: string
   parts: PartItem[]
   created_at: string
 }
-
-const PER_PAGE = 6
 
 const props = defineProps<{
   agentId: string
@@ -34,43 +31,36 @@ const loading = ref(false)
 const hasMore = ref(true)
 const streaming = ref(false)
 const streamingParts = ref<PartItem[]>([])
-const streamingContent = ref('')
 const input = ref('')
 const sending = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
 let aborter: AbortController | null = null
 
 const showThinking = computed(function () { return !props.displaySettings || props.displaySettings.showThinking })
-const expandThinking = computed(function () { return !!props.displaySettings?.expandThinking })
 const showTools = computed(function () { return !props.displaySettings || props.displaySettings.showTools })
-const expandTools = computed(function () { return !!props.displaySettings?.expandTools })
 const showInput = computed(function () { return !props.displaySettings || props.displaySettings.showInput })
-const showFullInput = computed(function () { return !!props.displaySettings?.showFullInput })
-
 const shouldAutoScroll = ref(true)
 
 async function loadMessages(beforeId?: string) {
   if (loading.value) return
   loading.value = true
   try {
-    const params: Record<string, string> = { limit: String(PER_PAGE) }
+    var params: Record<string, string> = { limit: '6' }
     if (beforeId) params.before_id = beforeId
-    const resp = await http.get<ApiResponse<{ messages: AgentMsg[]; has_more: boolean }>>('/api/v1/agents/' + props.agentId + '/messages', { params })
-    const body = resp.data as { data: { messages: AgentMsg[]; has_more: boolean } }
-    const newMsgs: AgentMsg[] = body.data.messages || []
-    const more: boolean = body.data.has_more
+    var resp = await http.get('/api/v1/agents/' + props.agentId + '/messages', { params: params })
+    var body = resp.data as { data: { messages: AgentMsg[]; has_more: boolean } }
+    var newMsgs = body.data.messages || []
+    var more = body.data.has_more
 
     if (beforeId) {
-      const oldH = containerRef.value ? containerRef.value.scrollHeight : 0
+      var oldH = containerRef.value ? containerRef.value.scrollHeight : 0
       messages.value = newMsgs.concat(messages.value)
-      await nextTick()
-      if (containerRef.value) {
-        containerRef.value.scrollTop = containerRef.value.scrollHeight - oldH
-      }
+      nextTick(function () {
+        if (containerRef.value) containerRef.value.scrollTop = containerRef.value.scrollHeight - oldH
+      })
     } else {
       messages.value = newMsgs
-      await nextTick()
-      scrollToBottom()
+      nextTick(function () { scrollToBottom() })
     }
     hasMore.value = more
   } catch { /* */ }
@@ -78,20 +68,18 @@ async function loadMessages(beforeId?: string) {
 }
 
 function onScroll() {
-  const el = containerRef.value
+  var el = containerRef.value
   if (!el) return
   shouldAutoScroll.value = el.scrollHeight - el.scrollTop - el.clientHeight < 80
   if (el.scrollTop < 60 && hasMore.value && !loading.value) {
-    const oldest = messages.value[0]
+    var oldest = messages.value[0]
     if (oldest) loadMessages(oldest.id)
   }
 }
 
 function scrollToBottom() {
   nextTick(function () {
-    if (containerRef.value) {
-      containerRef.value.scrollTop = containerRef.value.scrollHeight
-    }
+    if (containerRef.value) containerRef.value.scrollTop = containerRef.value.scrollHeight
   })
 }
 
@@ -100,105 +88,117 @@ function fmt(s: string) {
   try { return new Date(s).toLocaleTimeString() } catch { return '' }
 }
 
-function formatArgs(args: string): string {
+function fmtArgs(args: string): string {
   try { return JSON.stringify(JSON.parse(args), null, 2) } catch { return args }
 }
 
 async function send() {
-  const msg = input.value.trim()
+  var msg = input.value.trim()
   if (!msg || sending.value || streaming.value) return
   input.value = ''
   sending.value = true
   streaming.value = true
   streamingParts.value = []
-  streamingContent.value = ''
 
-  const now = new Date().toISOString()
-  messages.value.push({
-    id: '', role: 'user', content: msg, parts: [{ type: 'input', text: msg }], created_at: now,
-  })
-  await nextTick()
-  scrollToBottom()
+  var now = new Date().toISOString()
+  messages.value.push({ id: '', role: 'user', content: msg, parts: [{ type: 'input', text: msg }], created_at: now })
+  nextTick(function () { scrollToBottom() })
 
-  const assistantMsg: AgentMsg = {
-    id: now + '_a', role: 'assistant', content: '', parts: [], created_at: now,
-  }
-  messages.value.push(assistantMsg)
+  var assistMsg: AgentMsg = { id: now + '_a', role: 'assistant', content: '', parts: [], created_at: now }
+  messages.value.push(assistMsg)
 
   aborter = new AbortController()
 
   try {
-    const token = getAuthToken() || ''
-    const baseUrl = getApiBaseUrl()
-    const url = baseUrl + '/api/v1/agents/' + props.agentId + '/chat'
-    const headers: Record<string, string> = { 'Content-Type': 'application/json' }
+    var token = getAuthToken() || ''
+    var baseUrl = getApiBaseUrl()
+    var url = baseUrl + '/api/v1/agents/' + props.agentId + '/chat'
+    var headers: Record<string, string> = { 'Content-Type': 'application/json' }
     if (token) headers['Authorization'] = 'Bearer ' + token
 
-    const resp = await fetch(url, {
+    var resp = await fetch(url, {
       method: 'POST', signal: aborter.signal, headers,
       body: JSON.stringify({ message: msg }),
     })
 
     if (!resp.ok || !resp.body) throw new Error('HTTP ' + resp.status)
 
-    const reader = resp.body.getReader()
-    const decoder = new TextDecoder()
-    let buffer = ''
-    let currentEvent = ''
-    const dataLines: string[] = []
-    let thinkingText = ''
-    let contentText = ''
+    var reader = resp.body.getReader()
+    var decoder = new TextDecoder()
+    var buffer = ''
+    var currentEvent = ''
+    var dataLines: string[] = []
+    var thinkingText = ''
+    var answerText = ''
+    var liveTools: PartItem[] = []
 
     function flushEvent() {
-      const d = dataLines.join('\n').trim()
+      var d = dataLines.join('\n').trim()
       dataLines.length = 0
       if (!d) { currentEvent = ''; return }
-      let parsed: any
+      var parsed: any
       try { parsed = JSON.parse(d) } catch { currentEvent = ''; return }
 
       if (currentEvent === 'reasoning') {
         thinkingText += (parsed.delta || '')
-        if (showThinking.value) {
-          streamingParts.value = [
-            ...streamingParts.value.filter(function (p) { return p.type !== 'thinking' }),
-            { type: 'thinking', text: thinkingText },
-          ]
-        }
+        var thinkingParts: PartItem[] = [{ type: 'thinking', text: thinkingText, _expanded: true }]
+        streamingParts.value = thinkingParts.concat(liveTools)
+        if (answerText) streamingParts.value.push({ type: 'answer', text: answerText })
         if (shouldAutoScroll.value) scrollToBottom()
+      } else if (currentEvent === 'thinking_done') {
+        var thinkingParts2: PartItem[] = [{ type: 'thinking', text: parsed.text || thinkingText, _expanded: false }]
+        streamingParts.value = thinkingParts2.concat(liveTools)
+        if (answerText) streamingParts.value.push({ type: 'answer', text: answerText })
       } else if (currentEvent === 'delta') {
-        contentText += (parsed.delta || '')
-        streamingParts.value = streamingParts.value.filter(function (p) { return p.type !== 'answer' })
-        if (contentText) {
-          streamingParts.value.push({ type: 'answer', text: contentText })
-        }
-        assistantMsg.content = contentText
+        answerText += (parsed.delta || '')
+        var newParts: PartItem[] = []
+        if (thinkingText) newParts.push({ type: 'thinking', text: thinkingText, _expanded: false })
+        newParts = newParts.concat(liveTools)
+        if (answerText) newParts.push({ type: 'answer', text: answerText })
+        streamingParts.value = newParts
+        assistMsg.content = answerText
         if (shouldAutoScroll.value) scrollToBottom()
       } else if (currentEvent === 'tool_call') {
-        const existing = streamingParts.value.filter(function (p) { return p.type === 'tools' })[0]
-        const call = { name: parsed.tool || '', arguments: parsed.args || '' }
+        var call = { name: parsed.tool || '', arguments: parsed.args || '' }
+        var existing = liveTools.filter(function (p) { return p.type === 'tools' })[0]
         if (existing && existing.calls) {
-          streamingParts.value = streamingParts.value.map(function (p) {
-            return p.type === 'tools' ? { type: 'tools' as const, calls: (existing.calls || []).concat([call]) } : p
-          })
+          existing.calls.push(call)
         } else {
-          streamingParts.value.push({ type: 'tools', calls: [call] })
+          liveTools.push({ type: 'tools', calls: [call], _expanded: true })
         }
+        var toolParts: PartItem[] = []
+        if (thinkingText) toolParts.push({ type: 'thinking', text: thinkingText, _expanded: false })
+        toolParts = toolParts.concat(liveTools)
+        if (answerText) toolParts.push({ type: 'answer', text: answerText })
+        streamingParts.value = toolParts
+      } else if (currentEvent === 'tool_result') {
+        var lastTool = liveTools.filter(function (p) { return p.type === 'tools' })[0]
+        if (lastTool && lastTool.calls && lastTool.calls.length > 0) {
+          var lastCall = lastTool.calls[lastTool.calls.length - 1]
+          lastCall.result = parsed.result || ''
+          lastCall.success = true
+        }
+        var resParts: PartItem[] = []
+        if (thinkingText) resParts.push({ type: 'thinking', text: thinkingText, _expanded: false })
+        resParts = resParts.concat(liveTools)
+        if (answerText) resParts.push({ type: 'answer', text: answerText })
+        streamingParts.value = resParts
       } else if (currentEvent === 'done') {
         loading.value = true
         loadMessages().finally(function () { loading.value = false })
       } else if (currentEvent === 'error') {
-        assistantMsg.content = '错误: ' + (parsed.error || '未知错误')
+        assistMsg.content = '\u9519\u8bef: ' + (parsed.error || '\u672a\u77e5\u9519\u8bef')
       }
       currentEvent = ''
     }
 
     while (true) {
-      const result = await reader.read()
+      var result = await reader.read()
       buffer += decoder.decode(result.value || new Uint8Array(), { stream: !result.done })
 
-      let idx = buffer.indexOf('\n')
+      var idx = buffer.indexOf('\n')
       while (idx >= 0) {
-        const line = buffer.slice(0, idx).replace(/\r$/, '')
+        var line = buffer.slice(0, idx).replace(/\r$/, '')
         buffer = buffer.slice(idx + 1)
         if (!line.trim()) { flushEvent() }
         else if (line.startsWith('event:')) { currentEvent = line.slice(6).trim() }
@@ -207,35 +207,30 @@ async function send() {
       }
 
       if (result.done) {
-        if (buffer.trim() && buffer.trim().startsWith('data:')) {
-          dataLines.push(buffer.trim().slice(5).trim())
-        }
+        if (buffer.trim() && buffer.trim().startsWith('data:')) dataLines.push(buffer.trim().slice(5).trim())
         flushEvent()
         break
       }
     }
   } catch (e: any) {
-    if (e.name !== 'AbortError') {
-      assistantMsg.content = '请求失败: ' + String(e)
-    }
+    if (e.name !== 'AbortError') assistMsg.content = '\u8bf7\u6c42\u5931\u8d25: ' + String(e)
   }
 
   streaming.value = false
   streamingParts.value = []
-  streamingContent.value = ''
   sending.value = false
   aborter = null
   scrollToBottom()
 }
 
 function stop() {
-  aborter && aborter.abort()
+  if (aborter) aborter.abort()
   streaming.value = false
   streamingParts.value = []
 }
 
 onMounted(function () { loadMessages() })
-onUnmounted(function () { aborter && aborter.abort() })
+onUnmounted(function () { if (aborter) aborter.abort() })
 </script>
 
 <template>
@@ -250,75 +245,135 @@ onUnmounted(function () { aborter && aborter.abort() })
       </div>
 
       <template v-for="msg in messages" :key="msg.id || msg.created_at">
-        <div class="msg-card" :class="'msg-card--' + msg.role">
-          <div class="msg-card__header">
-            <span class="msg-card__role">{{ msg.role === 'user' ? '你' : props.agentName }}</span>
-            <span class="msg-card__time">{{ fmt(msg.created_at) }}</span>
-          </div>
+        <div class="msg-wrapper" :class="'msg-wrapper--' + msg.role">
+          <div class="msg-card" :class="'msg-card--' + msg.role">
+            <div class="msg-card__role">
+              <span class="msg-card__role-icon">{{ msg.role === 'user' ? '👤' : '🤖' }}</span>
+              <span>{{ msg.role === 'user' ? '你' : props.agentName }}</span>
+              <span class="msg-card__time">{{ fmt(msg.created_at) }}</span>
+            </div>
 
-          <div class="msg-card__body">
-            <template v-if="msg.parts && msg.parts.length > 0">
-              <div v-for="(part, pi) in msg.parts" :key="pi" class="msg-step">
-
-                <div v-if="part.type === 'input' && showInput" class="msg-step__input">
-                  <div class="msg-step__label">📥 输入</div>
-                  <div class="msg-step__text">{{ part.text }}</div>
+            <div v-if="msg.parts && msg.parts.length > 0" class="msg-card__steps">
+              <div v-for="(part, pi) in msg.parts" :key="pi">
+                <!-- Input step -->
+                <div v-if="part.type === 'input' && showInput" class="step step--input">
+                  <div class="step__label">
+                    <span class="step__icon">📥</span> 输入
+                  </div>
+                  <div class="step__body">{{ part.text }}</div>
                 </div>
 
-                <div v-if="part.type === 'thinking' && showThinking" class="msg-step__thinking">
-                  <div class="msg-step__label" style="display: flex; justify-content: space-between; cursor: pointer"
-                    @click="part._expanded = !part._expanded">
-                    <span>💭 思考</span>
-                    <span style="font-size: 11px; opacity: 0.5">{{ part._expanded ? '收起' : '展开' }}</span>
+                <!-- Thinking step -->
+                <div v-if="part.type === 'thinking' && showThinking" class="step step--thinking">
+                  <div class="step__label step__label--clickable" @click="part._expanded = !part._expanded">
+                    <span class="step__icon">💭</span> 思考
+                    <span class="step__toggle">{{ (part._expanded !== false) ? '收起 ▲' : '展开 ▼' }}</span>
                   </div>
-                  <div v-if="part._expanded || expandThinking" class="msg-step__text msg-step__text--mono">{{ part.text
-                    }}</div>
+                  <div v-if="part._expanded !== false" class="step__body step__body--mono">{{ part.text }}</div>
                 </div>
 
-                <div v-if="part.type === 'tools' && showTools" class="msg-step__tools">
-                  <div class="msg-step__label" style="display: flex; justify-content: space-between; cursor: pointer"
-                    @click="part._expanded = !part._expanded">
-                    <span>🔧 工具调用</span>
-                    <span style="font-size: 11px; opacity: 0.5">{{ part._expanded ? '收起' : '展开' }}</span>
+                <!-- Tools step -->
+                <div v-if="part.type === 'tools' && showTools" class="step step--tools">
+                  <div class="step__label step__label--clickable" @click="part._expanded = !part._expanded">
+                    <span class="step__icon">🔧</span> 工具调用
+                    <span v-if="part.calls" class="step__badge">{{ part.calls.length }}</span>
+                    <span class="step__toggle">{{ (part._expanded !== false) ? '收起 ▲' : '展开 ▼' }}</span>
                   </div>
-                  <div v-if="(part._expanded || expandTools) && part.calls">
-                    <div v-for="(call, ci) in part.calls" :key="ci" class="msg-step__tool">
-                      <div class="msg-step__tool-name">⚡ {{ call.name }}</div>
-                      <pre class="msg-step__tool-args">{{ formatArgs(call.arguments) }}</pre>
+                  <div v-if="part._expanded !== false && part.calls" class="step__tool-list">
+                    <div v-for="(call, ci) in part.calls" :key="ci" class="step__tool-item">
+                      <div class="step__tool-header">
+                        <span class="step__tool-name">⚡ {{ call.name }}</span>
+                        <span v-if="call.result" class="step__tool-status"
+                          :class="{ 'step__tool-status--ok': call.success }">
+                          {{ call.success ? '✓' : '✗' }}
+                        </span>
+                      </div>
+                      <pre class="step__code">{{ fmtArgs(call.arguments) }}</pre>
+                      <div v-if="call.result" class="step__tool-result">
+                        <div class="step__tool-result-label">结果:</div>
+                        <pre class="step__code step__code--result">{{ call.result }}</pre>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div v-if="part.type === 'answer'" class="msg-step__answer">
-                  <div class="msg-step__label">💬 回答</div>
-                  <div class="msg-step__text" style="white-space: pre-wrap">{{ part.text }}</div>
+                <!-- Tools result step (from persisted data) -->
+                <div v-if="part.type === 'tools_result' && showTools" class="step step--tools-result">
+                  <div class="step__label step__label--clickable" @click="part._expanded = !part._expanded">
+                    <span class="step__icon">✅</span> 工具执行结果
+                    <span v-if="part.calls" class="step__badge">{{ part.calls.length }}</span>
+                    <span class="step__toggle">{{ (part._expanded !== false) ? '收起 ▲' : '展开 ▼' }}</span>
+                  </div>
+                  <div v-if="part._expanded !== false && part.calls" class="step__tool-list">
+                    <div v-for="(call, ci) in part.calls" :key="ci" class="step__tool-item">
+                      <div class="step__tool-header">
+                        <span class="step__tool-name">⚡ {{ call.name }}</span>
+                        <span class="step__tool-status" :class="{ 'step__tool-status--ok': call.success }">
+                          {{ call.success ? '✓ 成功' : '✗ 失败' }}
+                        </span>
+                      </div>
+                      <pre class="step__code">{{ fmtArgs(call.arguments) }}</pre>
+                      <div v-if="call.result" class="step__tool-result">
+                        <div class="step__tool-result-label">结果:</div>
+                        <pre class="step__code step__code--result">{{ call.result }}</pre>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Answer step -->
+                <div v-if="part.type === 'answer'" class="step step--answer">
+                  <div class="step__label">
+                    <span class="step__icon">💬</span> 回答
+                  </div>
+                  <div class="step__body" style="white-space: pre-wrap">{{ part.text }}</div>
                 </div>
               </div>
-            </template>
-
-            <div v-else class="msg-step__text" style="white-space: pre-wrap">{{ msg.content }}</div>
+            </div>
+            <div v-else class="msg-card__fallback">{{ msg.content }}</div>
           </div>
         </div>
       </template>
 
-      <div v-if="streaming && streamingParts.length > 0" class="msg-card msg-card--assistant msg-card--streaming">
-        <div class="msg-card__body">
-          <div v-for="(part, pi) in streamingParts" :key="'s_' + pi" class="msg-step">
-            <div v-if="part.type === 'thinking'" class="msg-step__thinking">
-              <div class="msg-step__label">💭 思考中...</div>
-              <div class="msg-step__text msg-step__text--mono">{{ part.text }}</div>
-            </div>
-            <div v-if="part.type === 'answer'" class="msg-step__answer">
-              <div class="msg-step__label">💬 回复中...</div>
-              <div class="msg-step__text" style="white-space: pre-wrap">{{ part.text }}</div>
-            </div>
-            <div v-if="part.type === 'tools'" class="msg-step__tools">
-              <div class="msg-step__label">🔧 工具调用</div>
-              <div v-if="part.calls">
-                <div v-for="(call, ci) in part.calls" :key="ci" class="msg-step__tool">
-                  <div class="msg-step__tool-name">⚡ {{ call.name }}</div>
-                  <pre class="msg-step__tool-args">{{ formatArgs(call.arguments) }}</pre>
+      <!-- Streaming assistant card -->
+      <div v-if="streaming && streamingParts.length > 0" class="msg-wrapper msg-wrapper--assistant">
+        <div class="msg-card msg-card--assistant msg-card--streaming">
+          <div class="msg-card__role">
+            <span class="msg-card__role-icon">🤖</span>
+            <span>{{ props.agentName }}</span>
+            <span class="msg-card__pulse"></span>
+          </div>
+          <div class="msg-card__steps">
+            <div v-for="(part, pi) in streamingParts" :key="'s_' + pi">
+              <div v-if="part.type === 'thinking'" class="step step--thinking step--live">
+                <div class="step__label">
+                  <span class="step__icon">💭</span> 思考中...
                 </div>
+                <div class="step__body step__body--mono">{{ part.text }}</div>
+              </div>
+              <div v-if="part.type === 'tools'" class="step step--tools step--live">
+                <div class="step__label">
+                  <span class="step__icon">🔧</span> 调用工具
+                  <span v-if="part.calls" class="step__badge step__badge--live">{{ part.calls.length }}</span>
+                </div>
+                <div v-if="part.calls" class="step__tool-list">
+                  <div v-for="(call, ci) in part.calls" :key="ci" class="step__tool-item">
+                    <div class="step__tool-header">
+                      <span class="step__tool-name">⚡ {{ call.name }}</span>
+                      <span v-if="call.result" class="step__tool-status step__tool-status--ok">✓</span>
+                    </div>
+                    <pre class="step__code">{{ fmtArgs(call.arguments) }}</pre>
+                    <div v-if="call.result" class="step__tool-result">
+                      <pre class="step__code step__code--result">{{ call.result }}</pre>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div v-if="part.type === 'answer'" class="step step--answer step--live">
+                <div class="step__label">
+                  <span class="step__icon">💬</span> 回复中...
+                </div>
+                <div class="step__body" style="white-space: pre-wrap">{{ part.text }}</div>
               </div>
             </div>
           </div>
@@ -349,7 +404,7 @@ onUnmounted(function () { aborter && aborter.abort() })
 .agent-chat__log {
   flex: 1;
   overflow-y: auto;
-  padding: 12px 16px;
+  padding: 16px 20px;
 }
 
 .agent-chat__hint {
@@ -365,13 +420,13 @@ onUnmounted(function () { aborter && aborter.abort() })
 
 .agent-chat__empty {
   text-align: center;
-  padding: 40px;
+  padding: 60px 20px;
   color: var(--color-text-muted);
   font-size: 13px;
 }
 
 .agent-chat__input {
-  padding: 10px 12px;
+  padding: 10px 16px;
   border-top: 1px solid var(--color-border-primary);
   background: var(--color-bg-secondary);
   flex-shrink: 0;
@@ -384,107 +439,250 @@ onUnmounted(function () { aborter && aborter.abort() })
   margin-top: 8px;
 }
 
+/* Message alignment */
+.msg-wrapper {
+  display: flex;
+  margin-bottom: 20px;
+}
+
+.msg-wrapper--user {
+  justify-content: flex-end;
+}
+
+.msg-wrapper--assistant {
+  justify-content: flex-start;
+}
+
 .msg-card {
-  margin-bottom: 16px;
+  max-width: 85%;
+  min-width: 200px;
   border-radius: 10px;
-  border: 1px solid var(--color-border-primary);
   overflow: hidden;
 }
 
 .msg-card--user {
-  background: var(--color-bg-secondary);
+  background: var(--color-accent-primary);
 }
 
 .msg-card--assistant {
-  background: var(--color-bg-primary);
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-primary);
 }
 
 .msg-card--streaming {
-  opacity: 0.85;
-}
-
-.msg-card__header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 14px;
-  background: var(--color-bg-tertiary);
-  border-bottom: 1px solid var(--color-border-primary);
+  border-color: rgba(0, 113, 227, 0.3);
 }
 
 .msg-card__role {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
   font-size: 12px;
   font-weight: 600;
+}
+
+.msg-card--user .msg-card__role {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.msg-card--assistant .msg-card__role {
   color: var(--color-text-secondary);
-}
-
-.msg-card__time {
-  font-size: 10px;
-  color: var(--color-text-muted);
-}
-
-.msg-card__body {
-  padding: 0;
-}
-
-.msg-step {
   border-bottom: 1px solid var(--color-border-primary);
 }
 
-.msg-step:last-child {
-  border-bottom: none;
+.msg-card__role-icon {
+  font-size: 14px;
 }
 
-.msg-step__label {
+.msg-card__time {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 400;
+  opacity: 0.6;
+}
+
+.msg-card__pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent-primary);
+  animation: pulse 1s infinite;
+  margin-left: auto;
+}
+
+@keyframes pulse {
+
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.3;
+  }
+}
+
+.msg-card__steps {}
+
+.msg-card__fallback {
+  padding: 10px 14px;
+  font-size: 13px;
+  white-space: pre-wrap;
+  color: var(--color-text-primary);
+}
+
+.msg-card--user .msg-card__fallback {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+/* Steps */
+.step {
+  border-top: 1px solid var(--color-border-primary);
+}
+
+.step:first-child {
+  border-top: none;
+}
+
+.step__label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 14px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--color-text-secondary);
-  background: var(--color-bg-input);
   user-select: none;
 }
 
-.msg-step__text {
+.step--input .step__label {
+  background: rgba(34, 197, 94, 0.08);
+  color: #4ade80;
+}
+
+.step--thinking .step__label {
+  background: rgba(245, 158, 11, 0.08);
+  color: #fbbf24;
+}
+
+.step--tools .step__label {
+  background: rgba(0, 113, 227, 0.08);
+  color: #60a5fa;
+}
+
+.step--tools-result .step__label {
+  background: rgba(34, 197, 94, 0.08);
+  color: #4ade80;
+}
+
+.step--answer .step__label {
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--color-text-secondary);
+}
+
+.step--live .step__label {
+  opacity: 0.85;
+}
+
+.step__label--clickable {
+  cursor: pointer;
+}
+
+.step__label--clickable:hover {
+  opacity: 0.85;
+}
+
+.step__toggle {
+  margin-left: auto;
+  font-size: 10px;
+  opacity: 0.5;
+  font-weight: 400;
+}
+
+.step__badge {
+  margin-left: auto;
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(0, 113, 227, 0.2);
+  color: #60a5fa;
+}
+
+.step__badge--live {
+  animation: pulse 1s infinite;
+}
+
+.step__body {
   padding: 8px 14px;
   font-size: 13px;
   color: var(--color-text-primary);
   line-height: 1.6;
 }
 
-.msg-step__text--mono {
+.step__body--mono {
   font-family: 'Consolas', 'Courier New', monospace;
   font-size: 12px;
   white-space: pre-wrap;
   word-break: break-word;
+  color: var(--color-text-muted);
 }
 
-.msg-step__input {}
+.step__tool-list {}
 
-.msg-step__thinking {}
-
-.msg-step__tools {}
-
-.msg-step__answer {}
-
-.msg-step__tool {
-  padding: 8px 14px;
+.step__tool-item {
+  padding: 10px 14px;
   border-top: 1px solid var(--color-border-primary);
 }
 
-.msg-step__tool-name {
+.step__tool-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.step__tool-name {
   font-size: 12px;
   font-weight: 600;
   color: var(--color-accent-secondary);
-  margin-bottom: 4px;
 }
 
-.msg-step__tool-args {
-  background: var(--color-bg-input);
-  padding: 8px;
+.step__tool-status {
+  font-size: 11px;
+  color: var(--color-danger);
+}
+
+.step__tool-status--ok {
+  color: #4ade80;
+}
+
+.step__code {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 8px 10px;
   border-radius: 6px;
   font-size: 11px;
   color: var(--color-text-secondary);
   margin: 0;
   overflow-x: auto;
+  font-family: 'Consolas', 'Courier New', monospace;
+  line-height: 1.4;
+}
+
+.step__code--result {
+  background: rgba(34, 197, 94, 0.06);
+  border-left: 2px solid rgba(34, 197, 94, 0.3);
+}
+
+.step__tool-result {
+  margin-top: 8px;
+}
+
+.step__tool-result-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 </style>
