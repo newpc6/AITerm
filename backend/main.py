@@ -96,6 +96,7 @@ async def ensure_bootstrap_data():
     await ensure_builtin_tools()
     await ensure_sandbox_config()
     await ensure_default_skills()
+    await ensure_default_agents()
 
     async with async_session_maker() as session:
         result = await session.execute(select(AuthSettingsModel))
@@ -123,7 +124,7 @@ async def ensure_builtin_tools():
         "list_directory", "create_directory", "delete_file", "copy_file", "move_file",
     }
 
-    tools_dir = Path(__file__).parent / "tools"
+    tools_dir = Path(__file__).parent / "data" / "tools"
     if not tools_dir.exists():
         logger.warning(f"Built-in tools directory not found: {tools_dir}")
         return
@@ -257,14 +258,127 @@ async def ensure_sandbox_config():
 
 
 async def ensure_default_skills():
-    from app.repositories.skill import SkillRepository
     from app.repositories.user import UserRepository
     user_repo = UserRepository()
-    repo = SkillRepository()
     admin = await user_repo.get_first_admin()
-    if admin:
-        await repo.create_default_skills(admin_user_id=int(admin.id))
-        logger.info("Default skills bootstrap completed")
+    if not admin:
+        logger.warning("No admin user found, skipping skill import")
+        return
+
+    skills_dir = Path(__file__).parent / "data" / "skills"
+    if not skills_dir.exists():
+        logger.warning(f"Skills directory not found: {skills_dir}")
+        return
+
+    await _import_skills_from_json(skills_dir, int(admin.id))
+
+
+async def _import_skills_from_json(skills_dir: Path, admin_user_id: int):
+    from app.repositories.skill import SkillRepository
+    repo = SkillRepository()
+    imported = 0
+    skipped = 0
+
+    for file_path in sorted(skills_dir.glob("*.json")):
+        try:
+            data = json.loads(file_path.read_text(encoding='utf-8'))
+            name = data.get('name', file_path.stem)
+            if not name:
+                continue
+
+            existing_list = await repo.list_visible(admin_user_id, "public")
+            if any(s.name == name for s in existing_list):
+                skipped += 1
+                continue
+
+            await repo.create(
+                user_id=admin_user_id,
+                name=name,
+                display_name=data.get('display_name', name),
+                description=data.get('description', ''),
+                version=data.get('version', '1.0.0'),
+                category=data.get('category', 'general'),
+                system_prompt=data.get('system_prompt', ''),
+                tool_names=data.get('tool_names', []),
+                config_json=data.get('config_json', '{}'),
+                is_default=True,
+            )
+            created_list = await repo.list_visible(admin_user_id, "my")
+            created = next((s for s in created_list if s.name == name), None)
+            if created:
+                await repo.review(str(created.id), admin_user_id, approved=True)
+                imported += 1
+                logger.info(f"Imported skill template: {name}")
+        except Exception as e:
+            logger.error(f"Failed to import skill {file_path.name}: {e}")
+
+    if imported > 0 or skipped > 0:
+        logger.info(
+            f"Skills bootstrap: {imported} imported, {skipped} already exist")
+
+
+async def ensure_default_agents():
+    from app.repositories.user import UserRepository
+    user_repo = UserRepository()
+    admin = await user_repo.get_first_admin()
+    if not admin:
+        logger.warning("No admin user found, skipping agent import")
+        return
+
+    agents_dir = Path(__file__).parent / "data" / "agent"
+    if not agents_dir.exists():
+        logger.warning(f"Agents directory not found: {agents_dir}")
+        return
+
+    await _import_agents_from_json(agents_dir, int(admin.id))
+
+
+async def _import_agents_from_json(agents_dir: Path, admin_user_id: int):
+    from app.repositories.agent import AgentRepository
+    repo = AgentRepository()
+    imported = 0
+    skipped = 0
+
+    existing_all = await repo.list_by_user(admin_user_id)
+    existing_names = {a.name for a in existing_all}
+
+    for file_path in sorted(agents_dir.glob("*.json")):
+        try:
+            data = json.loads(file_path.read_text(encoding='utf-8'))
+            name = data.get('name', file_path.stem)
+            if not name:
+                continue
+
+            if name in existing_names:
+                skipped += 1
+                continue
+
+            await repo.create(
+                user_id=admin_user_id,
+                name=name,
+                description=data.get('description', ''),
+                icon=data.get('icon', 'robot'),
+                model_id=None,
+                skill_ids=data.get('skill_ids', []),
+                system_prompt=data.get('system_prompt', ''),
+                temperature=data.get('temperature', 0.7),
+                max_iterations=data.get('max_iterations', 10),
+                is_public=True,
+                is_template=True,
+                scope="public",
+            )
+            created_list = await repo.list_by_user(admin_user_id)
+            created = next((a for a in created_list if a.name == name), None)
+            if created:
+                await repo.review(str(created.id), admin_user_id, approved=True)
+                imported += 1
+                logger.info(f"Imported agent template: {name}")
+        except Exception as e:
+            logger.error(f"Failed to import agent {file_path.name}: {e}")
+
+    if imported > 0 or skipped > 0:
+        logger.info(
+            f"Agents bootstrap: {imported} imported, {skipped} already exist")
 
 
 @asynccontextmanager

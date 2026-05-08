@@ -18,7 +18,7 @@ from app.api.deps import get_current_user, require_admin
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tools", tags=["tools"])
 tool_repo = ToolRepository()
-BUILTIN_TOOLS_DIR = Path(__file__).parent.parent.parent.parent / "tools"
+BUILTIN_TOOLS_DIR = Path(__file__).parent.parent.parent.parent / "data" / "tools"
 
 
 async def _execute_tool_code(code: str, arguments: dict):

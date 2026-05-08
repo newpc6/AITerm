@@ -45,7 +45,7 @@ class SkillRegistry:
     def __init__(self, skills_dir: str = None):
         self._skills: Dict[str, SkillDefinition] = {}
         self._builtin_skills: Dict[str, SkillDefinition] = {}
-        self._skills_dir = skills_dir or str(Path(__file__).parent.parent.parent.parent / "skills")
+        self._skills_dir = skills_dir or str(Path(__file__).parent.parent.parent.parent / "data" / "skills")
         self._load_builtin_skills()
 
     def _load_builtin_skills(self):
