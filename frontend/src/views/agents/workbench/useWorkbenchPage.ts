@@ -7,6 +7,20 @@ export function useWorkbenchPage() {
   const selectedIds = ref<string[]>([])
   const activeTab = ref('')
 
+  const displaySettings = ref({
+    showThinking: true,
+    expandThinking: false,
+    showTools: true,
+    expandTools: false,
+    showInput: true,
+    expandInput: false,
+    showFullInput: false,
+    expandFullInput: false,
+    autoCollapse: true,
+  })
+
+  const showShareDialog = ref(false)
+
   async function loadAgents() {
     try {
       agents.value = await getAgents()
@@ -53,5 +67,5 @@ export function useWorkbenchPage() {
     loadAgents()
   })
 
-  return { agents, selectedIds, activeTab, onSelectChange, getAgentName, closeTab }
+  return { agents, selectedIds, activeTab, displaySettings, showShareDialog, onSelectChange, getAgentName, closeTab }
 }

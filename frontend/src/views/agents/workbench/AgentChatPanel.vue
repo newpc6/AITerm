@@ -9,7 +9,21 @@ import type { ChatMessage } from '@/types/chat'
 
 const PER_PAGE = 6
 
-const props = defineProps<{ agentId: string; agentName: string }>()
+const props = defineProps<{
+  agentId: string
+  agentName: string
+  displaySettings?: {
+    showThinking: boolean
+    expandThinking: boolean
+    showTools: boolean
+    expandTools: boolean
+    showInput: boolean
+    expandInput: boolean
+    showFullInput: boolean
+    expandFullInput: boolean
+    autoCollapse: boolean
+  }
+}>()
 
 const messages = ref<ChatMessage[]>([])
 const loading = ref(false)
@@ -190,7 +204,7 @@ onUnmounted(function () { aborter && aborter.abort() })
         :assistant-label="props.agentName" :streaming-message-id="streamingId">
         <template #default="{ isStreaming }">
           <MessageContent v-if="msg.content || isStreaming" :content="msg.content" :role="msg.role"
-            :is-streaming="isStreaming" />
+            :is-streaming="isStreaming" :display-settings="props.displaySettings" />
         </template>
       </MessageItem>
 
