@@ -1,11 +1,11 @@
 import { defineComponent } from 'vue'
 import template from './index.html?raw'
 import { useWorkbenchPage } from './useWorkbenchPage'
+import AgentChatPanel from './AgentChatPanel.vue'
 
 export default defineComponent({
   name: 'WorkbenchPage',
-  setup() {
-    return useWorkbenchPage()
-  },
+  components: { AgentChatPanel },
+  setup() { return useWorkbenchPage() },
   template,
 })
