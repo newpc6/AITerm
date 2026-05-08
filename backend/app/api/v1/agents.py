@@ -244,6 +244,8 @@ async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user
             answer_first = ""
             tool_calls_first = []
 
+            yield {"event": "full_input", "data": json.dumps({"messages": llm_messages, "tools": openai_tools}, ensure_ascii=False)}
+
             async for chunk in llm_client.chat_with_tools_stream(llm_messages, openai_tools):
                 if chunk["type"] == "reasoning":
                     thinking_first += chunk.get("delta", "")
