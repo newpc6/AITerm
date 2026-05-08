@@ -19,6 +19,8 @@ class Agent(BaseModel):
     is_public: bool = False
     is_template: bool = False
     scope: str = "private"
+    status: str = "draft"
+    installed: bool = False
     team_id: Optional[str] = None
     created_at: str = ""
     updated_at: str = ""
@@ -52,6 +54,12 @@ class AgentUpdate(BaseModel):
     is_public: Optional[bool] = None
     is_template: Optional[bool] = None
     scope: Optional[str] = None
+    status: Optional[str] = None
+
+
+class AgentReview(BaseModel):
+    approved: bool
+    comment: str = ""
 
 
 class AgentWorkbenchRequest(BaseModel):

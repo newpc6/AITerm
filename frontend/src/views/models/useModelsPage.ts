@@ -24,6 +24,7 @@ export function useModelsPage() {
     extra_body: {},
     extra_headers: {},
     is_default: false,
+    scope: 'private',
   })
   const extraBodyText = ref('{}')
   const extraHeadersText = ref('{}')
@@ -76,6 +77,7 @@ export function useModelsPage() {
       extra_body: {},
       extra_headers: {},
       is_default: models.value.length === 0,
+      scope: 'private',
     }
     extraBodyText.value = '{}'
     extraHeadersText.value = '{}'
@@ -100,6 +102,7 @@ export function useModelsPage() {
       extra_body: model.extra_body || {},
       extra_headers: model.extra_headers || {},
       is_default: model.is_default,
+      scope: model.scope || 'private',
     }
     extraBodyText.value = JSON.stringify(model.extra_body || {}, null, 2)
     extraHeadersText.value = JSON.stringify(model.extra_headers || {}, null, 2)

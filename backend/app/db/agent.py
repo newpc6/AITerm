@@ -22,6 +22,18 @@ class AgentModel(Base):
     is_public = Column(Integer, default=0)
     is_template = Column(Integer, default=0)
     scope = Column(String(20), default="private")
+    status = Column(String(20), default="draft")
     team_id = Column(Integer, nullable=True)
+    created_at = Column(String(50), nullable=False)
+    updated_at = Column(String(50), nullable=False)
+
+
+class UserAgentModel(Base):
+    __tablename__ = "user_agents"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    agent_id = Column(Integer, ForeignKey("agents.id"), nullable=False)
+    is_active = Column(Integer, default=1)
     created_at = Column(String(50), nullable=False)
     updated_at = Column(String(50), nullable=False)

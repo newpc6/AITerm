@@ -50,6 +50,7 @@ class ModelConfigCreate(BaseModel):
     extra_body: Dict[str, Any] = {}
     extra_headers: Dict[str, Any] = {}
     is_default: bool = False
+    scope: str = "private"
 
 
 class ModelConfigUpdate(BaseModel):
@@ -65,3 +66,4 @@ class ModelConfigUpdate(BaseModel):
     extra_body: Optional[Dict[str, Any]] = None
     extra_headers: Optional[Dict[str, Any]] = None
     is_default: Optional[bool] = None
+    scope: Optional[str] = None

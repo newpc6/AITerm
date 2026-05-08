@@ -4,7 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
 
 from app.models.common import Response
-from app.models.agent import Agent, AgentCreate, AgentUpdate, AgentWorkbenchRequest, AgentMessage, AgentMessagesResponse
+from app.models.agent import Agent, AgentCreate, AgentUpdate, AgentWorkbenchRequest, AgentMessage, AgentMessagesResponse, AgentReview
 from app.repositories.agent import AgentRepository
 from app.repositories.agent_message import AgentMessageRepository
 from app.repositories.skill import SkillRepository
@@ -17,6 +17,8 @@ repo = AgentRepository()
 
 async def _build_agent_system_prompt(agent: Agent) -> str:
     skill_repo = SkillRepository()
+    from app.repositories.tool import ToolRepository
+    tool_repo = ToolRepository()
     parts = []
 
     if agent.system_prompt and agent.system_prompt.strip():
@@ -25,9 +27,25 @@ async def _build_agent_system_prompt(agent: Agent) -> str:
     if agent.skill_ids:
         for sid in agent.skill_ids:
             skill = await skill_repo.get(str(sid))
-            if skill and skill.system_prompt and skill.system_prompt.strip():
-                parts.append(
-                    f"[{skill.display_name or skill.name}] {skill.system_prompt.strip()}")
+            if not skill:
+                continue
+            section = f"## {skill.display_name or skill.name}"
+            if skill.description and skill.description.strip():
+                section += f"\n{skill.description.strip()}"
+            if skill.system_prompt and skill.system_prompt.strip():
+                section += f"\n\n{skill.system_prompt.strip()}"
+            if skill.tool_names:
+                tool_descs = []
+                for tname in skill.tool_names:
+                    tool = await tool_repo.get_tool_by_name(tname)
+                    if tool:
+                        desc = tool.description or tool.display_name or tname
+                        tool_descs.append(f"- `{tname}`: {desc}")
+                    else:
+                        tool_descs.append(f"- `{tname}`")
+                if tool_descs:
+                    section += "\n\n可用工具：\n" + "\n".join(tool_descs)
+            parts.append(section)
 
     if parts:
         return "\n\n".join(parts)
@@ -109,6 +127,52 @@ async def set_default_agent(agent_id: str, user=Depends(get_current_user)):
     return Response(data={"status": "ok"})
 
 
+@router.post("/{agent_id}/submit")
+async def submit_agent(agent_id: str, user=Depends(get_current_user)):
+    if not user:
+        raise HTTPException(status_code=401)
+    existing = await repo.get(agent_id)
+    if not existing or str(existing.user_id) != user.id:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    await repo.submit_review(agent_id)
+    return Response(data={"status": "submitted"})
+
+
+@router.post("/{agent_id}/withdraw")
+async def withdraw_agent(agent_id: str, user=Depends(get_current_user)):
+    if not user:
+        raise HTTPException(status_code=401)
+    existing = await repo.get(agent_id)
+    if not existing or str(existing.user_id) != user.id:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    await repo.withdraw(agent_id)
+    return Response(data={"status": "withdrawn"})
+
+
+@router.post("/{agent_id}/review")
+async def review_agent(agent_id: str, payload: AgentReview, admin=Depends(require_admin)):
+    agent = await repo.review(agent_id, reviewer_id=int(admin.id), approved=payload.approved, comment=payload.comment)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    return Response(data=agent.model_dump())
+
+
+@router.post("/{agent_id}/install")
+async def install_agent(agent_id: str, user=Depends(get_current_user)):
+    if not user:
+        raise HTTPException(status_code=401)
+    await repo.install(user_id=int(user.id), agent_id=int(agent_id))
+    return Response(data={"status": "installed"})
+
+
+@router.delete("/{agent_id}/uninstall")
+async def uninstall_agent(agent_id: str, user=Depends(get_current_user)):
+    if not user:
+        raise HTTPException(status_code=401)
+    await repo.uninstall(user_id=int(user.id), agent_id=int(agent_id))
+    return Response(data={"status": "uninstalled"})
+
+
 @router.post("/workbench/run")
 async def workbench_run(payload: AgentWorkbenchRequest, user=Depends(get_current_user)):
     if not user:
@@ -118,6 +182,7 @@ async def workbench_run(payload: AgentWorkbenchRequest, user=Depends(get_current
     from app.services.tool_service import ToolService
     from app.services.llm import LLMClient
     from app.repositories.model_setting import ModelConfigRepository
+    skill_repo2 = SkillRepository()
 
     async def event_generator():
         for agent_id_str in payload.agent_ids:
@@ -132,8 +197,18 @@ async def workbench_run(payload: AgentWorkbenchRequest, user=Depends(get_current
                 sandbox = SandboxManager()
                 tool_service = ToolService(sandbox_paths=sandbox.base_paths)
                 user_tools = await tool_service.tool_repo.get_user_enabled_tools(user_id=int(user.id))
+                skill_tool_names = None
+                if agent.skill_ids:
+                    skill_tool_names = set()
+                    for sid in agent.skill_ids:
+                        skill = await skill_repo2.get(str(sid))
+                        if skill:
+                            for tn in skill.tool_names:
+                                skill_tool_names.add(tn)
                 openai_tools = []
                 for t in user_tools:
+                    if skill_tool_names is not None and t.name not in skill_tool_names:
+                        continue
                     params = t.parameters.model_dump() if t.parameters else {
                         "type": "object", "properties": {}, "required": []}
                     openai_tools.append({
@@ -225,8 +300,19 @@ async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user
             sandbox = SandboxManager()
             tool_service = ToolService(sandbox_paths=sandbox.base_paths)
             user_tools = await tool_service.tool_repo.get_user_enabled_tools(user_id=int(user.id))
+            skill_tool_names = None
+            if agent.skill_ids:
+                skill_repo2 = SkillRepository()
+                skill_tool_names = set()
+                for sid in agent.skill_ids:
+                    skill = await skill_repo2.get(str(sid))
+                    if skill:
+                        for tn in skill.tool_names:
+                            skill_tool_names.add(tn)
             openai_tools = []
             for t in user_tools:
+                if skill_tool_names is not None and t.name not in skill_tool_names:
+                    continue
                 params = t.parameters.model_dump() if t.parameters else {
                     "type": "object", "properties": {}, "required": []}
                 openai_tools.append({

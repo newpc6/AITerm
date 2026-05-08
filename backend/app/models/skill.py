@@ -20,6 +20,7 @@ class SkillTemplate(BaseModel):
     is_public: bool = False
     scope: str = "private"
     team_id: Optional[str] = None
+    installed: bool = False
     created_at: str = ""
     updated_at: str = ""
 

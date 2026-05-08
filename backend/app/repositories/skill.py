@@ -17,7 +17,10 @@ class SkillRepository:
     async def list_visible(self, user_id: int, scope: str = None) -> List[SkillTemplate]:
         async with async_session_maker() as session:
             if scope == "my":
-                query = select(SkillTemplateModel).where(SkillTemplateModel.user_id == user_id)
+                subq = select(UserSkillModel.template_id).where(UserSkillModel.user_id == user_id)
+                query = select(SkillTemplateModel).where(
+                    (SkillTemplateModel.user_id == user_id) | (SkillTemplateModel.id.in_(subq))
+                )
             elif scope == "installed":
                 subq = select(UserSkillModel.template_id).where(UserSkillModel.user_id == user_id)
                 query = select(SkillTemplateModel).where(SkillTemplateModel.id.in_(subq))

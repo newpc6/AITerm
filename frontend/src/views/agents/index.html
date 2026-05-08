@@ -2,7 +2,7 @@
   <div class="hero">
     <p class="label">工作空间</p>
     <h1>智能体管理</h1>
-    <p>创建和管理智能体，绑定模型、技能和系统提示词。</p>
+    <p>创建和管理智能体，绑定模型、技能和系统提示词。可发布为模板供其他用户安装。</p>
   </div>
 
   <div class="card">
@@ -10,8 +10,8 @@
       <div>
         <el-radio-group v-model="filterScope" size="small" @change="applyFilter">
           <el-radio-button value="my">我的</el-radio-button>
-          <el-radio-button value="public">公共</el-radio-button>
           <el-radio-button value="template">模板</el-radio-button>
+          <el-radio-button value="pending">待审核</el-radio-button>
           <el-radio-button value="all">全部</el-radio-button>
         </el-radio-group>
       </div>
@@ -20,7 +20,8 @@
 
     <div v-loading="loading"
       style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 16px; margin-top: 16px">
-      <div v-for="agent in filteredAgents" :key="agent.id" class="card card--interactive" style="padding: 16px">
+      <div v-for="agent in filteredAgents" :key="agent.id" class="card card--interactive" style="padding: 16px"
+        @click="openView(agent)">
         <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 8px">
           <div>
             <div style="font-weight: 600; font-size: 15px">{{ agent.name }}</div>
@@ -32,6 +33,10 @@
             <el-tag v-if="agent.is_default" type="success" size="small">默认</el-tag>
             <el-tag v-if="agent.is_template" type="warning" size="small">模板</el-tag>
             <el-tag v-if="agent.is_public" type="primary" size="small">公共</el-tag>
+            <el-tag v-if="agent.installed" type="success" size="small">已安装</el-tag>
+            <el-tag
+              :type="agent.status === 'approved' ? 'success' : agent.status === 'pending' ? 'warning' : agent.status === 'rejected' ? 'danger' : 'info'"
+              size="small" v-if="filterScope === 'pending'">{{ statusLabel[agent.status] || agent.status }}</el-tag>
           </div>
         </div>
         <div style="font-size: 13px; color: var(--color-text-secondary); margin-bottom: 12px; min-height: 36px">
@@ -43,11 +48,30 @@
             }}</el-tag>
           <span v-if="agent.skill_ids.length === 0" style="font-size:11px;color:var(--color-text-muted)">无技能</span>
         </div>
-        <div style="display: flex; gap: 8px; border-top: 1px solid var(--color-border-primary); padding-top: 8px">
-          <el-button size="small" link type="primary" @click="openEdit(agent)">编辑</el-button>
-          <el-button size="small" link type="primary" @click="handleClone(agent.id)">克隆</el-button>
-          <el-button v-if="!agent.is_default" size="small" link @click="handleSetDefault(agent.id)">设为默认</el-button>
-          <el-button size="small" link type="danger" @click="handleDelete(agent.id)">删除</el-button>
+        <div style="display: flex; gap: 8px; border-top: 1px solid var(--color-border-primary); padding-top: 8px"
+          @click.stop>
+          <el-button v-if="filterScope==='my' && isOwner(agent)" size="small" link type="primary"
+            @click="openEdit(agent)">编辑</el-button>
+          <el-button v-if="filterScope==='my' && isOwner(agent) && agent.status==='draft'" size="small" link
+            type="warning" @click="handleSubmit(agent.id)">提交审核</el-button>
+          <el-button v-if="filterScope==='pending' && isOwner(agent)" size="small" link type="warning"
+            @click="handleWithdraw(agent.id)">撤回</el-button>
+          <el-button v-if="filterScope==='pending' && isAdmin" size="small" link type="success"
+            @click="handleReview(agent.id, true)">通过</el-button>
+          <el-button v-if="filterScope==='pending' && isAdmin" size="small" link type="danger"
+            @click="handleReview(agent.id, false)">驳回</el-button>
+          <el-button v-if="filterScope==='template' && !agent.installed" size="small" link type="primary"
+            @click="handleInstallAgent(agent.id)">安装</el-button>
+          <el-button v-if="agent.installed && !isOwner(agent)" size="small" link type="warning"
+            @click="handleUninstallAgent(agent.id)">卸载</el-button>
+          <el-button v-if="filterScope==='my'" size="small" link type="primary"
+            @click="handleClone(agent.id)">克隆</el-button>
+          <el-button v-if="!agent.is_default && filterScope==='my' && isOwner(agent)" size="small" link
+            @click="handleSetDefault(agent.id)">设为默认</el-button>
+          <el-button v-if="filterScope==='my' && isOwner(agent)" size="small" link type="danger"
+            @click="handleDelete(agent.id)">删除</el-button>
+          <el-button v-if="isAdmin && !isOwner(agent)" size="small" link type="danger"
+            @click="handleDelete(agent.id)">删除</el-button>
         </div>
       </div>
       <div v-if="filteredAgents.length === 0 && !loading"
@@ -103,6 +127,39 @@
     <template #footer>
       <el-button @click="dialogVisible = false">取消</el-button>
       <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="viewDialogVisible" :title="viewAgent?.name || '智能体详情'" width="60%" top="5vh">
+    <template v-if="viewAgent">
+      <el-descriptions :column="2" border>
+        <el-descriptions-item label="名称">{{ viewAgent.name }}</el-descriptions-item>
+        <el-descriptions-item label="模型">{{ viewAgent.model_name || '未绑定' }}</el-descriptions-item>
+        <el-descriptions-item label="温度">{{ viewAgent.temperature }}</el-descriptions-item>
+        <el-descriptions-item label="最大迭代">{{ viewAgent.max_iterations }}</el-descriptions-item>
+        <el-descriptions-item label="描述" :span="2">{{ viewAgent.description || '暂无' }}</el-descriptions-item>
+        <el-descriptions-item label="状态" :span="2">
+          <el-tag
+            :type="viewAgent.status === 'approved' ? 'success' : viewAgent.status === 'pending' ? 'warning' : viewAgent.status === 'rejected' ? 'danger' : 'info'"
+            size="small">{{ statusLabel[viewAgent.status] || viewAgent.status }}</el-tag>
+          <el-tag v-if="viewAgent.is_template" type="warning" size="small" style="margin-left:4px">模板</el-tag>
+          <el-tag v-if="viewAgent.is_public" type="primary" size="small" style="margin-left:4px">公共</el-tag>
+        </el-descriptions-item>
+      </el-descriptions>
+      <el-divider />
+      <div style="margin-bottom:8px;font-weight:600">系统提示词</div>
+      <div
+        style="white-space:pre-wrap;background:var(--color-bg-card);padding:12px;border-radius:6px;margin-bottom:16px;font-size:13px;color:var(--color-text-secondary);max-height:300px;overflow-y:auto">
+        {{ viewAgent.system_prompt || '未设置' }}</div>
+      <div style="margin-bottom:8px;font-weight:600">绑定技能</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">
+        <el-tag v-for="sid in viewAgent.skill_ids" :key="sid" type="info">{{ skills.find(s => Number(s.id) ===
+          sid)?.display_name || skills.find(s => Number(s.id) === sid)?.name || '技能#' + sid }}</el-tag>
+        <span v-if="!viewAgent.skill_ids?.length" style="color:var(--color-text-muted);font-size:13px">无</span>
+      </div>
+    </template>
+    <template #footer>
+      <el-button @click="viewDialogVisible = false">关闭</el-button>
     </template>
   </el-dialog>
 </section>

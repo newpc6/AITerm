@@ -5,7 +5,7 @@ from typing import List, Optional
 from sqlalchemy import select, delete, func, and_
 
 from app.db import async_session_maker
-from app.db.agent import AgentModel
+from app.db.agent import AgentModel, UserAgentModel
 from app.db.model_setting import ModelConfigModel
 from app.models.agent import Agent
 from app.utils import now_iso
@@ -17,27 +17,44 @@ class AgentRepository:
 
     async def list_visible(self, user_id: int) -> List[Agent]:
         async with async_session_maker() as session:
-            query = select(AgentModel).where(
+            own_query = select(AgentModel).where(
                 AgentModel.user_id == user_id
             )
-            result = await session.execute(query.order_by(AgentModel.name))
+            result = await session.execute(own_query.order_by(AgentModel.name))
             agents = list(result.scalars().all())
+
+            own_ids = {a.id for a in agents}
+
+            installed_ids = set()
+            installed_result = await session.execute(
+                select(UserAgentModel.agent_id).where(UserAgentModel.user_id == user_id)
+            )
+            installed_ids = {row[0] for row in installed_result.all()}
+            new_ids = installed_ids - own_ids
+
+            if new_ids:
+                ir = await session.execute(
+                    select(AgentModel).where(AgentModel.id.in_(list(new_ids)))
+                )
+                agents.extend(ir.scalars().all())
 
             public_result = await session.execute(
                 select(AgentModel).where(
                     and_(AgentModel.is_public == True, AgentModel.user_id != user_id)
                 ).order_by(AgentModel.name)
             )
-            agents.extend(public_result.scalars().all())
+            for m in public_result.scalars().all():
+                if m.id not in own_ids and m.id not in installed_ids:
+                    agents.append(m)
 
-            return await self._to_domain_list(agents, session)
+            return await self._to_domain_list(agents, session, user_id)
 
     async def list_by_user(self, user_id: int) -> List[Agent]:
         async with async_session_maker() as session:
             result = await session.execute(
                 select(AgentModel).where(AgentModel.user_id == user_id).order_by(AgentModel.name)
             )
-            return await self._to_domain_list(result.scalars().all(), session)
+            return await self._to_domain_list(result.scalars().all(), session, user_id)
 
     async def list_public_templates(self) -> List[Agent]:
         async with async_session_maker() as session:
@@ -46,7 +63,7 @@ class AgentRepository:
                     and_(AgentModel.is_public == True, AgentModel.is_template == True)
                 ).order_by(AgentModel.name)
             )
-            return await self._to_domain_list(result.scalars().all(), session)
+            return await self._to_domain_list(result.scalars().all(), session, 0)
 
     async def get(self, agent_id: str) -> Optional[Agent]:
         async with async_session_maker() as session:
@@ -56,7 +73,7 @@ class AgentRepository:
             model = result.scalar_one_or_none()
             if not model:
                 return None
-            agents = await self._to_domain_list([model], session)
+            agents = await self._to_domain_list([model], session, 0)
             return agents[0] if agents else None
 
     async def create(self, user_id: int, **kwargs) -> Agent:
@@ -77,13 +94,14 @@ class AgentRepository:
                 is_public=1 if kwargs.get("is_public") else 0,
                 is_template=1 if kwargs.get("is_template") else 0,
                 scope=kwargs.get("scope", "private"),
+                status="draft",
                 created_at=now,
                 updated_at=now,
             )
             session.add(model)
             await session.commit()
             await session.refresh(model)
-            agents = await self._to_domain_list([model], session)
+            agents = await self._to_domain_list([model], session, user_id)
             return agents[0] if agents else None
 
     async def update(self, agent_id: str, **kwargs) -> Optional[Agent]:
@@ -110,11 +128,12 @@ class AgentRepository:
             model.updated_at = now_iso()
             await session.commit()
             await session.refresh(model)
-            agents = await self._to_domain_list([model], session)
+            agents = await self._to_domain_list([model], session, 0)
             return agents[0] if agents else None
 
     async def delete(self, agent_id: str) -> bool:
         async with async_session_maker() as session:
+            await session.execute(delete(UserAgentModel).where(UserAgentModel.agent_id == int(agent_id)))
             result = await session.execute(
                 delete(AgentModel).where(AgentModel.id == int(agent_id))
             )
@@ -123,9 +142,6 @@ class AgentRepository:
 
     async def set_default(self, user_id: int, agent_id: str) -> None:
         async with async_session_maker() as session:
-            await session.execute(
-                select(AgentModel).where(AgentModel.user_id == user_id)
-            )
             result = await session.execute(
                 select(AgentModel).where(
                     and_(AgentModel.user_id == user_id, AgentModel.is_default == True)
@@ -165,7 +181,58 @@ class AgentRepository:
             scope="private",
         )
 
-    async def _to_domain_list(self, models: List[AgentModel], session) -> List[Agent]:
+    async def submit_review(self, agent_id: str) -> Optional[Agent]:
+        return await self.update(agent_id, status="pending")
+
+    async def withdraw(self, agent_id: str) -> Optional[Agent]:
+        return await self.update(agent_id, status="draft")
+
+    async def review(self, agent_id: str, reviewer_id: int, approved: bool, comment: str = "") -> Optional[Agent]:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(AgentModel).where(AgentModel.id == int(agent_id))
+            )
+            model = result.scalar_one_or_none()
+            if not model:
+                return None
+            if approved:
+                model.status = "approved"
+                model.is_public = 1
+                model.is_template = 1
+            else:
+                model.status = "rejected"
+            model.review_comment = comment
+            model.updated_at = now_iso()
+            await session.commit()
+            await session.refresh(model)
+            agents = await self._to_domain_list([model], session, 0)
+            return agents[0] if agents else None
+
+    async def install(self, user_id: int, agent_id: int) -> bool:
+        async with async_session_maker() as session:
+            existing = await session.execute(
+                select(UserAgentModel).where(
+                    and_(UserAgentModel.user_id == user_id, UserAgentModel.agent_id == agent_id)
+                )
+            )
+            if existing.scalar_one_or_none():
+                return True
+            now = now_iso()
+            session.add(UserAgentModel(user_id=user_id, agent_id=agent_id, is_active=1, created_at=now, updated_at=now))
+            await session.commit()
+            return True
+
+    async def uninstall(self, user_id: int, agent_id: int) -> bool:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                delete(UserAgentModel).where(
+                    and_(UserAgentModel.user_id == user_id, UserAgentModel.agent_id == agent_id)
+                )
+            )
+            await session.commit()
+            return result.rowcount > 0
+
+    async def _to_domain_list(self, models: List[AgentModel], session, user_id: int = 0) -> List[Agent]:
         model_ids = set()
         for m in models:
             if m.model_id:
@@ -177,6 +244,17 @@ class AgentRepository:
                 select(ModelConfigModel).where(ModelConfigModel.id.in_(list(model_ids)))
             )
             model_map = {mc.id: mc.name for mc in mc_result.scalars().all()}
+
+        installed_ids = set()
+        if user_id > 0 and models:
+            agent_db_ids = [m.id for m in models]
+            ir = await session.execute(
+                select(UserAgentModel.agent_id).where(
+                    and_(UserAgentModel.user_id == user_id,
+                         UserAgentModel.agent_id.in_(agent_db_ids))
+                )
+            )
+            installed_ids = {row[0] for row in ir.all()}
 
         result = []
         for m in models:
@@ -203,6 +281,8 @@ class AgentRepository:
                 is_public=bool(m.is_public),
                 is_template=bool(m.is_template),
                 scope=m.scope or "private",
+                status=m.status or "draft",
+                installed=m.id in installed_ids,
                 team_id=str(m.team_id) if m.team_id else None,
                 created_at=m.created_at or "",
                 updated_at=m.updated_at or "",

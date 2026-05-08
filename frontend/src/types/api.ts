@@ -189,6 +189,8 @@ export type ModelConfigItem = {
   extra_body: Record<string, unknown>
   extra_headers: Record<string, string>
   is_default: boolean
+  user_id?: string
+  scope: string
   created_at: string
   updated_at: string
 }
@@ -208,6 +210,7 @@ export type ModelConfigPayload = {
   extra_body: Record<string, unknown>
   extra_headers: Record<string, string>
   is_default: boolean
+  scope?: string
 }
 
 export type GlobalSettingsData = {
@@ -338,6 +341,8 @@ export type AgentItem = {
   is_public: boolean
   is_template: boolean
   scope: string
+  status: string
+  installed: boolean
   team_id?: string
   created_at: string
   updated_at: string

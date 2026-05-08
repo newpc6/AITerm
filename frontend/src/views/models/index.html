@@ -102,6 +102,13 @@
         <el-checkbox v-model="form.is_default" :disabled="saving">设为默认模型</el-checkbox>
       </el-form-item>
 
+      <el-form-item label="可见范围">
+        <el-radio-group v-model="form.scope" :disabled="saving">
+          <el-radio value="private">私有（仅自己可见）</el-radio>
+          <el-radio value="public">公开（其他用户也可用）</el-radio>
+        </el-radio-group>
+      </el-form-item>
+
       <el-form-item v-if="testResult">
         <el-alert :title="testResult" type="info" :closable="false" />
       </el-form-item>

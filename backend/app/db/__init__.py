@@ -6,7 +6,7 @@ from app.db.session import SessionModel
 from app.db.user import UserModel
 from app.db.node import NodeModel
 from app.db.tool import ToolModel, UserToolModel
-from app.db.agent import AgentModel
+from app.db.agent import AgentModel, UserAgentModel
 from app.db.agent_message import AgentMessageModel, AgentMessagePartModel
 from app.db.skill import SkillTemplateModel, UserSkillModel
 from app.db.scheduler import ScheduledTaskModel, ScheduledTaskLogModel
@@ -69,6 +69,7 @@ ALL_MODELS: List[Type[Base]] = [
     ToolModel,
     UserToolModel,
     AgentModel,
+    UserAgentModel,
     AgentMessageModel,
     AgentMessagePartModel,
     SkillTemplateModel,

@@ -10,7 +10,6 @@
       <div>
         <el-radio-group v-model="scope" size="small" @change="load">
           <el-radio-button value="my">我的</el-radio-button>
-          <el-radio-button value="installed">已安装</el-radio-button>
           <el-radio-button value="public">公共</el-radio-button>
           <el-radio-button value="pending">待审核</el-radio-button>
         </el-radio-group>
@@ -20,33 +19,44 @@
 
     <div v-loading="loading"
       style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px; margin-top: 16px">
-      <div v-for="s in skills" :key="s.id" class="card card--interactive" style="padding: 16px">
+      <div v-for="s in skills" :key="s.id" class="card card--interactive" style="padding: 16px" @click="openView(s)">
         <div style="display: flex; justify-content: space-between; margin-bottom: 8px">
           <div>
             <div style="font-weight:600;font-size:15px">{{ s.display_name || s.name }}</div>
             <div style="font-size:12px;color:var(--color-text-muted)">{{ s.category }} · v{{ s.version || '1.0.0' }}
             </div>
           </div>
-          <el-tag
-            :type="s.status === 'approved' ? 'success' : s.status === 'pending' ? 'warning' : s.status === 'rejected' ? 'danger' : 'info'"
-            size="small">{{ statusLabel[s.status] || s.status }}</el-tag>
+          <div style="display:flex;gap:4px">
+            <el-tag
+              :type="s.status === 'approved' ? 'success' : s.status === 'pending' ? 'warning' : s.status === 'rejected' ? 'danger' : 'info'"
+              size="small">{{ statusLabel[s.status] || s.status }}</el-tag>
+            <el-tag v-if="s.installed" type="success" size="small">已安装</el-tag>
+          </div>
         </div>
         <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:8px;min-height:36px">{{ s.description
           || '暂无描述' }}</div>
         <div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px">
           <el-tag v-for="t in s.tool_names.slice(0,6)" :key="t" size="small" type="info">{{ t }}</el-tag>
         </div>
-        <div style="display:flex;gap:8px;border-top:1px solid var(--color-border-primary);padding-top:8px">
-          <el-button v-if="scope==='my'" size="small" link type="primary" @click="openEdit(s)">编辑</el-button>
-          <el-button v-if="s.status==='draft'" size="small" link type="warning"
+        <div style="display:flex;gap:8px;border-top:1px solid var(--color-border-primary);padding-top:8px" @click.stop>
+          <el-button v-if="scope==='my' && isOwner(s)" size="small" link type="primary"
+            @click="openEdit(s)">编辑</el-button>
+          <el-button v-if="scope==='my' && isOwner(s) && s.status==='draft'" size="small" link type="warning"
             @click="handleSubmit(s.id)">提交审核</el-button>
-          <el-button v-if="s.status==='pending'" size="small" link type="success"
+          <el-button v-if="scope==='pending' && isOwner(s)" size="small" link type="warning"
+            @click="handleWithdraw(s.id)">撤回</el-button>
+          <el-button v-if="scope==='pending' && isAdmin" size="small" link type="success"
             @click="handleReview(s.id,true)">通过</el-button>
-          <el-button v-if="s.status==='pending'" size="small" link type="danger"
+          <el-button v-if="scope==='pending' && isAdmin" size="small" link type="danger"
             @click="handleReview(s.id,false)">驳回</el-button>
-          <el-button v-if="s.status==='approved'&&scope==='public'" size="small" link type="primary"
+          <el-button v-if="scope==='public' && !s.installed" size="small" link type="primary"
             @click="handleInstall(s.id)">安装</el-button>
-          <el-button size="small" link type="danger" @click="handleDelete(s.id)">删除</el-button>
+          <el-button v-if="s.installed && !isOwner(s)" size="small" link type="warning"
+            @click="handleUninstall(s.id)">卸载</el-button>
+          <el-button v-if="scope==='my' && isOwner(s)" size="small" link type="danger"
+            @click="handleDelete(s.id)">删除</el-button>
+          <el-button v-if="isAdmin && !isOwner(s)" size="small" link type="danger"
+            @click="handleDelete(s.id)">删除</el-button>
         </div>
       </div>
     </div>
@@ -78,6 +88,36 @@
     <template #footer>
       <el-button @click="dialogVisible = false">取消</el-button>
       <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
+    </template>
+  </el-dialog>
+
+  <el-dialog v-model="viewDialogVisible" :title="viewSkill?.display_name || viewSkill?.name || '技能详情'" width="60%"
+    top="5vh">
+    <template v-if="viewSkill">
+      <el-descriptions :column="2" border>
+        <el-descriptions-item label="名称">{{ viewSkill.name }}</el-descriptions-item>
+        <el-descriptions-item label="分类">{{ viewSkill.category }}</el-descriptions-item>
+        <el-descriptions-item label="版本">{{ viewSkill.version || '1.0.0' }}</el-descriptions-item>
+        <el-descriptions-item label="状态">
+          <el-tag
+            :type="viewSkill.status === 'approved' ? 'success' : viewSkill.status === 'pending' ? 'warning' : viewSkill.status === 'rejected' ? 'danger' : 'info'"
+            size="small">{{ statusLabel[viewSkill.status] || viewSkill.status }}</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="描述" :span="2">{{ viewSkill.description || '暂无' }}</el-descriptions-item>
+      </el-descriptions>
+      <el-divider />
+      <div style="margin-bottom:8px;font-weight:600">系统提示词</div>
+      <div
+        style="white-space:pre-wrap;background:var(--color-bg-card);padding:12px;border-radius:6px;margin-bottom:16px;font-size:13px;color:var(--color-text-secondary);max-height:200px;overflow-y:auto">
+        {{ viewSkill.system_prompt || '未设置' }}</div>
+      <div style="margin-bottom:8px;font-weight:600">包含工具</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px">
+        <el-tag v-for="t in viewSkill.tool_names" :key="t" type="info">{{ t }}</el-tag>
+        <span v-if="!viewSkill.tool_names?.length" style="color:var(--color-text-muted);font-size:13px">无</span>
+      </div>
+    </template>
+    <template #footer>
+      <el-button @click="viewDialogVisible = false">关闭</el-button>
     </template>
   </el-dialog>
 </section>

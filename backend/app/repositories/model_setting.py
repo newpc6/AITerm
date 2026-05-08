@@ -13,10 +13,12 @@ class ModelConfigRepository:
         async with async_session_maker() as session:
             if user_id:
                 count_query = select(func.count(ModelConfigModel.id)).where(
-                    ModelConfigModel.user_id == user_id
+                    (ModelConfigModel.user_id == user_id) | (
+                        ModelConfigModel.scope == "public")
                 )
                 items_query = select(ModelConfigModel).where(
-                    ModelConfigModel.user_id == user_id
+                    (ModelConfigModel.user_id == user_id) | (
+                        ModelConfigModel.scope == "public")
                 )
             else:
                 count_query = select(func.count(ModelConfigModel.id))
@@ -104,6 +106,7 @@ class ModelConfigRepository:
             db_model.extra_body_json = json.dumps(model.extra_body)
             db_model.extra_headers_json = json.dumps(model.extra_headers)
             db_model.is_default = 1 if model.is_default else 0
+            db_model.scope = model.scope or "private"
             db_model.updated_at = now_iso()
 
             await session.commit()
