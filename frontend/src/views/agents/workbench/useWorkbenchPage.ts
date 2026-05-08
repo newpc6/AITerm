@@ -10,37 +10,34 @@ export function useWorkbenchPage() {
   async function loadAgents() {
     try {
       agents.value = await getAgents()
-      if (agents.value.length > 0) {
-        const def = agents.value.find(function (a) {
+      if (agents.value.length > 0 && selectedIds.value.length === 0) {
+        var def = agents.value.find(function (a) {
           return a.is_default
         })
-        const firstId = def ? def.id : agents.value[0].id
-        if (selectedIds.value.length === 0) {
-          selectedIds.value = [firstId]
-          activeTab.value = firstId
-        }
+        var firstId = def ? def.id : agents.value[0].id
+        selectedIds.value = [firstId]
+        activeTab.value = firstId
       }
     } catch {
       agents.value = []
     }
   }
 
-  function agentById(id: string) {
-    return agents.value.find(function (a) {
-      return a.id === id
-    })
+  function onSelectChange(ids: string[]) {
+    selectedIds.value = ids
+    if (activeTab.value && !ids.includes(activeTab.value)) {
+      activeTab.value = ids.length > 0 ? ids[0] : ''
+    }
+    if (!activeTab.value && ids.length > 0) {
+      activeTab.value = ids[0]
+    }
   }
 
   function getAgentName(id: string) {
-    const a = agentById(id)
+    var a = agents.value.find(function (x) {
+      return x.id === id
+    })
     return a ? a.name : id
-  }
-
-  function selectAgent(id: string) {
-    if (!selectedIds.value.includes(id)) {
-      selectedIds.value = [...selectedIds.value, id]
-    }
-    activeTab.value = id
   }
 
   function closeTab(id: string) {
@@ -56,12 +53,5 @@ export function useWorkbenchPage() {
     loadAgents()
   })
 
-  return {
-    agents,
-    selectedIds,
-    activeTab,
-    getAgentName,
-    selectAgent,
-    closeTab,
-  }
+  return { agents, selectedIds, activeTab, onSelectChange, getAgentName, closeTab }
 }
