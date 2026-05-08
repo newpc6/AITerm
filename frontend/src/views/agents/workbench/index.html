@@ -1,74 +1,185 @@
-<section class="page">
-  <div class="hero">
-    <p class="label">AI 对话</p>
-    <h1>智能体工作台</h1>
-    <p>勾选多个智能体，输入消息后全部并行执行，实时查看过程和对比结果。</p>
+<section class="page" style="height: calc(100vh - 115px); display: flex; flex-direction: column; overflow: hidden">
+  <div class="workbench-toolbar">
+    <el-select
+      v-model="selectedIds"
+      multiple
+      filterable
+      placeholder="选择智能体..."
+      style="flex: 1"
+      :disabled="sending"
+      popper-class="workbench-select-popper"
+    >
+      <el-option v-for="a in agents" :key="a.id" :label="`${a.name} (${a.model_name || '无模型'})`" :value="a.id" />
+    </el-select>
+    <span v-if="selectedIds.length" style="font-size: 12px; color: var(--color-text-muted); white-space: nowrap">
+      {{ selectedIds.length }} 个智能体
+    </span>
   </div>
 
-  <div class="card" style="margin-bottom: 16px">
-    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px">
-      <span class="label">选择智能体 ({{ selectedAgentIds.length }}/{{ agents.length }})</span>
-      <el-button size="small" link @click="selectAll">{{ selectedAgentIds.length === agents.length ? '取消全选' : '全选' }}</el-button>
-    </div>
-    <div style="display: flex; flex-wrap: wrap; gap: 8px">
-      <el-checkbox
-        v-for="agent in agents"
-        :key="agent.id"
-        :model-value="selectedAgentIds.includes(agent.id)"
-        :label="`${agent.name} (${agent.model_name || '无模型'})`"
-        :disabled="running"
-        @change="toggleAgent(agent.id)"
-        style="margin-right: 0"
-      />
-    </div>
-    <div style="display: flex; gap: 12px; margin-top: 12px">
-      <el-input v-model="message" type="textarea" :rows="3" placeholder="输入统一消息，将发送给所有选中的智能体..." :disabled="running" style="flex: 1" />
-      <div style="display: flex; flex-direction: column; gap: 8px; justify-content: flex-end">
-        <el-button v-if="!running" type="primary" size="large" :disabled="!message.trim() || selectedAgentIds.length === 0" @click="start">🚀 全部执行</el-button>
-        <el-button v-else type="danger" size="large" @click="stop">⏹ 停止</el-button>
-      </div>
+  <div v-if="selectedIds.length === 0" style="flex: 1; display: flex; align-items: center; justify-content: center; color: var(--color-text-muted)">
+    <div style="text-align: center">
+      <div style="font-size: 48px; margin-bottom: 12px">🤖</div>
+      <div>从上方下拉框选择智能体开始对话</div>
+      <div style="font-size: 12px; margin-top: 4px">可多选，消息会同时发送给所有选中智能体</div>
     </div>
   </div>
 
-  <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 16px">
-    <div v-for="run in runs" :key="run.agentId" class="card" :style="{ borderColor: run.status === 'running' ? 'var(--color-accent-primary)' : run.status === 'error' ? 'var(--color-danger)' : 'transparent' }">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px">
+  <div v-else class="workbench-panels" :style="{ gridTemplateColumns: `repeat(${Math.min(panels.length, 3)}, 1fr)` }">
+    <div v-for="panel in panels" :key="panel.agent.id" class="workbench-panel">
+      <div class="workbench-panel__header">
         <div>
-          <span style="font-weight: 600">{{ run.agentName }}</span>
-          <span style="font-size: 12px; color: var(--color-text-muted); margin-left: 8px">{{ run.modelName || '无模型' }}</span>
+          <span style="font-weight: 600; font-size: 13px">{{ panel.agent.name }}</span>
+          <span style="font-size: 11px; color: var(--color-text-muted); margin-left: 6px">{{ panel.agent.model_name || '无模型' }}</span>
         </div>
-        <div>
-          <el-tag v-if="run.status === 'idle'" type="info" size="small">等待</el-tag>
-          <el-tag v-else-if="run.status === 'running'" type="primary" size="small">执行中</el-tag>
-          <el-tag v-else-if="run.status === 'done'" type="success" size="small">已完成</el-tag>
-          <el-tag v-else type="danger" size="small">错误</el-tag>
-        </div>
-      </div>
-
-      <div v-if="run.toolCalls.length > 0" style="margin-bottom: 8px; padding: 8px; background: var(--color-bg-input); border-radius: 6px; font-size: 12px">
-        <div v-for="(tc, i) in run.toolCalls" :key="i" style="margin-bottom: 4px">
-          <span style="color: var(--color-accent-secondary)">🔧 {{ tc.tool }}</span>
-          <span style="color: var(--color-text-muted)">({{ Object.entries(tc.args).map(([k,v]) => `${k}: ${v}`).join(', ') }})</span>
+        <div style="display: flex; gap: 4px; align-items: center">
+          <span v-if="panel.streaming" style="width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent-primary); animation: pulse 1s infinite"></span>
+          <el-button v-if="panel.streaming" size="small" type="danger" text @click="stopPanel(panel)">⏹</el-button>
+          <el-button size="small" text @click="selectedIds = selectedIds.filter(id => id !== panel.agent.id)">✕</el-button>
         </div>
       </div>
 
-      <div v-if="run.status === 'running' || run.status === 'done'" style="padding: 8px; background: var(--color-bg-input); border-radius: 6px; min-height: 60px; max-height: 300px; overflow-y: auto; font-size: 13px; white-space: pre-wrap; word-break: break-word">
-        {{ run.reply || run.delta || '等待响应...' }}
-      </div>
+      <div
+        class="workbench-panel__messages"
+        :ref="(el) => setMessagesRef(panel, el as HTMLElement)"
+        @scroll="onPanelScroll(panel, $event)"
+      >
+        <div v-if="panel.loading && panel.messages.length === 0" style="text-align: center; padding: 20px; color: var(--color-text-muted); font-size: 12px">
+          加载中...
+        </div>
+        <div v-else-if="panel.hasMore && !panel.loading" style="text-align: center; padding: 4px; font-size: 11px; color: var(--color-text-muted)">
+          ↑ 向上滚动加载历史
+        </div>
 
-      <div v-if="run.status === 'error'" style="color: var(--color-danger); font-size: 13px; padding: 8px">
-        {{ run.error || '执行出错' }}
-      </div>
+        <template v-for="msg in panel.messages" :key="msg.id || msg.created_at">
+          <div class="workbench-msg" :class="'workbench-msg--' + msg.role">
+            <div class="workbench-msg__role">{{ msg.role === 'user' ? '你' : panel.agent.name }}</div>
+            <div class="workbench-msg__content">
+              <div v-html="renderContent(msg.content)" style="line-height: 1.6"></div>
 
-      <div v-if="run.status === 'idle'" style="text-align: center; padding: 32px; color: var(--color-text-muted)">
-        等待执行...
+              <div v-if="msg.tool_calls_json && msg.tool_calls_json !== '[]'" style="margin-top: 6px; font-size: 11px; color: var(--color-text-muted)">
+                <div v-for="(tc, i) in parseToolCalls(msg.tool_calls_json)" :key="i" style="padding: 2px 6px; margin: 2px 0; background: var(--color-bg-input); border-radius: 4px; display: inline-block; margin-right: 4px">
+                  🔧 {{ tc.name }}
+                </div>
+              </div>
+            </div>
+            <div class="workbench-msg__time">{{ formatTime(msg.created_at) }}</div>
+          </div>
+        </template>
+
+        <div v-if="panel.streaming && panel.streamToolCalls.length > 0" style="padding: 4px 12px">
+          <div v-for="(tc, i) in panel.streamToolCalls" :key="i" style="font-size: 11px; color: var(--color-accent-secondary); margin-bottom: 2px">
+            🔧 {{ tc.tool }} ({{ tc.args }})
+          </div>
+        </div>
       </div>
     </div>
+  </div>
 
-    <div v-if="runs.length === 0" style="grid-column: 1/-1; padding: 60px; text-align: center; color: var(--color-text-muted)">
-      <div style="font-size: 40px; margin-bottom: 12px">🤖</div>
-      <div>选择上方智能体并输入消息后点击执行</div>
-      <div style="font-size: 12px; margin-top: 4px">多个智能体会并行执行，结果实时展示</div>
-    </div>
+  <div v-if="selectedIds.length > 0" class="workbench-input">
+    <el-input
+      v-model="input"
+      type="textarea"
+      :rows="2"
+      placeholder="输入消息，将同时发送给所有选中的智能体..."
+      :disabled="sending"
+      resize="none"
+      @keydown.enter.exact.prevent="send()"
+    />
+    <el-button type="primary" :loading="sending" :disabled="!input.trim()" @click="send()" style="margin-left: 8px; align-self: flex-end; height: 60px">
+      发送
+    </el-button>
   </div>
 </section>
+
+<style scoped>
+.workbench-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 0;
+  flex-shrink: 0;
+}
+
+.workbench-panels {
+  flex: 1;
+  display: grid;
+  gap: 1px;
+  background: var(--color-border-primary);
+  border: 1px solid var(--color-border-primary);
+  border-radius: 12px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.workbench-panel {
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-secondary);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workbench-panel__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  background: var(--color-bg-tertiary);
+  border-bottom: 1px solid var(--color-border-primary);
+  flex-shrink: 0;
+}
+
+.workbench-panel__messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.workbench-msg {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--color-border-primary);
+  transition: background 0.15s;
+}
+
+.workbench-msg:last-child {
+  border-bottom: none;
+}
+
+.workbench-msg--user {
+  background: var(--color-bg-primary);
+}
+
+.workbench-msg--assistant {
+  background: var(--color-bg-secondary);
+}
+
+.workbench-msg__role {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+  margin-bottom: 4px;
+}
+
+.workbench-msg__content {
+  font-size: 13px;
+  color: var(--color-text-primary);
+  word-break: break-word;
+}
+
+.workbench-msg__time {
+  font-size: 10px;
+  color: var(--color-text-muted);
+  margin-top: 4px;
+}
+
+.workbench-input {
+  display: flex;
+  padding: 12px 0;
+  flex-shrink: 0;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+</style>

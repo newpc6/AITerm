@@ -58,3 +58,18 @@ class AgentWorkbenchRequest(BaseModel):
     agent_ids: List[str]
     message: str
     node_id: str = "1"
+
+
+class AgentMessage(BaseModel):
+    id: str
+    agent_id: str
+    user_id: str
+    role: str
+    content: str = ""
+    tool_calls_json: str = "[]"
+    created_at: str = ""
+
+
+class AgentMessagesResponse(BaseModel):
+    messages: List[AgentMessage]
+    has_more: bool = False

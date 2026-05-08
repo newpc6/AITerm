@@ -4,8 +4,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sse_starlette.sse import EventSourceResponse
 
 from app.models.common import Response
-from app.models.agent import Agent, AgentCreate, AgentUpdate, AgentWorkbenchRequest
+from app.models.agent import Agent, AgentCreate, AgentUpdate, AgentWorkbenchRequest, AgentMessage, AgentMessagesResponse
 from app.repositories.agent import AgentRepository
+from app.repositories.agent_message import AgentMessageRepository
 from app.api.deps import get_current_user, require_admin
 
 logger = logging.getLogger(__name__)
@@ -48,7 +49,8 @@ async def update_agent(agent_id: str, payload: AgentUpdate, user=Depends(get_cur
         raise HTTPException(status_code=404, detail="Agent not found")
     if str(existing.user_id) != user.id and user.role != "admin":
         raise HTTPException(status_code=403, detail="Cannot edit this agent")
-    update_data = {k: v for k, v in payload.model_dump().items() if v is not None}
+    update_data = {k: v for k, v in payload.model_dump().items()
+                   if v is not None}
     agent = await repo.update(agent_id, **update_data)
     return Response(data=agent.model_dump() if agent else None)
 
@@ -109,7 +111,8 @@ async def workbench_run(payload: AgentWorkbenchRequest, user=Depends(get_current
                 user_tools = await tool_service.tool_repo.get_user_enabled_tools(user_id=int(user.id))
                 openai_tools = []
                 for t in user_tools:
-                    params = t.parameters.model_dump() if t.parameters else {"type": "object", "properties": {}, "required": []}
+                    params = t.parameters.model_dump() if t.parameters else {
+                        "type": "object", "properties": {}, "required": []}
                     openai_tools.append({
                         "type": "function",
                         "function": {"name": t.name, "description": t.description or t.display_name or t.name, "parameters": params}
@@ -128,7 +131,8 @@ async def workbench_run(payload: AgentWorkbenchRequest, user=Depends(get_current
                     continue
 
                 llm_client = LLMClient(model_config)
-                messages = [{"role": "system", "content": agent.system_prompt}, {"role": "user", "content": payload.message}]
+                messages = [{"role": "system", "content": agent.system_prompt}, {
+                    "role": "user", "content": payload.message}]
 
                 full_content = ""
                 async for chunk in llm_client.chat_with_tools_stream(messages, openai_tools):
@@ -152,5 +156,96 @@ async def workbench_run(payload: AgentWorkbenchRequest, user=Depends(get_current
                 logger.error(f"Agent {agent_id_str} workbench error: {e}")
                 yield {"event": "agent.error", "data": json.dumps({"agent_id": agent_id_str, "error": str(e)})}
                 yield {"event": "agent.done", "data": json.dumps({"agent_id": agent_id_str, "reply": "", "error": str(e)})}
+
+    return EventSourceResponse(event_generator())
+
+
+@router.get("/{agent_id}/messages")
+async def list_agent_messages(agent_id: str, before_id: str = None, limit: int = 20, user=Depends(get_current_user)):
+    if not user:
+        raise HTTPException(status_code=401)
+    msg_repo = AgentMessageRepository()
+    messages, has_more = await msg_repo.get_messages(agent_id=int(agent_id), before_id=int(before_id) if before_id else None, limit=limit)
+    return Response(data={"messages": [m.model_dump() for m in messages], "has_more": has_more})
+
+
+@router.post("/{agent_id}/chat")
+async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user)):
+    if not user:
+        raise HTTPException(status_code=401)
+    message = payload.get("message", "")
+    if not message:
+        raise HTTPException(status_code=400, detail="message required")
+
+    msg_repo = AgentMessageRepository()
+    agent = await repo.get(agent_id)
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    await msg_repo.add_message(agent_id=int(agent_id), user_id=int(user.id), role="user", content=message)
+
+    from app.services.llm import LLMClient
+    from app.services.tool_service import ToolService
+    from app.services.sandbox_manager import SandboxManager
+    from app.repositories.model_setting import ModelConfigRepository
+
+    async def event_generator():
+        try:
+            sandbox = SandboxManager()
+            tool_service = ToolService(sandbox_paths=sandbox.base_paths)
+            user_tools = await tool_service.tool_repo.get_user_enabled_tools(user_id=int(user.id))
+            openai_tools = []
+            for t in user_tools:
+                params = t.parameters.model_dump() if t.parameters else {
+                    "type": "object", "properties": {}, "required": []}
+                openai_tools.append({
+                    "type": "function",
+                    "function": {"name": t.name, "description": t.description or t.display_name or t.name, "parameters": params},
+                })
+
+            model_repo = ModelConfigRepository()
+            model_config = None
+            if agent.model_id:
+                model_config = await model_repo.get_model(agent.model_id)
+            if not model_config:
+                model_config = await model_repo.get_default_model()
+
+            if not model_config:
+                yield {"event": "error", "data": json.dumps({"error": "No model configured"})}
+                return
+
+            llm_client = LLMClient(model_config)
+
+            existing = await msg_repo.get_messages(agent_id=int(agent_id), limit=20)
+            llm_messages = [{"role": "system", "content": agent.system_prompt}]
+            for m in existing[0]:
+                llm_messages.append({"role": m.role, "content": m.content})
+
+            full_content = ""
+            tool_calls_log = []
+            async for chunk in llm_client.chat_with_tools_stream(llm_messages, openai_tools):
+                if chunk["type"] == "content":
+                    full_content += chunk.get("delta", "")
+                    yield {"event": "delta", "data": json.dumps({"delta": chunk.get("delta", "")})}
+                elif chunk["type"] == "reasoning":
+                    yield {"event": "reasoning", "data": json.dumps({"delta": chunk.get("delta", "")})}
+                elif chunk["type"] == "done":
+                    if chunk.get("content"):
+                        full_content = chunk.get("content", full_content)
+                    if chunk.get("tool_calls"):
+                        for tc in chunk["tool_calls"]:
+                            tool_calls_log.append(
+                                {"name": tc.get("name", ""), "arguments": tc.get("arguments", "")})
+                            yield {"event": "tool_call", "data": json.dumps({"tool": tc.get("name", ""), "args": tc.get("arguments", "")})}
+
+            await msg_repo.add_message(
+                agent_id=int(agent_id), user_id=int(user.id), role="assistant",
+                content=full_content, tool_calls=tool_calls_log,
+            )
+            yield {"event": "done", "data": json.dumps({"reply": full_content})}
+
+        except Exception as e:
+            logger.error(f"Agent chat error: {e}")
+            yield {"event": "error", "data": json.dumps({"error": str(e)})}
 
     return EventSourceResponse(event_generator())
