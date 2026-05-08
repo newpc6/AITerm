@@ -17,8 +17,6 @@ repo = AgentRepository()
 
 async def _build_agent_system_prompt(agent: Agent) -> str:
     skill_repo = SkillRepository()
-    from app.repositories.tool import ToolRepository
-    tool_repo = ToolRepository()
     parts = []
 
     if agent.system_prompt and agent.system_prompt.strip():
@@ -34,17 +32,6 @@ async def _build_agent_system_prompt(agent: Agent) -> str:
                 section += f"\n{skill.description.strip()}"
             if skill.system_prompt and skill.system_prompt.strip():
                 section += f"\n\n{skill.system_prompt.strip()}"
-            if skill.tool_names:
-                tool_descs = []
-                for tname in skill.tool_names:
-                    tool = await tool_repo.get_tool_by_name(tname)
-                    if tool:
-                        desc = tool.description or tool.display_name or tname
-                        tool_descs.append(f"- `{tname}`: {desc}")
-                    else:
-                        tool_descs.append(f"- `{tname}`")
-                if tool_descs:
-                    section += "\n\n可用工具：\n" + "\n".join(tool_descs)
             parts.append(section)
 
     if parts:

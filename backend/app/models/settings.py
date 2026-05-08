@@ -49,13 +49,6 @@ class GlobalSettings(BaseModel):
     chat_history_limit: int = 12
     max_iterations: int = 20
     show_llm_input: bool = False
-    execution_planner_prompt: str = ""
-    execution_planner_user_prompt: str = ""
-    execution_windows_tool_prompt: str = ""
-    execution_linux_tool_prompt: str = ""
-    execution_mac_tool_prompt: str = ""
-    execution_failure_repair_prompt: str = ""
-    execution_command_rules_prompt: str = ""
     execution_command_blacklist: List[str] = []
     execution_command_whitelist: List[str] = []
     sandbox_paths: List[str] = []
@@ -68,13 +61,6 @@ class GlobalSettingsUpdate(BaseModel):
     chat_history_limit: Optional[int] = None
     max_iterations: Optional[int] = None
     show_llm_input: Optional[bool] = None
-    execution_planner_prompt: Optional[str] = None
-    execution_planner_user_prompt: Optional[str] = None
-    execution_windows_tool_prompt: Optional[str] = None
-    execution_linux_tool_prompt: Optional[str] = None
-    execution_mac_tool_prompt: Optional[str] = None
-    execution_failure_repair_prompt: Optional[str] = None
-    execution_command_rules_prompt: Optional[str] = None
     execution_command_blacklist: Optional[List[str]] = None
     execution_command_whitelist: Optional[List[str]] = None
     sandbox_paths: Optional[List[str]] = None

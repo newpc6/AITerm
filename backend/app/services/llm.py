@@ -146,7 +146,6 @@ class ExecutePlanner:
         self.llm_client = LLMClient(settings)
 
     def _build_system_prompt(self, node: Node, request: str) -> str:
-        template = self.settings.execution_planner_prompt or "你是一个执行规划器，请将用户请求转换为可执行操作计划。"
         command_rules = self._build_command_rules()
         sandbox_info = self._build_sandbox_info()
         node_desc = describe_node(node)
@@ -154,26 +153,10 @@ class ExecutePlanner:
         sandbox_paths_str = ", ".join(
             sandbox_paths) if sandbox_paths else "未配置"
 
-        prompt = template.replace("{{node_description}}", node_desc)
-        prompt = prompt.replace("{{user_request}}", request)
-        prompt = prompt.replace("{{sandbox_paths}}", sandbox_paths_str)
+        prompt = f"你是 AITerm 的执行规划器。你的职责是把用户请求转换为可以在当前节点逐步执行的操作计划。当前节点：{node_desc}。用户请求：{request}。\n\n核心原则：\n1. 优先生成最小可执行步骤，复杂操作可拆分为多个步骤。\n2. 使用工具执行文件操作、HTTP请求等任务，不要直接生成 shell 命令。\n3. 如果操作可能破坏数据、删除文件、停止服务、修改系统状态或存在明显风险，请标记 requires_confirmation 为 true 并在 risk_reason 中说明风险。\n4. 如果信息不足（如缺少下载地址、文件路径、配置参数等关键信息），设置 needs_user_input 为 true，并通过 input_request 向用户收集信息。\n5. 如果有多种实现方式，设置 needs_user_input 为 true，通过 input_request 让用户选择或提出建议。\n\n安全规则：\n- 文件操作必须在沙盒路径内执行\n- 删除、修改等危险操作需要用户确认\n- 禁止访问系统敏感目录\n\n文件路径规则（重要）：\n- 所有文件操作（创建、写入、读取、删除等）必须使用沙盒路径作为前缀\n- 当前沙盒路径：{sandbox_paths_str}\n- 示例：如果沙盒路径是 /data/sandbox，用户要求创建 test.py，则完整路径应为 /data/sandbox/test.py\n- 不要只写文件名，必须写完整的沙盒路径\n\n用户输入类型说明：\n- text：用户需要输入文本（如下载地址、文件路径）\n- select：用户需要从多个选项中选择一个（如选择下载方式）\n- multiselect：用户需要从多个选项中选择多个（如选择要安装的组件）"
         prompt += command_rules
         prompt += sandbox_info
-        prompt += """
-
-你必须只返回 JSON，不要输出 markdown，不要输出解释。JSON 结构如下：
-
-1. 正常执行计划：
-{"title":"操作标题","summary":"操作摘要","requires_confirmation":false,"risk_reason":"","needs_user_input":false,"steps":[{"title":"步骤标题","command":"具体命令"}]}
-
-2. 需要用户补充信息时（如缺少下载地址、文件路径等关键信息）：
-{"title":"操作标题","summary":"需要用户补充信息","requires_confirmation":false,"risk_reason":"","needs_user_input":true,"input_request":{"question":"请提供下载地址","input_type":"text","options":[],"placeholder":"输入下载地址","default_value":""},"steps":[]}
-
-3. 需要用户选择方案时（有多种实现方式）：
-{"title":"操作标题","summary":"请选择实现方案","requires_confirmation":false,"risk_reason":"","needs_user_input":true,"input_request":{"question":"请选择下载方式","input_type":"select","options":["直接下载","使用代理下载","使用镜像站"],"placeholder":"","default_value":"直接下载"},"steps":[]}
-
-input_type 可选值：text（文本输入）、select（单选）、multiselect（多选）
-如果信息充足，直接生成 steps；如果信息不足或需要用户选择，设置 needs_user_input 为 true 并填写 input_request。"""
+        prompt += """\n\n你必须只返回 JSON，不要输出 markdown，不要输出解释。JSON 结构如下：\n\n1. 正常执行计划：\n{"title":"操作标题","summary":"操作摘要","requires_confirmation":false,"risk_reason":"","needs_user_input":false,"steps":[{"title":"步骤标题","command":"具体命令"}]}\n\n2. 需要用户补充信息时（如缺少下载地址、文件路径等关键信息）：\n{"title":"操作标题","summary":"需要用户补充信息","requires_confirmation":false,"risk_reason":"","needs_user_input":true,"input_request":{"question":"请提供下载地址","input_type":"text","options":[],"placeholder":"输入下载地址","default_value":""},"steps":[]}\n\n3. 需要用户选择方案时（有多种实现方式）：\n{"title":"操作标题","summary":"请选择实现方案","requires_confirmation":false,"risk_reason":"","needs_user_input":true,"input_request":{"question":"请选择下载方式","input_type":"select","options":["直接下载","使用代理下载","使用镜像站"],"placeholder":"","default_value":"直接下载"},"steps":[]}\n\ninput_type 可选值：text（文本输入）、select（单选）、multiselect（多选）\n如果信息充足，直接生成 steps；如果信息不足或需要用户选择，设置 needs_user_input 为 true 并填写 input_request。"""
 
         return prompt
 
@@ -183,15 +166,11 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
         request: str,
         history: List[Dict[str, Any]]
     ) -> str:
-        template = self.settings.execution_planner_user_prompt or "请基于以下用户请求生成执行计划。"
         node_desc = describe_node(node)
         history_text = self._build_history_text(history)
         platform_name, platform_prompt = self._build_platform_prompt(node)
 
-        prompt = template.replace("{{user_request}}", request)
-        prompt = prompt.replace("{{conversation_history}}", history_text)
-        prompt = prompt.replace("{{platform_name}}", platform_name)
-        prompt = prompt.replace("{{platform_tool_prompt}}", platform_prompt)
+        prompt = f"请基于以下用户请求生成执行计划。用户请求：{request}{history_text}\n\n要求：\n1. 根据情况拆分返回合适数量的可执行步骤。\n2. 每个步骤都要有简短 title 和 command。\n3. 优先使用工具执行操作，如文件读写、HTTP请求等。\n4. 文件操作必须在沙盒路径内进行。\n5. 高风险操作需要标记 requires_confirmation。"
 
         if platform_prompt:
             prompt += f"\n\n当前系统工具参考（{platform_name}）：\n{platform_prompt}"
@@ -219,11 +198,11 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
     def _build_platform_prompt(self, node: Node) -> tuple:
         platform = detect_platform(node)
         if platform == "windows":
-            return "Windows", self.settings.execution_windows_tool_prompt
+            return "Windows", "当前系统为 Windows。命令优先使用 PowerShell 或系统自带命令，并保证一次执行即可返回结果。"
         elif platform == "linux":
-            return "Linux", self.settings.execution_linux_tool_prompt
+            return "Linux", "当前系统为 Linux。命令优先使用通用 shell 命令，并保证一次执行即可返回结果。"
         elif platform == "macos":
-            return "macOS", self.settings.execution_mac_tool_prompt
+            return "macOS", "当前系统为 macOS。命令优先使用 zsh/bash 兼容命令，并保证一次执行即可返回结果。"
         return "未知", ""
 
     def _build_command_rules(self) -> str:
@@ -239,8 +218,7 @@ input_type 可选值：text（文本输入）、select（单选）、multiselect
         if whitelist:
             rules.append(f"- 以下命令片段属于白名单，可在生成命令时参考：{'、'.join(whitelist)}")
 
-        template = self.settings.execution_command_rules_prompt or "\n\n命令风控规则：{{command_rules}}"
-        return "\n\n" + template.replace("{{command_rules}}", "\n".join(rules))
+        return "\n\n命令风控规则：\n" + "\n".join(rules)
 
     def _build_sandbox_info(self) -> str:
         sandbox_paths = self.settings.sandbox_paths or []
@@ -390,16 +368,10 @@ class ExecuteRepairer:
         outputs: List[str],
         failure_text: str
     ) -> str:
-        template = self.settings.execution_failure_repair_prompt or "请分析以下执行操作失败信息。"
         node_desc = describe_node(node)
+        output_text = "\n".join(outputs) if outputs else "无输出"
 
-        prompt = template.replace("{{node_description}}", node_desc)
-        prompt = prompt.replace("{{user_request}}", request)
-        prompt = prompt.replace("{{step_title}}", step.title)
-        prompt = prompt.replace("{{failed_command}}", step.command)
-        prompt = prompt.replace("{{execution_output}}", "\n".join(
-            outputs) if outputs else "无输出")
-        prompt = prompt.replace("{{failure_text}}", failure_text)
+        prompt = f"请分析以下执行操作失败信息，并返回修正结果。操作请求：{request}\n节点：{node_desc}\n失败步骤：{step.title}\n失败命令：{step.command}\n执行输出：{output_text}\n失败提示：{failure_text}\n\n要求：\n1. 先判断失败最可能的原因。\n2. 如果可以修正，请返回一个可直接执行的 corrected_command；如果不适合继续自动执行，则 corrected_command 置空。\n3. corrected_command 必须是单条、可直接执行的命令，不要返回解释性文本。\n4. 如需修正标题，可填写 corrected_title，否则留空。\n5. 只返回 JSON，不要输出 markdown，不要输出解释。JSON 结构固定为：{{\"reason\":\"\",\"suggestion\":\"\",\"corrected_title\":\"\",\"corrected_command\":\"\"}}"
 
         return prompt
 

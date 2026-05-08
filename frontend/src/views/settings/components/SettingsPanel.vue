@@ -70,43 +70,6 @@ function addWhitelistItem() {
           placeholder="可使用 {{node_description}}、{{user_request}} 等占位符" :disabled="loading || saving" />
       </el-form-item>
 
-      <el-form-item label="执行规划提示词">
-        <el-input v-model="form.execution_planner_prompt" type="textarea" :rows="8" resize="vertical"
-          placeholder="可使用 {{node_description}}、{{user_request}} 等占位符" :disabled="loading || saving" />
-      </el-form-item>
-
-      <el-form-item label="执行规划用户提示词">
-        <el-input v-model="form.execution_planner_user_prompt" type="textarea" :rows="10" resize="vertical"
-          placeholder="可使用 {{user_request}}、{{conversation_history}}、{{platform_name}}、{{platform_tool_prompt}} 等占位符"
-          :disabled="loading || saving" />
-      </el-form-item>
-
-      <el-form-item label="Windows 工具提示词">
-        <el-input v-model="form.execution_windows_tool_prompt" type="textarea" :rows="8" resize="vertical"
-          placeholder="告诉模型在 Windows 上下载、删除、移动、查找、查看文件等常见操作优先使用哪些命令" :disabled="loading || saving" />
-      </el-form-item>
-
-      <el-form-item label="Linux 工具提示词">
-        <el-input v-model="form.execution_linux_tool_prompt" type="textarea" :rows="8" resize="vertical"
-          placeholder="告诉模型在 Linux 上下载、删除、移动、查找、查看文件等常见操作优先使用哪些命令" :disabled="loading || saving" />
-      </el-form-item>
-
-      <el-form-item label="macOS 工具提示词">
-        <el-input v-model="form.execution_mac_tool_prompt" type="textarea" :rows="8" resize="vertical"
-          placeholder="告诉模型在 macOS 上下载、删除、移动、查找、查看文件等常见操作优先使用哪些命令" :disabled="loading || saving" />
-      </el-form-item>
-
-      <el-form-item label="执行失败修正提示词">
-        <el-input v-model="form.execution_failure_repair_prompt" type="textarea" :rows="10" resize="vertical"
-          placeholder="可使用 {{user_request}}、{{step_title}}、{{failed_command}}、{{execution_output}}、{{failure_text}} 等占位符"
-          :disabled="loading || saving" />
-      </el-form-item>
-
-      <el-form-item label="命令风控规则提示词">
-        <el-input v-model="form.execution_command_rules_prompt" type="textarea" :rows="5" resize="vertical"
-          placeholder="可使用 {{command_rules}}、{{blacklist}}、{{whitelist}} 等占位符" :disabled="loading || saving" />
-      </el-form-item>
-
       <el-form-item label="命令黑名单">
         <div class="tag-container">
           <el-tag v-for="(item, index) in form.execution_command_blacklist" :key="index" type="danger" closable
@@ -142,27 +105,6 @@ function addWhitelistItem() {
     <el-descriptions v-if="settings" :column="1" border>
       <el-descriptions-item label="对话提示词">
         {{ settings.chat_system_prompt ? '已设置' : '未设置' }}
-      </el-descriptions-item>
-      <el-descriptions-item label="执行规划提示词">
-        {{ settings.execution_planner_prompt ? '已设置' : '未设置' }}
-      </el-descriptions-item>
-      <el-descriptions-item label="执行规划用户提示词">
-        {{ settings.execution_planner_user_prompt ? '已设置' : '未设置' }}
-      </el-descriptions-item>
-      <el-descriptions-item label="Windows 工具提示词">
-        {{ settings.execution_windows_tool_prompt ? '已设置' : '未设置' }}
-      </el-descriptions-item>
-      <el-descriptions-item label="Linux 工具提示词">
-        {{ settings.execution_linux_tool_prompt ? '已设置' : '未设置' }}
-      </el-descriptions-item>
-      <el-descriptions-item label="macOS 工具提示词">
-        {{ settings.execution_mac_tool_prompt ? '已设置' : '未设置' }}
-      </el-descriptions-item>
-      <el-descriptions-item label="执行失败修正提示词">
-        {{ settings.execution_failure_repair_prompt ? '已设置' : '未设置' }}
-      </el-descriptions-item>
-      <el-descriptions-item label="命令风控规则提示词">
-        {{ settings.execution_command_rules_prompt ? '已设置' : '未设置' }}
       </el-descriptions-item>
       <el-descriptions-item label="命令黑名单">
         <div v-if="settings.execution_command_blacklist.length" class="tag-container">

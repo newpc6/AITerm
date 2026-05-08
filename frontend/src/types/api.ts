@@ -218,13 +218,6 @@ export type GlobalSettingsData = {
   chat_history_limit: number
   max_iterations: number
   show_llm_input: boolean
-  execution_planner_prompt: string
-  execution_planner_user_prompt: string
-  execution_windows_tool_prompt: string
-  execution_linux_tool_prompt: string
-  execution_mac_tool_prompt: string
-  execution_failure_repair_prompt: string
-  execution_command_rules_prompt: string
   execution_command_blacklist: string[]
   execution_command_whitelist: string[]
   sandbox_paths: string[]
@@ -237,13 +230,6 @@ export type GlobalSettingsPayload = {
   chat_history_limit?: number
   max_iterations?: number
   show_llm_input?: boolean
-  execution_planner_prompt?: string
-  execution_planner_user_prompt?: string
-  execution_windows_tool_prompt?: string
-  execution_linux_tool_prompt?: string
-  execution_mac_tool_prompt?: string
-  execution_failure_repair_prompt?: string
-  execution_command_rules_prompt?: string
   execution_command_blacklist?: string[]
   execution_command_whitelist?: string[]
   sandbox_paths?: string[]

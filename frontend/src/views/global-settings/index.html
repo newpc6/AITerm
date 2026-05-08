@@ -31,43 +31,6 @@
         <el-switch v-model="form.show_llm_input" :disabled="loading || saving" active-text="开启" inactive-text="关闭" />
         <div class="form-item-hint">开启后会在消息中展示每次调用大模型时的输入内容，方便调试</div>
       </el-form-item>
-
-      <el-form-item label="执行规划提示词">
-        <el-input v-model="form.execution_planner_prompt" type="textarea" :rows="8" resize="vertical"
-          placeholder="可使用 {{node_description}}、{{user_request}} 等占位符" :disabled="loading || saving" />
-      </el-form-item>
-
-      <el-form-item label="执行规划用户提示词">
-        <el-input v-model="form.execution_planner_user_prompt" type="textarea" :rows="10" resize="vertical"
-          placeholder="可使用 {{user_request}}、{{conversation_history}}、{{platform_name}}、{{platform_tool_prompt}} 等占位符"
-          :disabled="loading || saving" />
-      </el-form-item>
-
-      <el-form-item label="Windows 工具提示词">
-        <el-input v-model="form.execution_windows_tool_prompt" type="textarea" :rows="8" resize="vertical"
-          placeholder="告诉模型在 Windows 上下载、删除、移动、查找、查看文件等常见操作优先使用哪些命令" :disabled="loading || saving" />
-      </el-form-item>
-
-      <el-form-item label="Linux 工具提示词">
-        <el-input v-model="form.execution_linux_tool_prompt" type="textarea" :rows="8" resize="vertical"
-          placeholder="告诉模型在 Linux 上下载、删除、移动、查找、查看文件等常见操作优先使用哪些命令" :disabled="loading || saving" />
-      </el-form-item>
-
-      <el-form-item label="macOS 工具提示词">
-        <el-input v-model="form.execution_mac_tool_prompt" type="textarea" :rows="8" resize="vertical"
-          placeholder="告诉模型在 macOS 上下载、删除、移动、查找、查看文件等常见操作优先使用哪些命令" :disabled="loading || saving" />
-      </el-form-item>
-
-      <el-form-item label="执行失败修正提示词">
-        <el-input v-model="form.execution_failure_repair_prompt" type="textarea" :rows="10" resize="vertical"
-          placeholder="可使用 {{user_request}}、{{step_title}}、{{failed_command}}、{{execution_output}}、{{failure_text}} 等占位符"
-          :disabled="loading || saving" />
-      </el-form-item>
-
-      <el-form-item label="命令风控规则提示词">
-        <el-input v-model="form.execution_command_rules_prompt" type="textarea" :rows="5" resize="vertical"
-          placeholder="可使用 {{command_rules}}、{{blacklist}}、{{whitelist}} 等占位符" :disabled="loading || saving" />
-      </el-form-item>
     </div>
 
     <div class="card" style="margin-bottom: 20px">

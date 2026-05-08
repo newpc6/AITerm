@@ -50,7 +50,7 @@
         </div>
         <div style="display: flex; gap: 8px; border-top: 1px solid var(--color-border-primary); padding-top: 8px"
           @click.stop>
-          <el-button v-if="filterScope==='my' && isOwner(agent)" size="small" link type="primary"
+          <el-button v-if="isOwner(agent) || isAdmin" size="small" link type="primary"
             @click="openEdit(agent)">编辑</el-button>
           <el-button v-if="filterScope==='my' && isOwner(agent) && agent.status==='draft'" size="small" link
             type="warning" @click="handleSubmit(agent.id)">提交审核</el-button>
@@ -68,9 +68,7 @@
             @click="handleClone(agent.id)">克隆</el-button>
           <el-button v-if="!agent.is_default && filterScope==='my' && isOwner(agent)" size="small" link
             @click="handleSetDefault(agent.id)">设为默认</el-button>
-          <el-button v-if="filterScope==='my' && isOwner(agent)" size="small" link type="danger"
-            @click="handleDelete(agent.id)">删除</el-button>
-          <el-button v-if="isAdmin && !isOwner(agent)" size="small" link type="danger"
+          <el-button v-if="isOwner(agent) || isAdmin" size="small" link type="danger"
             @click="handleDelete(agent.id)">删除</el-button>
         </div>
       </div>

@@ -324,18 +324,6 @@ class ChatOrchestrator:
 
         system_prompt = chat_service._build_system_prompt(node)
 
-        if tools:
-            tool_info_list = []
-            for t in tools:
-                name = t["function"]["name"]
-                desc = t["function"].get("description", "")
-                if desc:
-                    tool_info_list.append(f"- {name}: {desc}")
-                else:
-                    tool_info_list.append(f"- {name}")
-            tool_info = "\n".join(tool_info_list)
-            system_prompt += f"\n\n你可以使用以下工具来获取信息或执行操作：\n{tool_info}\n\n当用户问题需要使用这些工具时，请直接调用工具，不要只是思考或提及工具。"
-
         sandbox_paths = self.sandbox.base_paths
         if sandbox_paths:
             sandbox_paths_str = ", ".join(sandbox_paths)

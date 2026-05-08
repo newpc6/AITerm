@@ -48,34 +48,6 @@ DEFAULT_SETTINGS = {
         "value": "false",
         "description": "是否展示 LLM 输入内容"
     },
-    "execution_planner_prompt": {
-        "value": "你是 AITerm 的执行规划器。你的职责是把用户请求转换为可以在当前节点逐步执行的操作计划。当前节点：{{node_description}}。用户请求：{{user_request}}。\n\n核心原则：\n1. 优先生成最小可执行步骤，复杂操作可拆分为多个步骤。\n2. 使用工具执行文件操作、HTTP请求等任务，不要直接生成 shell 命令。\n3. 如果操作可能破坏数据、删除文件、停止服务、修改系统状态或存在明显风险，请标记 requires_confirmation 为 true 并在 risk_reason 中说明风险。\n4. 如果信息不足（如缺少下载地址、文件路径、配置参数等关键信息），设置 needs_user_input 为 true，并通过 input_request 向用户收集信息。\n5. 如果有多种实现方式，设置 needs_user_input 为 true，通过 input_request 让用户选择或提出建议。\n\n安全规则：\n- 文件操作必须在沙盒路径内执行\n- 删除、修改等危险操作需要用户确认\n- 禁止访问系统敏感目录\n\n文件路径规则（重要）：\n- 所有文件操作（创建、写入、读取、删除等）必须使用沙盒路径作为前缀\n- 当前沙盒路径：{{sandbox_paths}}\n- 示例：如果沙盒路径是 /data/sandbox，用户要求创建 test.py，则完整路径应为 /data/sandbox/test.py\n- 不要只写文件名，必须写完整的沙盒路径\n\n用户输入类型说明：\n- text：用户需要输入文本（如下载地址、文件路径）\n- select：用户需要从多个选项中选择一个（如选择下载方式）\n- multiselect：用户需要从多个选项中选择多个（如选择要安装的组件）",
-        "description": "执行规划器系统提示词"
-    },
-    "execution_planner_user_prompt": {
-        "value": "请基于以下用户请求生成执行计划。用户请求：{{user_request}}{{conversation_history}}\n\n要求：\n1. 根据情况拆分返回合适数量的可执行步骤。\n2. 每个步骤都要有简短 title 和 command。\n3. 优先使用工具执行操作，如文件读写、HTTP请求等。\n4. 文件操作必须在沙盒路径内进行。\n5. 高风险操作需要标记 requires_confirmation。",
-        "description": "执行规划器用户提示词"
-    },
-    "execution_windows_tool_prompt": {
-        "value": "当前系统为 Windows。命令优先使用 PowerShell 或系统自带命令，并保证一次执行即可返回结果。常见操作参考：下载文件优先用 Invoke-WebRequest 或 curl.exe，并显式写出完整保存路径；删除文件或目录优先用 Remove-Item，并在高风险场景标记 requires_confirmation；移动或重命名文件优先用 Move-Item；复制文件优先用 Copy-Item；查看文件内容优先用 Get-Content；列出目录优先用 Get-ChildItem；查找文件优先用 Get-ChildItem -Recurse 或 dir；查询文本可用 Select-String；创建目录可用 New-Item -ItemType Directory；压缩或解压可用 Compress-Archive、Expand-Archive。",
-        "description": "Windows 系统工具提示词"
-    },
-    "execution_linux_tool_prompt": {
-        "value": "当前系统为 Linux。命令优先使用通用 shell 命令，并保证一次执行即可返回结果。常见操作参考：下载文件优先用 curl -L 或 wget，并显式写出完整保存路径；删除文件或目录优先用 rm，并在高风险场景标记 requires_confirmation；移动或重命名文件优先用 mv；复制文件优先用 cp；查看文件内容优先用 cat、sed、tail、head；列出目录优先用 ls；查找文件优先用 find；查询文本优先用 grep；创建目录优先用 mkdir -p；压缩或解压优先用 tar、unzip、gzip。",
-        "description": "Linux 系统工具提示词"
-    },
-    "execution_mac_tool_prompt": {
-        "value": "当前系统为 macOS。命令优先使用 zsh/bash 兼容命令，并保证一次执行即可返回结果。常见操作参考：下载文件优先用 curl -L，并显式写出完整保存路径；删除文件或目录优先用 rm，并在高风险场景标记 requires_confirmation；移动或重命名文件优先用 mv；复制文件优先用 cp；查看文件内容优先用 cat、sed、tail、head；列出目录优先用 ls；查找文件优先用 find 或 mdfind；查询文本优先用 grep；创建目录优先用 mkdir -p；压缩或解压优先用 tar、unzip。",
-        "description": "macOS 系统工具提示词"
-    },
-    "execution_failure_repair_prompt": {
-        "value": "请分析以下执行操作失败信息，并返回修正结果。操作请求：{{user_request}}\n节点：{{node_description}}\n失败步骤：{{step_title}}\n失败命令：{{failed_command}}\n执行输出：{{execution_output}}\n失败提示：{{failure_text}}\n\n要求：\n1. 先判断失败最可能的原因。\n2. 如果可以修正，请返回一个可直接执行的 corrected_command；如果不适合继续自动执行，则 corrected_command 置空。\n3. corrected_command 必须是单条、可直接执行的命令，不要返回解释性文本。\n4. 如需修正标题，可填写 corrected_title，否则留空。\n5. 只返回 JSON，不要输出 markdown，不要输出解释。JSON 结构固定为：{\"reason\":\"\",\"suggestion\":\"\",\"corrected_title\":\"\",\"corrected_command\":\"\"}",
-        "description": "执行失败修复提示词"
-    },
-    "execution_command_rules_prompt": {
-        "value": "\n\n命令风控规则：{{command_rules}}",
-        "description": "命令风控规则提示词模板"
-    },
     "execution_command_blacklist": {
         "value": json.dumps(["del ", "delete ", "erase ", "rd ", "rmdir ", "rm ", "remove-item ", "format ", "shutdown ",
                             "reboot ", "restart-computer", "stop-service ", "sc stop ", "net stop ", "taskkill ", "kill ", "drop table ", "truncate table "]),
