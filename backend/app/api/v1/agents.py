@@ -341,6 +341,8 @@ async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user
 
             final_content = all_answer or answer_first or ""
             await msg_repo.update_message_content(message_id=state.msg_id, content=final_content)
+            llm_messages.append(
+                {"role": "assistant", "content": final_content})
             full_input_json = json.dumps(llm_messages, ensure_ascii=False)
             await msg_repo.update_message_full_input(message_id=state.msg_id, full_input=full_input_json)
             yield {"event": "done", "data": json.dumps({"reply": final_content})}
