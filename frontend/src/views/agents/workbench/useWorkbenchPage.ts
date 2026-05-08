@@ -8,6 +8,7 @@ interface AgentRun {
   modelName: string
   status: 'idle' | 'running' | 'done' | 'error'
   delta: string
+  reasoning: string
   toolCalls: { tool: string; args: Record<string, unknown>; output?: string }[]
   reply: string
   error: string
@@ -26,8 +27,13 @@ export function useWorkbenchPage() {
 
   async function load() {
     loading.value = true
-    try { agents.value = await getAgents() } catch { agents.value = [] }
-    finally { loading.value = false }
+    try {
+      agents.value = await getAgents()
+    } catch {
+      agents.value = []
+    } finally {
+      loading.value = false
+    }
   }
 
   function toggleAgent(id: string) {
@@ -40,7 +46,7 @@ export function useWorkbenchPage() {
     if (selectedAgentIds.value.length === agents.value.length) {
       selectedAgentIds.value = []
     } else {
-      selectedAgentIds.value = agents.value.map(a => a.id)
+      selectedAgentIds.value = agents.value.map((a) => a.id)
     }
   }
 
@@ -49,12 +55,18 @@ export function useWorkbenchPage() {
     running.value = true
     abortController = new AbortController()
 
-    runs.value = selectedAgentIds.value.map(aid => ({
+    runs.value = selectedAgentIds.value.map((aid) => ({
       agentId: aid,
-      agentName: agents.value.find(a => a.id === aid)?.name || aid,
-      modelName: agents.value.find(a => a.id === aid)?.model_name || '',
+      agentName: agents.value.find((a) => a.id === aid)?.name || aid,
+      modelName: agents.value.find((a) => a.id === aid)?.model_name || '',
       status: 'idle' as const,
-      delta: '', toolCalls: [], reply: '', error: '', duration: 0, aborted: false,
+      delta: '',
+      reasoning: '',
+      toolCalls: [],
+      reply: '',
+      error: '',
+      duration: 0,
+      aborted: false,
     }))
 
     try {
@@ -62,13 +74,15 @@ export function useWorkbenchPage() {
         { agent_ids: selectedAgentIds.value, message: message.value },
         (event, data) => {
           const aid = data.agent_id as string
-          const run = runs.value.find(r => r.agentId === aid)
+          const run = runs.value.find((r) => r.agentId === aid)
           if (!run) return
 
           if (event === 'agent.start') {
             run.status = 'running'
           } else if (event === 'agent.delta') {
             run.delta += (data.delta as string) || ''
+          } else if (event === 'agent.reasoning') {
+            run.reasoning += (data.delta as string) || ''
           } else if (event === 'agent.tool_call') {
             run.toolCalls.push({ tool: (data.tool as string) || '', args: (data.args as Record<string, unknown>) || {} })
           } else if (event === 'agent.done') {
@@ -83,7 +97,12 @@ export function useWorkbenchPage() {
       )
     } catch (e) {
       if ((e as Error).name !== 'AbortError') {
-        runs.value.forEach(r => { if (r.status === 'idle') { r.status = 'error'; r.error = String(e) } })
+        runs.value.forEach((r) => {
+          if (r.status === 'idle') {
+            r.status = 'error'
+            r.error = String(e)
+          }
+        })
       }
     } finally {
       running.value = false
@@ -95,10 +114,20 @@ export function useWorkbenchPage() {
     running.value = false
   }
 
-  onMounted(() => { void load() })
+  onMounted(() => {
+    void load()
+  })
 
   return {
-    agents, loading, message, running, selectedAgentIds, runs,
-    toggleAgent, selectAll, start, stop,
+    agents,
+    loading,
+    message,
+    running,
+    selectedAgentIds,
+    runs,
+    toggleAgent,
+    selectAll,
+    start,
+    stop,
   }
 }

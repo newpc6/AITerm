@@ -251,6 +251,13 @@ class OpenAIProvider(BaseLLMProvider):
                         "usage": usage_data,
                     }
 
+                if chunk.choices and chunk.choices[0].finish_reason == "stop":
+                    yield {
+                        "type": "done",
+                        "content": full_content,
+                        "usage": usage_data,
+                    }
+
             if usage_data:
                 yield {"type": "usage", "usage": usage_data}
 

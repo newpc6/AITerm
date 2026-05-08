@@ -135,10 +135,16 @@ async def workbench_run(payload: AgentWorkbenchRequest, user=Depends(get_current
                     if chunk["type"] == "content":
                         full_content += chunk.get("delta", "")
                         yield {"event": "agent.delta", "data": json.dumps({"agent_id": agent_id_str, "delta": chunk.get("delta", "")})}
+                    elif chunk["type"] == "reasoning":
+                        yield {"event": "agent.reasoning", "data": json.dumps({"agent_id": agent_id_str, "delta": chunk.get("delta", "")})}
+                    elif chunk["type"] == "done":
+                        if chunk.get("content"):
+                            full_content = chunk.get("content", full_content)
+                        if chunk.get("tool_calls"):
+                            for tc in chunk["tool_calls"]:
+                                yield {"event": "agent.tool_call", "data": json.dumps({"agent_id": agent_id_str, "tool": tc.get("name", ""), "args": tc.get("arguments", "")})}
                     elif chunk["type"] == "tool_start":
                         yield {"event": "agent.tool_call", "data": json.dumps({"agent_id": agent_id_str, "tool": chunk.get("tool", ""), "args": chunk.get("input", {})})}
-                    elif chunk["type"] == "done":
-                        pass
 
                 yield {"event": "agent.done", "data": json.dumps({"agent_id": agent_id_str, "reply": full_content})}
 

@@ -42,6 +42,9 @@ async def run_single_task(task_id: int):
         async for chunk in llm.chat_with_tools_stream(messages, openai_tools):
             if chunk["type"] == "content":
                 full_content += chunk.get("delta", "")
+            elif chunk["type"] == "done":
+                if chunk.get("content"):
+                    full_content = chunk.get("content", full_content)
 
         await repo.mark_run(task_id, "success", compute_next_run(task.cron_expression))
         await repo.add_log(task_id, "success", output=full_content[:5000], started_at=log.started_at, finished_at=_now())
