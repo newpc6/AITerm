@@ -66,7 +66,8 @@ class AgentMessage(BaseModel):
     user_id: str
     role: str
     content: str = ""
-    tool_calls_json: str = "[]"
+    full_input: Optional[str] = None
+    parts: List[dict] = []
     created_at: str = ""
 
 

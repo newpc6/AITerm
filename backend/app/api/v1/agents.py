@@ -182,12 +182,19 @@ async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    await msg_repo.add_message(agent_id=int(agent_id), user_id=int(user.id), role="user", content=message)
+    user_msg = await msg_repo.add_message(agent_id=int(agent_id), user_id=int(user.id), role="user", content=message, full_input=message)
+    await msg_repo.add_part(message_id=int(user_msg.id), seq=0, content={"type": "input", "text": message})
 
     from app.services.llm import LLMClient
     from app.services.tool_service import ToolService
     from app.services.sandbox_manager import SandboxManager
     from app.repositories.model_setting import ModelConfigRepository
+
+    class State:
+        msg = None
+        msg_id = 0
+
+    state = State()
 
     async def event_generator():
         try:
@@ -196,8 +203,7 @@ async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user
             user_tools = await tool_service.tool_repo.get_user_enabled_tools(user_id=int(user.id))
             openai_tools = []
             for t in user_tools:
-                params = t.parameters.model_dump() if t.parameters else {
-                    "type": "object", "properties": {}, "required": []}
+                params = t.parameters.model_dump() if t.parameters else {"type": "object", "properties": {}, "required": []}
                 openai_tools.append({
                     "type": "function",
                     "function": {"name": t.name, "description": t.description or t.display_name or t.name, "parameters": params},
@@ -221,28 +227,45 @@ async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user
             for m in existing[0]:
                 llm_messages.append({"role": m.role, "content": m.content})
 
+            state.msg = await msg_repo.add_message(
+                agent_id=int(agent_id), user_id=int(user.id), role="assistant",
+                content="", full_input=message,
+            )
+            state.msg_id = int(state.msg.id)
+
             full_content = ""
-            tool_calls_log = []
+            thinking_content = ""
+
             async for chunk in llm_client.chat_with_tools_stream(llm_messages, openai_tools):
-                if chunk["type"] == "content":
+                if chunk["type"] == "reasoning":
+                    thinking_content += chunk.get("delta", "")
+                    yield {"event": "reasoning", "data": json.dumps({"delta": chunk.get("delta", "")})}
+                elif chunk["type"] == "content":
                     full_content += chunk.get("delta", "")
                     yield {"event": "delta", "data": json.dumps({"delta": chunk.get("delta", "")})}
-                elif chunk["type"] == "reasoning":
-                    yield {"event": "reasoning", "data": json.dumps({"delta": chunk.get("delta", "")})}
                 elif chunk["type"] == "done":
                     if chunk.get("content"):
                         full_content = chunk.get("content", full_content)
+
+                    seq = 0
+                    if thinking_content:
+                        await msg_repo.add_part(message_id=state.msg_id, seq=seq, content={"type": "thinking", "text": thinking_content})
+                        seq += 1
+
                     if chunk.get("tool_calls"):
+                        tool_calls_list = [{"name": tc.get("name", ""), "arguments": tc.get("arguments", "")} for tc in chunk["tool_calls"]]
+                        await msg_repo.add_part(message_id=state.msg_id, seq=seq, content={"type": "tools", "calls": tool_calls_list})
+                        seq += 1
                         for tc in chunk["tool_calls"]:
-                            tool_calls_log.append(
-                                {"name": tc.get("name", ""), "arguments": tc.get("arguments", "")})
                             yield {"event": "tool_call", "data": json.dumps({"tool": tc.get("name", ""), "args": tc.get("arguments", "")})}
 
-            await msg_repo.add_message(
-                agent_id=int(agent_id), user_id=int(user.id), role="assistant",
-                content=full_content, tool_calls=tool_calls_log,
-            )
-            yield {"event": "done", "data": json.dumps({"reply": full_content})}
+                    if full_content:
+                        await msg_repo.add_part(message_id=state.msg_id, seq=seq, content={"type": "answer", "text": full_content})
+                        seq += 1
+
+                    await msg_repo.update_message_content(message_id=state.msg_id, content=full_content)
+
+                    yield {"event": "done", "data": json.dumps({"reply": full_content})}
 
         except Exception as e:
             logger.error(f"Agent chat error: {e}")
