@@ -182,7 +182,7 @@ async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    user_msg = await msg_repo.add_message(agent_id=int(agent_id), user_id=int(user.id), role="user", content=message, full_input=json.dumps([{"role": "user", "content": message}], ensure_ascii=False))
+    user_msg = await msg_repo.add_message(agent_id=int(agent_id), user_id=int(user.id), role="user", content=message)
     await msg_repo.add_part(message_id=int(user_msg.id), seq=0, content={"type": "input", "text": message})
 
     from app.services.llm import LLMClient
@@ -228,11 +228,9 @@ async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user
             for m in existing[0]:
                 llm_messages.append({"role": m.role, "content": m.content})
 
-            full_input_json = json.dumps(llm_messages, ensure_ascii=False)
-
             state.msg = await msg_repo.add_message(
                 agent_id=int(agent_id), user_id=int(user.id), role="assistant",
-                content="", full_input=full_input_json,
+                content="",
             )
             state.msg_id = int(state.msg.id)
             part_seq = 0
@@ -245,8 +243,6 @@ async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user
             thinking_first = ""
             answer_first = ""
             tool_calls_first = []
-
-            yield {"event": "full_input", "data": json.dumps({"messages": llm_messages, "tools": openai_tools}, ensure_ascii=False)}
 
             async for chunk in llm_client.chat_with_tools_stream(llm_messages, openai_tools):
                 if chunk["type"] == "reasoning":
@@ -345,6 +341,8 @@ async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user
 
             final_content = all_answer or answer_first or ""
             await msg_repo.update_message_content(message_id=state.msg_id, content=final_content)
+            full_input_json = json.dumps(llm_messages, ensure_ascii=False)
+            await msg_repo.update_message_full_input(message_id=state.msg_id, full_input=full_input_json)
             yield {"event": "done", "data": json.dumps({"reply": final_content})}
 
         except Exception as e:

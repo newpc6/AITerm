@@ -48,6 +48,16 @@ class AgentMessageRepository:
                 model.content = content
                 await session.commit()
 
+    async def update_message_full_input(self, message_id: int, full_input: str) -> None:
+        async with async_session_maker() as session:
+            result = await session.execute(
+                select(AgentMessageModel).where(AgentMessageModel.id == message_id)
+            )
+            model = result.scalar_one_or_none()
+            if model:
+                model.full_input = full_input
+                await session.commit()
+
     async def get_messages(self, agent_id: int, before_id: int = None, limit: int = 6) -> Tuple[List[AgentMessage], bool]:
         async with async_session_maker() as session:
             query = select(AgentMessageModel).where(AgentMessageModel.agent_id == agent_id)

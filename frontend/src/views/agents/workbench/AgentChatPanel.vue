@@ -15,16 +15,12 @@ interface StepCard {
   _expanded?: boolean
 }
 
-interface FullInputData {
-  messages: any[]
-  tools?: any[]
-}
-
 interface AgentMsg {
   id: string
   role: string
   content: string
   parts: Record<string, any>[]
+  full_input?: string
   created_at: string
 }
 
@@ -56,7 +52,6 @@ const autoCollapse = computed(function () { return !!props.displaySettings?.auto
 const showInput = computed(function () { return true })
 
 const shouldAutoScroll = ref(true)
-const fullInputSnapshots = ref<{ id: string; data: FullInputData }[]>([])
 
 let cardCounter = 0
 function nextCardId() { return '_c' + (++cardCounter) }
@@ -113,6 +108,17 @@ function messagesToCards(msgs: AgentMsg[]): StepCard[] {
   for (var i = 0; i < msgs.length; i++) {
     var m = msgs[i]
     if (m.parts && m.parts.length > 0) {
+      if (m.role === 'assistant' && m.full_input && showFullInput.value) {
+        var fiCard: StepCard = {
+          id: m.id + '_fi',
+          role: 'assistant',
+          type: 'full_input',
+          text: m.full_input,
+          time: m.created_at,
+        }
+        initExpanded(fiCard)
+        result.push(fiCard)
+      }
       for (var j = 0; j < m.parts.length; j++) {
         var p = m.parts[j] as Record<string, any>
         if (p.type === 'input' && !showInput.value) continue
@@ -235,20 +241,7 @@ async function send() {
       var parsed: any
       try { parsed = JSON.parse(d) } catch { currentEvent = ''; return }
 
-      if (currentEvent === 'full_input') {
-        if (showFullInput.value) {
-          var raw = JSON.parse(d) as FullInputData
-          var fiCard: StepCard = {
-            id: nextCardId(), role: 'assistant', type: 'full_input',
-            text: JSON.stringify(raw.messages, null, 2),
-            time: new Date().toISOString(),
-          }
-          initExpanded(fiCard)
-          fullInputSnapshots.value.push({ id: fiCard.id, data: raw })
-          liveCards.value = liveCards.value.filter(function (c) { return c.type !== 'full_input' })
-          liveCards.value.push(fiCard)
-        }
-      } else if (currentEvent === 'reasoning') {
+      if (currentEvent === 'reasoning') {
         if (!liveThinking) {
           liveThinking = { id: nextCardId(), role: 'assistant', type: 'thinking', text: '', time: new Date().toISOString() }
           liveThinking._expanded = autoCollapse.value ? expandThinking.value : true
@@ -296,10 +289,6 @@ async function send() {
 
     function rebuildLiveCards() {
       var result: StepCard[] = []
-      // full_input card first if present
-      for (var i = 0; i < liveCards.value.length; i++) {
-        if (liveCards.value[i].type === 'full_input') result.push(liveCards.value[i])
-      }
       if (liveThinking) result.push(liveThinking)
       for (var j = 0; j < liveCards.value.length; j++) {
         if (liveCards.value[j].type === 'tools') result.push(liveCards.value[j])
@@ -447,7 +436,7 @@ onUnmounted(function () { if (aborter) aborter.abort() })
               <span class="step-card__toggle">{{ card._expanded ? '▲' : '▼' }}</span>
             </div>
             <div v-if="card._expanded" class="step-card__body step-card__body--mono step-card__body--pre">{{ card.text
-              }}</div>
+            }}</div>
           </div>
         </div>
       </template>
@@ -501,7 +490,7 @@ onUnmounted(function () { if (aborter) aborter.abort() })
               <span class="step-card__toggle">{{ card._expanded ? '▲' : '▼' }}</span>
             </div>
             <div v-if="card._expanded" class="step-card__body step-card__body--mono step-card__body--pre">{{ card.text
-              }}</div>
+            }}</div>
           </div>
         </div>
       </template>
@@ -511,9 +500,9 @@ onUnmounted(function () { if (aborter) aborter.abort() })
       <el-input v-model="input" type="textarea" :rows="2" placeholder="输入消息..." :disabled="sending" resize="none"
         @keydown.enter.exact.prevent="send()" />
       <div class="agent-chat__actions">
-        <el-button v-if="streaming" type="danger" size="small" @click="stop">⏹ 停止</el-button>
-        <el-button type="primary" size="small" :loading="sending" :disabled="!input.trim()"
-          @click="send()">发送</el-button>
+        <el-button v-if="streaming" circle type="danger" @click="stop" title="停止">⏹</el-button>
+        <el-button circle type="primary" :loading="sending" :disabled="!input.trim()" @click="send()"
+          title="发送">▶</el-button>
       </div>
     </div>
   </div>
