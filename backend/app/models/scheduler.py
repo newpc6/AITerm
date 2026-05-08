@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 class ScheduledTask(BaseModel):
     id: str
     user_id: str
+    username: str = ""
     name: str
     description: str = ""
     agent_id: Optional[str] = None

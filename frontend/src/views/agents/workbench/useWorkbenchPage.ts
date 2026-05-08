@@ -2,10 +2,25 @@ import { onMounted, ref } from 'vue'
 import { getAgents } from '@/api/aiterm'
 import type { AgentItem } from '@/types/api'
 
+const STORAGE_KEY = 'aiterm:workbench:selected'
+
+function loadPersisted(): string[] {
+  try {
+    const raw = sessionStorage.getItem(STORAGE_KEY)
+    return raw ? (JSON.parse(raw) as string[]) : []
+  } catch {
+    return []
+  }
+}
+
+function persistSelected(ids: string[]) {
+  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(ids))
+}
+
 export function useWorkbenchPage() {
   const agents = ref<AgentItem[]>([])
   const selectedIds = ref<string[]>([])
-  const activeTab = ref('')
+  const activeId = ref('')
 
   const displaySettings = ref({
     showThinking: true,
@@ -17,53 +32,65 @@ export function useWorkbenchPage() {
     autoCollapse: true,
   })
 
-  const showShareDialog = ref(false)
-
   async function loadAgents() {
     try {
       agents.value = await getAgents()
-      if (agents.value.length > 0 && selectedIds.value.length === 0) {
-        var def = agents.value.find(function (a) {
+      const persisted = loadPersisted()
+      if (persisted.length > 0) {
+        selectedIds.value = persisted.filter(function (id) {
+          return agents.value.some(function (a) {
+            return a.id === id
+          })
+        })
+        if (selectedIds.value.length > 0) {
+          activeId.value = selectedIds.value[0]
+          return
+        }
+      }
+      if (agents.value.length > 0) {
+        const def = agents.value.find(function (a) {
           return a.is_default
         })
-        var firstId = def ? def.id : agents.value[0].id
+        const firstId = def ? def.id : agents.value[0].id
         selectedIds.value = [firstId]
-        activeTab.value = firstId
+        activeId.value = firstId
+        persistSelected(selectedIds.value)
       }
     } catch {
       agents.value = []
     }
   }
 
-  function onSelectChange(ids: string[]) {
-    selectedIds.value = ids
-    if (activeTab.value && !ids.includes(activeTab.value)) {
-      activeTab.value = ids.length > 0 ? ids[0] : ''
+  function selectAgent(id: string) {
+    if (!selectedIds.value.includes(id)) {
+      selectedIds.value = [...selectedIds.value, id]
+      persistSelected(selectedIds.value)
     }
-    if (!activeTab.value && ids.length > 0) {
-      activeTab.value = ids[0]
+    activeId.value = id
+  }
+
+  function removeAgent(id: string) {
+    selectedIds.value = selectedIds.value.filter(function (s) {
+      return s !== id
+    })
+    persistSelected(selectedIds.value)
+    if (activeId.value === id) {
+      activeId.value = selectedIds.value.length > 0 ? selectedIds.value[0] : ''
     }
   }
 
   function getAgentName(id: string) {
-    var a = agents.value.find(function (x) {
+    const a = agents.value.find(function (x) {
       return x.id === id
     })
     return a ? a.name : id
   }
 
-  function closeTab(id: string) {
-    selectedIds.value = selectedIds.value.filter(function (s) {
-      return s !== id
-    })
-    if (activeTab.value === id) {
-      activeTab.value = selectedIds.value.length > 0 ? selectedIds.value[0] : ''
-    }
-  }
+  const sidebarCollapsed = ref(false)
 
   onMounted(function () {
     loadAgents()
   })
 
-  return { agents, selectedIds, activeTab, displaySettings, showShareDialog, onSelectChange, getAgentName, closeTab }
+  return { agents, selectedIds, activeId, displaySettings, sidebarCollapsed, selectAgent, removeAgent, getAgentName }
 }
