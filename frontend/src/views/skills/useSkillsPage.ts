@@ -1,7 +1,9 @@
 import { onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { http } from '@/api/http'
+import { getMyTools } from '@/api/aiterm'
 import type { ApiResponse } from '@/types/api'
+import type { UserTool } from '@/types/tool'
 
 interface SkillItem {
   id: string; user_id: string; name: string; display_name: string; description: string
@@ -14,31 +16,33 @@ export function useSkillsPage() {
   const loading = ref(false)
   const skills = ref<SkillItem[]>([])
   const scope = ref('my')
+  const tools = ref<UserTool[]>([])
 
   const dialogVisible = ref(false)
   const dialogTitle = ref('新建技能')
   const editingId = ref<string | null>(null)
   const saving = ref(false)
-  const form = ref({ name: '', display_name: '', description: '', category: 'custom', system_prompt: '', tool_names_text: '' })
+  const form = ref({ name: '', display_name: '', description: '', category: 'custom', system_prompt: '', tool_names: [] as string[] })
 
   async function load() {
     loading.value = true
     try {
       const { data } = await http.get<ApiResponse<SkillItem[]>>('/api/v1/skills', { params: { scope: scope.value } })
       skills.value = data.data || []
+      tools.value = await getMyTools()
     } catch { ElMessage.error('加载失败') }
     finally { loading.value = false }
   }
 
   function openCreate() {
     editingId.value = null; dialogTitle.value = '新建技能'
-    form.value = { name: '', display_name: '', description: '', category: 'custom', system_prompt: '', tool_names_text: '' }
+    form.value = { name: '', display_name: '', description: '', category: 'custom', system_prompt: '', tool_names: [] }
     dialogVisible.value = true
   }
 
   function openEdit(s: SkillItem) {
     editingId.value = s.id; dialogTitle.value = '编辑技能'
-    form.value = { name: s.name, display_name: s.display_name, description: s.description, category: s.category, system_prompt: s.system_prompt, tool_names_text: (s.tool_names || []).join(', ') }
+    form.value = { name: s.name, display_name: s.display_name, description: s.description, category: s.category, system_prompt: s.system_prompt, tool_names: [...(s.tool_names || [])] }
     dialogVisible.value = true
   }
 
@@ -46,7 +50,7 @@ export function useSkillsPage() {
     if (!form.value.name.trim()) return
     saving.value = true
     try {
-      const payload = { ...form.value, tool_names: form.value.tool_names_text.split(',').map(s => s.trim()).filter(Boolean) }
+      const payload = { ...form.value }
       if (editingId.value) {
         await http.put(`/api/v1/skills/${editingId.value}`, payload)
         ElMessage.success('更新成功')
@@ -83,5 +87,5 @@ export function useSkillsPage() {
 
   onMounted(() => { void load() })
 
-  return { loading, skills, scope, load, dialogVisible, dialogTitle, editingId, saving, form, openCreate, openEdit, handleSave, handleDelete, handleSubmit, handleReview, handleInstall, statusLabel }
+  return { loading, skills, scope, load, tools, dialogVisible, dialogTitle, editingId, saving, form, openCreate, openEdit, handleSave, handleDelete, handleSubmit, handleReview, handleInstall, statusLabel }
 }

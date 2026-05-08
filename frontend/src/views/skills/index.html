@@ -67,8 +67,13 @@
             :value="c" /></el-select></el-form-item>
       <el-form-item label="系统提示词"><el-input v-model="form.system_prompt" type="textarea" :rows="6" resize="vertical"
           :disabled="saving" placeholder="定义该技能的行为..." /></el-form-item>
-      <el-form-item label="工具列表"><el-input v-model="form.tool_names_text" placeholder="逗号分隔的工具名，如 read_file,write_file"
-          :disabled="saving" /></el-form-item>
+      <el-form-item label="工具列表">
+        <el-select v-model="form.tool_names" multiple filterable placeholder="选择工具..." :disabled="saving"
+          style="width: 100%">
+          <el-option v-for="t in tools" :key="t.tool_name" :label="t.tool_display_name || t.tool_name"
+            :value="t.tool_name" />
+        </el-select>
+      </el-form-item>
     </el-form>
     <template #footer>
       <el-button @click="dialogVisible = false">取消</el-button>

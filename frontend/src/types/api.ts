@@ -211,7 +211,6 @@ export type ModelConfigPayload = {
 }
 
 export type GlobalSettingsData = {
-  intent_detection_prompt: string
   chat_system_prompt: string
   chat_history_limit: number
   max_iterations: number
@@ -231,7 +230,6 @@ export type GlobalSettingsData = {
 }
 
 export type GlobalSettingsPayload = {
-  intent_detection_prompt?: string
   chat_system_prompt?: string
   chat_history_limit?: number
   max_iterations?: number

@@ -11,12 +11,6 @@
         <p class="label">提示词配置</p>
       </div>
 
-      <el-form-item label="意图识别提示词">
-        <el-input v-model="form.intent_detection_prompt" type="textarea" :rows="6" resize="vertical"
-          placeholder="可使用 {{user_message}} 占位符，返回 JSON 格式 {&quot;intent&quot;: &quot;chat&quot;} 或 {&quot;intent&quot;: &quot;execute&quot;}"
-          :disabled="loading || saving" />
-      </el-form-item>
-
       <el-form-item label="对话系统提示词">
         <el-input v-model="form.chat_system_prompt" type="textarea" :rows="4" resize="vertical"
           placeholder="可使用 {{node_description}}、{{user_request}} 等占位符" :disabled="loading || saving" />

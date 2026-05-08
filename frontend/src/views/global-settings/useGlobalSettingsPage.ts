@@ -9,7 +9,6 @@ export function useGlobalSettingsPage() {
   const saving = ref(false)
   const settings = ref<GlobalSettingsData | null>(null)
   const form = ref<GlobalSettingsPayload>({
-    intent_detection_prompt: '',
     chat_system_prompt: '',
     chat_history_limit: 12,
     max_iterations: 20,
@@ -37,7 +36,6 @@ export function useGlobalSettingsPage() {
 
   function syncForm(data: GlobalSettingsData) {
     form.value = {
-      intent_detection_prompt: data.intent_detection_prompt,
       chat_system_prompt: data.chat_system_prompt,
       chat_history_limit: data.chat_history_limit,
       max_iterations: data.max_iterations,

@@ -7,11 +7,34 @@ from app.models.common import Response
 from app.models.agent import Agent, AgentCreate, AgentUpdate, AgentWorkbenchRequest, AgentMessage, AgentMessagesResponse
 from app.repositories.agent import AgentRepository
 from app.repositories.agent_message import AgentMessageRepository
+from app.repositories.skill import SkillRepository
 from app.api.deps import get_current_user, require_admin
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/agents", tags=["agents"])
 repo = AgentRepository()
+
+
+async def _build_agent_system_prompt(agent: Agent) -> str:
+    skill_repo = SkillRepository()
+    parts = []
+
+    if agent.system_prompt and agent.system_prompt.strip():
+        parts.append(agent.system_prompt.strip())
+
+    if agent.skill_ids:
+        for sid in agent.skill_ids:
+            skill = await skill_repo.get(str(sid))
+            if skill and skill.system_prompt and skill.system_prompt.strip():
+                parts.append(
+                    f"[{skill.display_name or skill.name}] {skill.system_prompt.strip()}")
+
+    if parts:
+        return "\n\n".join(parts)
+
+    from app.config import get_settings
+    settings = get_settings()
+    return settings.llm.chat_system_prompt
 
 
 @router.get("")
@@ -131,7 +154,8 @@ async def workbench_run(payload: AgentWorkbenchRequest, user=Depends(get_current
                     continue
 
                 llm_client = LLMClient(model_config)
-                messages = [{"role": "system", "content": agent.system_prompt}, {
+                system_prompt = await _build_agent_system_prompt(agent)
+                messages = [{"role": "system", "content": system_prompt}, {
                     "role": "user", "content": payload.message}]
 
                 full_content = ""
@@ -224,7 +248,8 @@ async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user
             llm_client = LLMClient(model_config)
 
             existing = await msg_repo.get_messages(agent_id=int(agent_id), limit=20)
-            llm_messages = [{"role": "system", "content": agent.system_prompt}]
+            system_prompt = await _build_agent_system_prompt(agent)
+            llm_messages = [{"role": "system", "content": system_prompt}]
             for m in existing[0]:
                 llm_messages.append({"role": m.role, "content": m.content})
 

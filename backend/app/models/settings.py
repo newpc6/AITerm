@@ -45,7 +45,6 @@ class ModelConfigUpdate(BaseModel):
 
 
 class GlobalSettings(BaseModel):
-    intent_detection_prompt: str = ""
     chat_system_prompt: str = ""
     chat_history_limit: int = 12
     max_iterations: int = 20
@@ -65,7 +64,6 @@ class GlobalSettings(BaseModel):
 
 
 class GlobalSettingsUpdate(BaseModel):
-    intent_detection_prompt: Optional[str] = None
     chat_system_prompt: Optional[str] = None
     chat_history_limit: Optional[int] = None
     max_iterations: Optional[int] = None

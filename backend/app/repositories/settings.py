@@ -13,7 +13,6 @@ from app.utils import now_iso
 DICT_CATEGORY = "global_settings"
 
 CONFIG_KEYS = [
-    "intent_detection_prompt",
     "chat_system_prompt",
     "chat_history_limit",
     "max_iterations",
@@ -59,7 +58,6 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
             now = now_iso()
 
             data = {
-                "intent_detection_prompt": settings.intent_detection_prompt,
                 "chat_system_prompt": settings.chat_system_prompt,
                 "chat_history_limit": str(settings.chat_history_limit),
                 "max_iterations": str(settings.max_iterations),
@@ -142,7 +140,6 @@ class GlobalSettingsRepository(IGlobalSettingsRepository):
             "llm_debug_logging", "false").lower() == "true"
 
         return GlobalSettings(
-            intent_detection_prompt=get_value("intent_detection_prompt"),
             chat_system_prompt=get_value("chat_system_prompt"),
             chat_history_limit=chat_history_limit,
             max_iterations=max_iterations,
