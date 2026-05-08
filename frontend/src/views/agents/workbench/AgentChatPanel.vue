@@ -42,6 +42,8 @@ const sending = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
 let aborter: AbortController | null = null
 
+const rawMessages = ref<AgentMsg[]>([])
+
 const showThinking = computed(function () { return !props.displaySettings || props.displaySettings.showThinking !== false })
 const expandThinking = computed(function () { return !!props.displaySettings?.expandThinking })
 const showTools = computed(function () { return !props.displaySettings || props.displaySettings.showTools !== false })
@@ -103,6 +105,15 @@ watch(autoCollapse, function (v) {
   }
 })
 
+watch(showThinking, function () { rebuildCardsFromRaw() })
+watch(showTools, function () { rebuildCardsFromRaw() })
+watch(showFullInput, function () { rebuildCardsFromRaw() })
+
+function rebuildCardsFromRaw() {
+  cards.value = messagesToCards(rawMessages.value)
+  nextTick(function () { scrollToBottom() })
+}
+
 function messagesToCards(msgs: AgentMsg[]): StepCard[] {
   var result: StepCard[] = []
   for (var i = 0; i < msgs.length; i++) {
@@ -132,6 +143,7 @@ function messagesToCards(msgs: AgentMsg[]): StepCard[] {
           text: fiText, time: m.created_at,
         }
         initExpanded(fiCard)
+        console.log('assistant full_input', fiCard)
         result.push(fiCard)
       }
     } else if (m.content) {
@@ -154,16 +166,17 @@ async function loadMessages(beforeId?: string) {
     var body = resp.data as { data: { messages: AgentMsg[]; has_more: boolean } }
     var newMsgs = body.data.messages || []
     var more = body.data.has_more
-    var newCards = messagesToCards(newMsgs)
 
     if (beforeId) {
+      rawMessages.value = newMsgs.concat(rawMessages.value)
+      cards.value = messagesToCards(rawMessages.value)
       var oldH = containerRef.value ? containerRef.value.scrollHeight : 0
-      cards.value = newCards.concat(cards.value)
       nextTick(function () {
         if (containerRef.value) containerRef.value.scrollTop = containerRef.value.scrollHeight - oldH
       })
     } else {
-      cards.value = newCards
+      rawMessages.value = newMsgs
+      cards.value = messagesToCards(rawMessages.value)
       nextTick(function () { scrollToBottom() })
     }
     hasMore.value = more
@@ -437,7 +450,7 @@ onUnmounted(function () { if (aborter) aborter.abort() })
               <span class="step-card__toggle">{{ card._expanded ? '▲' : '▼' }}</span>
             </div>
             <div v-if="card._expanded" class="step-card__body step-card__body--mono step-card__body--pre">{{ card.text
-            }}</div>
+              }}</div>
           </div>
         </div>
       </template>
@@ -491,7 +504,7 @@ onUnmounted(function () { if (aborter) aborter.abort() })
               <span class="step-card__toggle">{{ card._expanded ? '▲' : '▼' }}</span>
             </div>
             <div v-if="card._expanded" class="step-card__body step-card__body--mono step-card__body--pre">{{ card.text
-            }}</div>
+              }}</div>
           </div>
         </div>
       </template>
