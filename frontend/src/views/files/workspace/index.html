@@ -1,28 +1,246 @@
-<section class="page">
-  <div class="hero"><p class="label">工作空间</p><h1>文件浏览</h1><p>浏览、编辑和管理工作区文件。</p></div>
-  <div class="card" style="margin-bottom:16px">
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-      <el-button size="small" @click="goUp" :disabled="!currentPath">⬆ 上级</el-button>
-      <el-input :model-value="currentPath||'/'" readonly style="flex:1;font-family:monospace;font-size:13px" />
-      <el-button size="small" @click="loadDir()" :loading="loading">🔄</el-button>
-    </div>
-    <div style="display:flex;gap:8px;margin-bottom:12px">
-      <el-input v-model="newItemName" placeholder="新文件/文件夹名" size="small" style="width:200px" @keyup.enter="createFile" />
-      <el-button size="small" @click="createFile" :disabled="creating||!newItemName">新建文件</el-button>
-      <el-button size="small" @click="createDir" :disabled="creating||!newItemName">新建文件夹</el-button>
-    </div>
-    <el-table :data="items" v-loading="loading" size="small" empty-text="空目录">
-      <el-table-column label="名称" min-width="300"><template #default="{row}"><span :style="{cursor:'pointer',color:row.is_dir?'var(--color-accent-primary)':'inherit'}" @click="navigate(row)">{{ row.is_dir ? '📁' : '📄' }} {{ row.name }}</span></template></el-table-column>
-      <el-table-column label="大小" width="100"><template #default="{row}">{{ row.is_dir ? '-' : (row.size||0).toLocaleString()+' B' }}</template></el-table-column>
-      <el-table-column label="修改时间" width="170"><template #default="{row}">{{ row.modified || '-' }}</template></el-table-column>
-      <el-table-column label="操作" width="80"><template #default="{row}"><el-button v-if="!row.is_dir" type="danger" link size="small" @click="deleteItem(row.path)">删除</el-button></template></el-table-column>
-    </el-table>
+<section class="page" style="height: calc(100vh - 144px); display: flex; flex-direction: column; overflow: hidden">
+  <div class="hero" style="flex-shrink: 0">
+    <p class="label">工作空间</p>
+    <h1>文件浏览</h1>
   </div>
-  <div v-if="editingFile" class="card">
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <span style="font-family:monospace;font-size:13px">{{ editingFile }}</span>
-      <div style="display:flex;gap:8px"><el-button type="primary" size="small" :loading="saving" @click="saveFile">保存</el-button><el-button size="small" @click="closeEditor">关闭</el-button></div>
+
+  <div class="files-layout" style="flex: 1; display: flex; overflow: hidden; gap: 0; margin: 0 -20px">
+    <div class="files-sidebar" @contextmenu="handleRootContextMenu($event)">
+      <div class="files-sidebar__header">
+        <span style="font-weight: 600; font-size: 13px; color: var(--color-text-secondary)">文件列表</span>
+        <div style="display: flex; gap: 4px">
+          <el-button size="small" text @click="startCreate('')" title="新建">➕</el-button>
+          <el-button size="small" text @click="loadTree()" title="刷新">🔄</el-button>
+        </div>
+      </div>
+      <div class="files-sidebar__body" v-loading="loading">
+        <div v-if="creating === ''" class="files-tree-row files-tree-row--creating" style="padding-left: 12px">
+          <input v-model="newName" class="files-tree-input" placeholder="名称..." @blur="confirmCreate(false)"
+            @keyup.enter="confirmCreate(false)" @keyup.escape="creating = null" autofocus />
+          <div style="display: flex; gap: 2px; flex-shrink: 0">
+            <el-button size="small" text @mousedown.prevent="confirmCreate(false)">📄</el-button>
+            <el-button size="small" text @mousedown.prevent="confirmCreate(true)">📁</el-button>
+          </div>
+        </div>
+        <div v-if="flatNodes.length === 0 && !loading && creating !== ''"
+          style="padding: 20px; text-align: center; color: var(--color-text-muted); font-size: 13px">
+          空目录，右键创建文件
+        </div>
+        <template v-for="item in flatNodes" :key="item.node.path">
+          <template v-if="creating === item.node.path">
+            <div class="files-tree-row files-tree-row--creating"
+              :style="{ paddingLeft: (item.depth * 16 + 12 + 16) + 'px' }">
+              <input v-model="newName" class="files-tree-input" placeholder="名称..." @blur="confirmCreate(false)"
+                @keyup.enter="confirmCreate(false)" @keyup.escape="creating = null" autofocus />
+              <div style="display: flex; gap: 2px; flex-shrink: 0">
+                <el-button size="small" text @mousedown.prevent="confirmCreate(false)">📄</el-button>
+                <el-button size="small" text @mousedown.prevent="confirmCreate(true)">📁</el-button>
+              </div>
+            </div>
+          </template>
+          <div v-else-if="renaming === item.node.path" class="files-tree-row"
+            :class="{ 'is-active': selectedNode?.path === item.node.path }"
+            :style="{ paddingLeft: (item.depth * 16 + 12) + 'px' }">
+            <span class="files-tree-icon">{{ item.node.is_dir ? (expandedDirs.has(item.node.path) ? '📂' : '📁') : '📄'
+              }}</span>
+            <input v-model="renameValue" class="files-tree-input" @blur="confirmRename" @keyup.enter="confirmRename"
+              @keyup.escape="renaming = null" autofocus />
+          </div>
+          <div v-else class="files-tree-row" :class="{ 'is-active': selectedNode?.path === item.node.path }"
+            :style="{ paddingLeft: (item.depth * 16 + 12) + 'px' }" @click="selectNode(item.node)"
+            @contextmenu="onContextMenu($event, item.node)">
+            <span class="files-tree-icon">{{ item.node.is_dir ? (expandedDirs.has(item.node.path) ? '📂' : '📁') : '📄'
+              }}</span>
+            <span class="files-tree-name" :title="item.node.path">{{ item.node.name }}</span>
+            <span v-if="!item.node.is_dir" class="files-tree-size">{{ formatSize(item.node.size) }}</span>
+          </div>
+        </template>
+      </div>
     </div>
-    <el-input v-model="fileContent" type="textarea" :rows="20" resize="vertical" style="font-family:monospace;font-size:13px" />
+
+    <div class="files-main">
+      <div v-if="!selectedNode" class="files-main__empty">
+        <div style="font-size: 48px; margin-bottom: 12px">📂</div>
+        <div style="color: var(--color-text-muted)">选择左侧文件即可预览或编辑</div>
+        <div style="font-size: 12px; color: var(--color-text-muted); margin-top: 4px">右键文件树可新建、重命名、删除</div>
+      </div>
+
+      <template v-else-if="selectedNode.is_dir">
+        <div class="files-main__header">
+          <span>📁 {{ selectedNode.name }}</span>
+          <div style="display: flex; gap: 6px">
+            <el-button size="small" @click="startCreate(selectedNode.path)">+ 新建</el-button>
+          </div>
+        </div>
+        <div class="files-main__dir-preview">
+          <span>这是一个目录</span>
+          <el-button size="small" style="margin-left: 12px" @click="startCreate(selectedNode.path)">+ 新建文件</el-button>
+        </div>
+      </template>
+
+      <template v-else>
+        <div class="files-main__header">
+          <span>📄 {{ selectedNode.name }}</span>
+          <span style="font-size: 11px; color: var(--color-text-muted)">{{ formatSize(selectedNode.size) }}</span>
+          <div style="margin-left: auto; display: flex; gap: 6px">
+            <el-button size="small" type="primary" :loading="saving" @click="saveFile">保存</el-button>
+            <el-button size="small" @click="deleteNode(selectedNode)" type="danger" text>删除</el-button>
+          </div>
+        </div>
+        <div class="files-main__editor" v-loading="fileLoading">
+          <textarea v-model="fileContent" class="files-editor-textarea" spellcheck="false"
+            @keydown.ctrl.s.prevent="saveFile"></textarea>
+        </div>
+      </template>
+    </div>
   </div>
 </section>
+
+<style scoped>
+  .files-layout {
+    background: var(--color-bg-secondary);
+    border: 1px solid var(--color-border-primary);
+    border-radius: 12px;
+    overflow: hidden;
+  }
+
+  .files-sidebar {
+    width: 280px;
+    flex-shrink: 0;
+    border-right: 1px solid var(--color-border-primary);
+    display: flex;
+    flex-direction: column;
+    background: var(--color-bg-tertiary);
+  }
+
+  .files-sidebar__header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--color-border-primary);
+    flex-shrink: 0;
+  }
+
+  .files-sidebar__body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 4px 0;
+  }
+
+  .files-tree-row {
+    display: flex;
+    align-items: center;
+    height: 30px;
+    padding-right: 12px;
+    cursor: pointer;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    user-select: none;
+    gap: 4px;
+    transition: background 0.1s;
+  }
+
+  .files-tree-row:hover {
+    background: var(--color-bg-card);
+  }
+
+  .files-tree-row.is-active {
+    background: rgba(0, 113, 227, 0.12);
+    color: var(--color-accent-primary);
+  }
+
+  .files-tree-row--creating {
+    padding-right: 4px;
+    gap: 4px;
+  }
+
+  .files-tree-icon {
+    flex-shrink: 0;
+    font-size: 14px;
+    width: 20px;
+    text-align: center;
+  }
+
+  .files-tree-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .files-tree-size {
+    font-size: 11px;
+    color: var(--color-text-muted);
+    flex-shrink: 0;
+  }
+
+  .files-tree-input {
+    flex: 1;
+    height: 24px;
+    padding: 0 6px;
+    font-size: 13px;
+    background: var(--color-bg-input);
+    border: 1px solid var(--color-border-focus);
+    border-radius: 4px;
+    color: var(--color-text-primary);
+    outline: none;
+  }
+
+  .files-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    min-width: 0;
+  }
+
+  .files-main__header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--color-border-primary);
+    font-size: 13px;
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+
+  .files-main__empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-muted);
+  }
+
+  .files-main__dir-preview {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-text-muted);
+    font-size: 14px;
+  }
+
+  .files-main__editor {
+    flex: 1;
+    overflow: hidden;
+  }
+
+  .files-editor-textarea {
+    width: 100%;
+    height: 100%;
+    padding: 16px;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--color-text-primary);
+    background: var(--color-bg-primary);
+    border: none;
+    outline: none;
+    resize: none;
+    tab-size: 2;
+  }
+</style>
