@@ -5,8 +5,12 @@ from sqlalchemy import select, update, func
 from app.db import async_session_maker
 from app.db.model_setting import ModelConfigModel
 from app.models.model_setting import ModelConfig
-from app.services.crypto_service import CryptoService
 from app.utils import now_iso
+
+
+def _crypto():
+    from app.services.crypto_service import CryptoService
+    return CryptoService.get_instance()
 
 
 class ModelConfigRepository:
@@ -60,7 +64,7 @@ class ModelConfigRepository:
             return self._to_domain(model) if model else None
 
     async def create_model(self, model: ModelConfig) -> ModelConfig:
-        crypto = CryptoService.get_instance()
+        crypto = _crypto()
         async with async_session_maker() as session:
             now = now_iso()
             db_model = ModelConfigModel(
@@ -100,7 +104,7 @@ class ModelConfigRepository:
             db_model.api_type = model.api_type
             db_model.api_url = model.api_url
             if model.api_key:
-                crypto = CryptoService.get_instance()
+                crypto = _crypto()
                 db_model.api_key = crypto.encrypt(model.api_key)
             db_model.model = model.model
             db_model.temperature = int(model.temperature * 100)
@@ -154,7 +158,7 @@ class ModelConfigRepository:
     def _to_domain(self, model: ModelConfigModel) -> Optional[ModelConfig]:
         if not model:
             return None
-        crypto = CryptoService.get_instance()
+        crypto = _crypto()
         extra_params = {}
         extra_body = {}
         extra_headers = {}
