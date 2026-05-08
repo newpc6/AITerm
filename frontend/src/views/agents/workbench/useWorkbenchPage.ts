@@ -12,8 +12,6 @@ export function useWorkbenchPage() {
     expandThinking: false,
     showTools: true,
     expandTools: false,
-    showInput: true,
-    expandInput: false,
     showFullInput: false,
     expandFullInput: false,
     autoCollapse: true,

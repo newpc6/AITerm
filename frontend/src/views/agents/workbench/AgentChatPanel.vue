@@ -1,17 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, computed } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { getAuthToken } from '@/auth'
 import { getApiBaseUrl } from '@/config'
 import { http } from '@/api/http'
 import type { ApiResponse } from '@/types/api'
-
-interface AgentMsg {
-  id: string
-  role: string
-  content: string
-  parts: Record<string, any>[]
-  created_at: string
-}
 
 interface StepCard {
   id: string
@@ -28,11 +20,21 @@ interface FullInputData {
   tools?: any[]
 }
 
-const props = defineProps<{
+interface AgentMsg {
+  id: string
+  role: string
+  content: string
+  parts: Record<string, any>[]
+  created_at: string
+}
+
+const props = withDefaults(defineProps<{
   agentId: string
   agentName: string
   displaySettings?: Record<string, boolean>
-}>()
+}>(), {
+  displaySettings: function () { return {} as Record<string, boolean> },
+})
 
 const cards = ref<StepCard[]>([])
 const loading = ref(false)
@@ -44,19 +46,68 @@ const sending = ref(false)
 const containerRef = ref<HTMLElement | null>(null)
 let aborter: AbortController | null = null
 
-const showThinking = computed(function () { return !props.displaySettings || props.displaySettings.showThinking })
-const showTools = computed(function () { return !props.displaySettings || props.displaySettings.showTools })
-const showInput = computed(function () { return !props.displaySettings || props.displaySettings.showInput })
+const showThinking = computed(function () { return !props.displaySettings || props.displaySettings.showThinking !== false })
+const expandThinking = computed(function () { return !!props.displaySettings?.expandThinking })
+const showTools = computed(function () { return !props.displaySettings || props.displaySettings.showTools !== false })
+const expandTools = computed(function () { return !!props.displaySettings?.expandTools })
 const showFullInput = computed(function () { return !!props.displaySettings?.showFullInput })
 const expandFullInput = computed(function () { return !!props.displaySettings?.expandFullInput })
-const shouldAutoScroll = ref(true)
+const autoCollapse = computed(function () { return !!props.displaySettings?.autoCollapse })
+const showInput = computed(function () { return true })
 
+const shouldAutoScroll = ref(true)
 const fullInputSnapshots = ref<{ id: string; data: FullInputData }[]>([])
 
 let cardCounter = 0
 function nextCardId() { return '_c' + (++cardCounter) }
 
-// Convert persisted messages into flat step cards
+function initExpanded(card: StepCard) {
+  if (card.type === 'thinking') {
+    card._expanded = !autoCollapse.value || expandThinking.value
+  } else if (card.type === 'tools') {
+    card._expanded = !autoCollapse.value || expandTools.value
+  } else if (card.type === 'full_input') {
+    card._expanded = expandFullInput.value
+  } else {
+    card._expanded = true
+  }
+}
+
+watch(expandThinking, function (v) {
+  for (var i = 0; i < cards.value.length; i++) {
+    if (cards.value[i].type === 'thinking') { cards.value[i]._expanded = v }
+  }
+  for (var j = 0; j < liveCards.value.length; j++) {
+    if (liveCards.value[j].type === 'thinking') { liveCards.value[j]._expanded = v }
+  }
+})
+
+watch(expandTools, function (v) {
+  for (var i = 0; i < cards.value.length; i++) {
+    if (cards.value[i].type === 'tools') { cards.value[i]._expanded = v }
+  }
+  for (var j = 0; j < liveCards.value.length; j++) {
+    if (liveCards.value[j].type === 'tools') { liveCards.value[j]._expanded = v }
+  }
+})
+
+watch(expandFullInput, function (v) {
+  for (var i = 0; i < cards.value.length; i++) {
+    if (cards.value[i].type === 'full_input') { cards.value[i]._expanded = v }
+  }
+})
+
+watch(autoCollapse, function (v) {
+  if (v) {
+    for (var i = 0; i < cards.value.length; i++) {
+      var c = cards.value[i]
+      if (c.type === 'thinking' && !expandThinking.value) { c._expanded = false }
+      if (c.type === 'tools' && !expandTools.value) { c._expanded = false }
+      if (c.type === 'full_input' && !expandFullInput.value) { c._expanded = false }
+    }
+  }
+})
+
 function messagesToCards(msgs: AgentMsg[]): StepCard[] {
   var result: StepCard[] = []
   for (var i = 0; i < msgs.length; i++) {
@@ -67,22 +118,21 @@ function messagesToCards(msgs: AgentMsg[]): StepCard[] {
         if (p.type === 'input' && !showInput.value) continue
         if (p.type === 'thinking' && !showThinking.value) continue
         if ((p.type === 'tools' || p.type === 'tools_result') && !showTools.value) continue
-        result.push({
+        var card: StepCard = {
           id: m.id + '_' + j,
           role: m.role as 'user' | 'assistant',
-          type: p.type as StepCard['type'],
+          type: (p.type === 'tools_result' ? 'tools' : p.type) as StepCard['type'],
           text: p.text as string,
           calls: p.calls as any,
           time: m.created_at,
-        })
+        }
+        initExpanded(card)
+        result.push(card)
       }
     } else if (m.content) {
       result.push({
-        id: m.id + '_fallback',
-        role: m.role as 'user' | 'assistant',
-        type: 'answer',
-        text: m.content,
-        time: m.created_at,
+        id: m.id + '_fallback', role: m.role as 'user' | 'assistant',
+        type: 'answer', text: m.content, time: m.created_at,
       })
     }
   }
@@ -99,7 +149,6 @@ async function loadMessages(beforeId?: string) {
     var body = resp.data as { data: { messages: AgentMsg[]; has_more: boolean } }
     var newMsgs = body.data.messages || []
     var more = body.data.has_more
-
     var newCards = messagesToCards(newMsgs)
 
     if (beforeId) {
@@ -189,20 +238,20 @@ async function send() {
       if (currentEvent === 'full_input') {
         if (showFullInput.value) {
           var raw = JSON.parse(d) as FullInputData
-          fullInputSnapshots.value.push({ id: nextCardId(), data: raw })
-          if (!expandFullInput.value) {
-            liveCards.value = liveCards.value.filter(function (c) { return c.type !== 'full_input' })
-            liveCards.value.push({
-              id: fullInputSnapshots.value[fullInputSnapshots.value.length - 1].id,
-              role: 'assistant', type: 'full_input' as any,
-              text: JSON.stringify(raw.messages, null, 2),
-              time: new Date().toISOString(),
-            })
+          var fiCard: StepCard = {
+            id: nextCardId(), role: 'assistant', type: 'full_input',
+            text: JSON.stringify(raw.messages, null, 2),
+            time: new Date().toISOString(),
           }
+          initExpanded(fiCard)
+          fullInputSnapshots.value.push({ id: fiCard.id, data: raw })
+          liveCards.value = liveCards.value.filter(function (c) { return c.type !== 'full_input' })
+          liveCards.value.push(fiCard)
         }
       } else if (currentEvent === 'reasoning') {
         if (!liveThinking) {
           liveThinking = { id: nextCardId(), role: 'assistant', type: 'thinking', text: '', time: new Date().toISOString() }
+          liveThinking._expanded = autoCollapse.value ? expandThinking.value : true
         }
         liveThinking.text += (parsed.delta || '')
         rebuildLiveCards()
@@ -212,7 +261,7 @@ async function send() {
           liveThinking = { id: nextCardId(), role: 'assistant', type: 'thinking', text: parsed.text || '', time: new Date().toISOString() }
         }
         liveThinking.text = parsed.text || liveThinking.text
-        liveThinking._expanded = false
+        liveThinking._expanded = !autoCollapse.value || expandThinking.value
         rebuildLiveCards()
       } else if (currentEvent === 'delta') {
         if (!liveAnswer) {
@@ -222,49 +271,56 @@ async function send() {
         rebuildLiveCards()
         if (shouldAutoScroll.value) scrollToBottom()
       } else if (currentEvent === 'tool_call') {
-        addToolCallCard(parsed)
+        addToolCard(parsed)
       } else if (currentEvent === 'tool_result') {
         var tcCards = liveCards.value.filter(function (c) { return c.type === 'tools' })
         if (tcCards.length > 0) {
-          var lastToolCard = tcCards[tcCards.length - 1]
-          if (lastToolCard.calls && lastToolCard.calls.length > 0) {
-            lastToolCard.calls[lastToolCard.calls.length - 1].result = parsed.result || ''
-            lastToolCard.calls[lastToolCard.calls.length - 1].success = true
+          var lastTc = tcCards[tcCards.length - 1]
+          if (lastTc.calls && lastTc.calls.length > 0) {
+            lastTc.calls[lastTc.calls.length - 1].result = parsed.result || ''
+            lastTc.calls[lastTc.calls.length - 1].success = true
           }
         }
       } else if (currentEvent === 'done') {
         loading.value = true
         loadMessages().finally(function () { loading.value = false })
       } else if (currentEvent === 'error') {
-        liveCards.value.push({ id: nextCardId(), role: 'assistant', type: 'answer', text: '\u9519\u8bef: ' + (parsed.error || '\u672a\u77e5'), time: new Date().toISOString() })
+        liveCards.value.push({
+          id: nextCardId(), role: 'assistant', type: 'answer',
+          text: '错误: ' + (parsed.error || '未知'),
+          time: new Date().toISOString(),
+        })
       }
       currentEvent = ''
     }
 
     function rebuildLiveCards() {
       var result: StepCard[] = []
-      if (liveThinking) result.push(liveThinking)
-      // find tool cards
+      // full_input card first if present
       for (var i = 0; i < liveCards.value.length; i++) {
-        if (liveCards.value[i].type === 'tools' || liveCards.value[i].type === 'full_input') {
-          result.push(liveCards.value[i])
-        }
+        if (liveCards.value[i].type === 'full_input') result.push(liveCards.value[i])
+      }
+      if (liveThinking) result.push(liveThinking)
+      for (var j = 0; j < liveCards.value.length; j++) {
+        if (liveCards.value[j].type === 'tools') result.push(liveCards.value[j])
       }
       if (liveAnswer) result.push(liveAnswer)
       liveCards.value = result
     }
 
-    function addToolCallCard(parsed: any) {
+    function addToolCard(parsed: any) {
       var toolCard = liveCards.value.filter(function (c) { return c.type === 'tools' })[0]
       if (toolCard && toolCard.calls) {
         toolCard.calls.push({ name: parsed.tool || '', arguments: parsed.args || '' })
-        toolCard._expanded = true
+        toolCard._expanded = autoCollapse.value ? expandTools.value : true
       } else {
-        liveCards.value.push({
+        var tc: StepCard = {
           id: nextCardId(), role: 'assistant', type: 'tools',
           calls: [{ name: parsed.tool || '', arguments: parsed.args || '' }],
-          time: new Date().toISOString(), _expanded: true,
-        })
+          time: new Date().toISOString(),
+        }
+        tc._expanded = autoCollapse.value ? expandTools.value : true
+        liveCards.value.push(tc)
       }
     }
 
@@ -290,7 +346,10 @@ async function send() {
     }
   } catch (e: any) {
     if (e.name !== 'AbortError') {
-      liveCards.value.push({ id: nextCardId(), role: 'assistant', type: 'answer', text: '\u8bf7\u6c42\u5931\u8d25: ' + String(e), time: new Date().toISOString() })
+      liveCards.value.push({
+        id: nextCardId(), role: 'assistant', type: 'answer',
+        text: '请求失败: ' + String(e), time: new Date().toISOString(),
+      })
     }
   }
 
@@ -323,7 +382,6 @@ onUnmounted(function () { if (aborter) aborter.abort() })
       </div>
 
       <template v-for="card in cards" :key="card.id">
-        <!-- User card: right-aligned, blue -->
         <div v-if="card.role === 'user'" class="card-row card-row--user">
           <div class="step-card step-card--user">
             <div class="step-card__head">
@@ -334,35 +392,33 @@ onUnmounted(function () { if (aborter) aborter.abort() })
           </div>
         </div>
 
-        <!-- Assistant cards: left-aligned, bordered -->
         <div v-else class="card-row card-row--assistant">
           <!-- Thinking -->
           <div v-if="card.type === 'thinking' && showThinking" class="step-card step-card--thinking">
             <div class="step-card__head step-card__head--clickable" @click="card._expanded = !card._expanded">
-              <span class="step-card__icon">💭</span><span>{{ props.agentName }}</span>
+              <span class="step-card__icon">💭</span><span class="step-card__label">{{ props.agentName }}</span>
               <span class="step-card__tag step-card__tag--thinking">思考</span>
               <span class="step-card__time">{{ fmtTime(card.time) }}</span>
-              <span class="step-card__expand">{{ card._expanded !== false ? '▲' : '▼' }}</span>
+              <span class="step-card__toggle">{{ card._expanded ? '▲' : '▼' }}</span>
             </div>
-            <div v-if="card._expanded !== false" class="step-card__body step-card__body--mono">{{ card.text }}</div>
+            <div v-if="card._expanded" class="step-card__body step-card__body--mono">{{ card.text }}</div>
           </div>
 
           <!-- Tools -->
           <div v-if="card.type === 'tools' && showTools" class="step-card step-card--tools">
             <div class="step-card__head step-card__head--clickable" @click="card._expanded = !card._expanded">
-              <span class="step-card__icon">🔧</span><span>{{ props.agentName }}</span>
+              <span class="step-card__icon">🔧</span><span class="step-card__label">{{ props.agentName }}</span>
               <span class="step-card__tag step-card__tag--tools">调用工具</span>
               <span v-if="card.calls" class="step-card__count">{{ card.calls.length }}</span>
               <span class="step-card__time">{{ fmtTime(card.time) }}</span>
-              <span class="step-card__expand">{{ card._expanded !== false ? '▲' : '▼' }}</span>
+              <span class="step-card__toggle">{{ card._expanded ? '▲' : '▼' }}</span>
             </div>
-            <div v-if="card._expanded !== false && card.calls" class="step-card__tool-list">
+            <div v-if="card._expanded && card.calls" class="step-card__tool-list">
               <div v-for="(call, ci) in card.calls" :key="ci" class="step-card__tool">
                 <div class="step-card__tool-head">
                   <span>⚡ {{ call.name }}</span>
-                  <span v-if="call.result !== undefined" class="step-card__tool-ok" :class="{ 'is-ok': call.success }">
-                    {{ call.success ? '✓' : '✗' }}
-                  </span>
+                  <span v-if="call.result !== undefined" class="step-card__tool-ok"
+                    :class="{ 'is-ok': call.success }">{{ call.success ? '✓' : '✗' }}</span>
                 </div>
                 <pre class="step-card__code">{{ fmtArgs(call.arguments) }}</pre>
                 <div v-if="call.result !== undefined" class="step-card__tool-result">
@@ -376,22 +432,22 @@ onUnmounted(function () { if (aborter) aborter.abort() })
           <!-- Answer -->
           <div v-if="card.type === 'answer'" class="step-card step-card--answer">
             <div class="step-card__head">
-              <span class="step-card__icon">🤖</span><span>{{ props.agentName }}</span>
+              <span class="step-card__icon">🤖</span><span class="step-card__label">{{ props.agentName }}</span>
               <span class="step-card__time">{{ fmtTime(card.time) }}</span>
             </div>
-            <div class="step-card__body">{{ card.text }}</div>
+            <div class="step-card__body" style="white-space: pre-wrap">{{ card.text }}</div>
           </div>
 
-          <!-- Full input -->
+          <!-- Full input JSON -->
           <div v-if="card.type === 'full_input'" class="step-card step-card--full-input">
             <div class="step-card__head step-card__head--clickable" @click="card._expanded = !card._expanded">
-              <span class="step-card__icon">📋</span><span>{{ props.agentName }}</span>
-              <span class="step-card__tag step-card__tag--input">LLM 完整输入</span>
+              <span class="step-card__icon">📋</span><span class="step-card__label">{{ props.agentName }}</span>
+              <span class="step-card__tag step-card__tag--input">完整输入</span>
               <span class="step-card__time">{{ fmtTime(card.time) }}</span>
-              <span class="step-card__expand">{{ card._expanded !== false ? '▲' : '▼' }}</span>
+              <span class="step-card__toggle">{{ card._expanded ? '▲' : '▼' }}</span>
             </div>
-            <div v-if="card._expanded !== false" class="step-card__body step-card__body--mono step-card__body--pre">{{
-              card.text }}</div>
+            <div v-if="card._expanded" class="step-card__body step-card__body--mono step-card__body--pre">{{ card.text
+              }}</div>
           </div>
         </div>
       </template>
@@ -401,22 +457,21 @@ onUnmounted(function () { if (aborter) aborter.abort() })
         <div v-for="card in liveCards" :key="card.id" class="card-row card-row--assistant">
           <div v-if="card.type === 'thinking'" class="step-card step-card--thinking step-card--live">
             <div class="step-card__head">
-              <span class="step-card__icon">💭</span><span>{{ props.agentName }}</span>
-              <span class="step-card__tag step-card__tag--thinking step-card__tag--live">思考中</span>
-              <span class="step-card__time">{{ fmtTime(card.time) }}</span>
+              <span class="step-card__icon">💭</span><span class="step-card__label">{{ props.agentName }}</span>
+              <span class="step-card__tag step-card__tag--thinking step-card__tag--pulse">思考中</span>
             </div>
             <div class="step-card__body step-card__body--mono">{{ card.text }}</div>
           </div>
 
           <div v-if="card.type === 'tools'" class="step-card step-card--tools step-card--live">
             <div class="step-card__head step-card__head--clickable" @click="card._expanded = !card._expanded">
-              <span class="step-card__icon">🔧</span><span>{{ props.agentName }}</span>
-              <span class="step-card__tag step-card__tag--tools step-card__tag--live">调用工具</span>
-              <span v-if="card.calls" class="step-card__count step-card__count--live">{{ card.calls.length }}</span>
+              <span class="step-card__icon">🔧</span><span class="step-card__label">{{ props.agentName }}</span>
+              <span class="step-card__tag step-card__tag--tools step-card__tag--pulse">调用工具</span>
+              <span v-if="card.calls" class="step-card__count step-card__count--pulse">{{ card.calls.length }}</span>
               <span class="step-card__time">{{ fmtTime(card.time) }}</span>
-              <span class="step-card__expand">{{ card._expanded !== false ? '▲' : '▼' }}</span>
+              <span class="step-card__toggle">{{ card._expanded ? '▲' : '▼' }}</span>
             </div>
-            <div v-if="card._expanded !== false && card.calls" class="step-card__tool-list">
+            <div v-if="card._expanded && card.calls" class="step-card__tool-list">
               <div v-for="(call, ci) in card.calls" :key="ci" class="step-card__tool">
                 <div class="step-card__tool-head">
                   <span>⚡ {{ call.name }}</span>
@@ -432,22 +487,21 @@ onUnmounted(function () { if (aborter) aborter.abort() })
 
           <div v-if="card.type === 'answer'" class="step-card step-card--answer step-card--live">
             <div class="step-card__head">
-              <span class="step-card__icon">🤖</span><span>{{ props.agentName }}</span>
-              <span class="step-card__tag step-card__tag--live">回复中</span>
-              <span class="step-card__time">{{ fmtTime(card.time) }}</span>
+              <span class="step-card__icon">🤖</span><span class="step-card__label">{{ props.agentName }}</span>
+              <span class="step-card__tag step-card__tag--pulse">回复中</span>
             </div>
-            <div class="step-card__body">{{ card.text }}</div>
+            <div class="step-card__body" style="white-space: pre-wrap">{{ card.text }}</div>
           </div>
 
           <div v-if="card.type === 'full_input'" class="step-card step-card--full-input step-card--live">
             <div class="step-card__head step-card__head--clickable" @click="card._expanded = !card._expanded">
-              <span class="step-card__icon">📋</span><span>{{ props.agentName }}</span>
-              <span class="step-card__tag step-card__tag--input">LLM 完整输入</span>
+              <span class="step-card__icon">📋</span><span class="step-card__label">{{ props.agentName }}</span>
+              <span class="step-card__tag step-card__tag--input">完整输入</span>
               <span class="step-card__time">{{ fmtTime(card.time) }}</span>
-              <span class="step-card__expand">{{ card._expanded !== false ? '▲' : '▼' }}</span>
+              <span class="step-card__toggle">{{ card._expanded ? '▲' : '▼' }}</span>
             </div>
-            <div v-if="card._expanded !== false" class="step-card__body step-card__body--mono step-card__body--pre">{{
-              card.text }}</div>
+            <div v-if="card._expanded" class="step-card__body step-card__body--mono step-card__body--pre">{{ card.text
+              }}</div>
           </div>
         </div>
       </template>
@@ -476,13 +530,13 @@ onUnmounted(function () { if (aborter) aborter.abort() })
 .agent-chat__log {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 20px;
+  padding: 20px 24px;
 }
 
 .agent-chat__hint {
   text-align: center;
   padding: 8px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-text-muted);
 }
 
@@ -492,13 +546,13 @@ onUnmounted(function () { if (aborter) aborter.abort() })
 
 .agent-chat__empty {
   text-align: center;
-  padding: 60px 20px;
+  padding: 80px 20px;
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .agent-chat__input {
-  padding: 10px 16px;
+  padding: 12px 16px;
   border-top: 1px solid var(--color-border-primary);
   background: var(--color-bg-secondary);
   flex-shrink: 0;
@@ -511,10 +565,9 @@ onUnmounted(function () { if (aborter) aborter.abort() })
   margin-top: 8px;
 }
 
-/* Row alignment */
 .card-row {
   display: flex;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 .card-row--user {
@@ -525,11 +578,10 @@ onUnmounted(function () { if (aborter) aborter.abort() })
   justify-content: flex-start;
 }
 
-/* Step card base */
 .step-card {
   max-width: 88%;
-  min-width: 180px;
-  border-radius: 8px;
+  min-width: 220px;
+  border-radius: 10px;
   overflow: hidden;
 }
 
@@ -557,35 +609,38 @@ onUnmounted(function () { if (aborter) aborter.abort() })
 .step-card--full-input {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border-primary);
-  border-left: 3px solid rgba(255, 255, 255, 0.2);
+  border-left: 3px solid rgba(255, 255, 255, 0.15);
 }
 
 .step-card--live {
-  opacity: 0.9;
+  opacity: 0.92;
+  border-left-style: dashed;
 }
 
 .step-card__head {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  font-size: 12px;
+  gap: 8px;
+  padding: 8px 14px;
+  font-size: 13px;
   font-weight: 600;
   user-select: none;
 }
 
 .step-card--user .step-card__head {
-  color: rgba(255, 255, 255, 0.9);
+  color: rgba(255, 255, 255, 0.95);
 }
 
 .step-card--thinking .step-card__head {
   color: var(--color-text-secondary);
-  border-bottom: 1px solid rgba(245, 158, 11, 0.15);
+  background: rgba(245, 158, 11, 0.06);
+  border-bottom: 1px solid rgba(245, 158, 11, 0.12);
 }
 
 .step-card--tools .step-card__head {
   color: var(--color-text-secondary);
-  border-bottom: 1px solid rgba(0, 113, 227, 0.15);
+  background: rgba(0, 113, 227, 0.06);
+  border-bottom: 1px solid rgba(0, 113, 227, 0.12);
 }
 
 .step-card--answer .step-card__head {
@@ -603,28 +658,36 @@ onUnmounted(function () { if (aborter) aborter.abort() })
 }
 
 .step-card__head--clickable:hover {
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 .step-card__icon {
-  font-size: 13px;
+  font-size: 15px;
+  flex-shrink: 0;
+}
+
+.step-card__label {
+  flex-shrink: 0;
 }
 
 .step-card__time {
   margin-left: auto;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 400;
   opacity: 0.5;
+  flex-shrink: 0;
 }
 
-.step-card__expand {
-  font-size: 9px;
+.step-card__toggle {
+  font-size: 10px;
   opacity: 0.4;
+  flex-shrink: 0;
+  cursor: pointer;
 }
 
 .step-card__tag {
-  font-size: 10px;
-  padding: 1px 7px;
+  font-size: 11px;
+  padding: 1px 8px;
   border-radius: 6px;
   font-weight: 500;
 }
@@ -644,20 +707,20 @@ onUnmounted(function () { if (aborter) aborter.abort() })
   color: var(--color-text-muted);
 }
 
-.step-card__tag--live {
+.step-card__tag--pulse {
   animation: pulse 1.5s infinite;
 }
 
 .step-card__count {
-  font-size: 10px;
-  padding: 1px 6px;
+  font-size: 11px;
+  padding: 1px 7px;
   border-radius: 8px;
   background: rgba(0, 113, 227, 0.2);
   color: #60a5fa;
   font-weight: 600;
 }
 
-.step-card__count--live {
+.step-card__count--pulse {
   animation: pulse 1.5s infinite;
 }
 
@@ -669,37 +732,37 @@ onUnmounted(function () { if (aborter) aborter.abort() })
   }
 
   50% {
-    opacity: 0.4;
+    opacity: 0.35;
   }
 }
 
 .step-card__body {
-  padding: 8px 14px;
-  font-size: 13px;
+  padding: 10px 16px;
+  font-size: 14px;
   color: var(--color-text-primary);
   line-height: 1.6;
   white-space: pre-wrap;
 }
 
 .step-card--user .step-card__body {
-  color: rgba(255, 255, 255, 0.95);
+  color: rgba(255, 255, 255, 0.97);
 }
 
 .step-card__body--mono {
   font-family: 'Consolas', 'Courier New', monospace;
-  font-size: 12px;
+  font-size: 13px;
   color: var(--color-text-muted);
 }
 
 .step-card__body--pre {
-  max-height: 400px;
+  max-height: 500px;
   overflow-y: auto;
 }
 
 .step-card__tool-list {}
 
 .step-card__tool {
-  padding: 8px 12px;
+  padding: 10px 14px;
   border-top: 1px solid var(--color-border-primary);
 }
 
@@ -708,13 +771,13 @@ onUnmounted(function () { if (aborter) aborter.abort() })
   align-items: center;
   gap: 8px;
   margin-bottom: 6px;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 600;
   color: var(--color-accent-secondary);
 }
 
 .step-card__tool-ok {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-danger);
 }
 
@@ -727,7 +790,7 @@ onUnmounted(function () { if (aborter) aborter.abort() })
 }
 
 .step-card__result-label {
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 600;
   color: var(--color-text-muted);
   margin-bottom: 4px;
@@ -737,14 +800,14 @@ onUnmounted(function () { if (aborter) aborter.abort() })
 
 .step-card__code {
   background: rgba(0, 0, 0, 0.3);
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: 6px;
-  font-size: 11px;
+  font-size: 12px;
   color: var(--color-text-secondary);
   margin: 0;
   overflow-x: auto;
   font-family: 'Consolas', 'Courier New', monospace;
-  line-height: 1.4;
+  line-height: 1.45;
 }
 
 .step-card__code--result {

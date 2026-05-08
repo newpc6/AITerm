@@ -1,4 +1,5 @@
 .workbench-root {
+  padding: var(--spacing-2xl, 24px);
   height: calc(100vh - 115px);
   display: flex;
   flex-direction: column;

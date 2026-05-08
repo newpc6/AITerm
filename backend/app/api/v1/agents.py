@@ -182,7 +182,7 @@ async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
 
-    user_msg = await msg_repo.add_message(agent_id=int(agent_id), user_id=int(user.id), role="user", content=message, full_input=message)
+    user_msg = await msg_repo.add_message(agent_id=int(agent_id), user_id=int(user.id), role="user", content=message, full_input=json.dumps([{"role": "user", "content": message}], ensure_ascii=False))
     await msg_repo.add_part(message_id=int(user_msg.id), seq=0, content={"type": "input", "text": message})
 
     from app.services.llm import LLMClient
@@ -228,9 +228,11 @@ async def agent_chat(agent_id: str, payload: dict, user=Depends(get_current_user
             for m in existing[0]:
                 llm_messages.append({"role": m.role, "content": m.content})
 
+            full_input_json = json.dumps(llm_messages, ensure_ascii=False)
+
             state.msg = await msg_repo.add_message(
                 agent_id=int(agent_id), user_id=int(user.id), role="assistant",
-                content="", full_input=message,
+                content="", full_input=full_input_json,
             )
             state.msg_id = int(state.msg.id)
             part_seq = 0
