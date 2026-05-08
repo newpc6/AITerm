@@ -224,6 +224,10 @@ a {
   font-weight: 500;
 }
 
+.data-table__tag--primary {
+  background: var(--color-primary-bg);
+  color: var(--color-primary);
+}
 .data-table__tag--success {
   background: var(--color-success-bg);
   color: var(--color-success);

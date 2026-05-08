@@ -1,13 +1,14 @@
 import { onMounted, ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
-import { getModels, createModel, updateModel, deleteModel, setDefaultModel, testModel } from '@/api/aiterm'
+import { getModels, createModel, updateModel, deleteModel, setDefaultModel, testModel, getCurrentUser } from '@/api/aiterm'
 import type { ModelConfigItem, ModelConfigPayload } from '@/types/api'
 
 export function useModelsPage() {
   const loading = ref(false)
   const saving = ref(false)
   const models = ref<ModelConfigItem[]>([])
+  const currentUserId = ref('')
   const dialogVisible = ref(false)
   const dialogTitle = ref('新建模型配置')
   const editingModel = ref<ModelConfigItem | null>(null)
@@ -43,6 +44,12 @@ export function useModelsPage() {
       const data = await getModels({ page: page.value, page_size: pageSize.value })
       models.value = data.items || []
       total.value = data.total || 0
+      try {
+        const u = await getCurrentUser()
+        currentUserId.value = u.id
+      } catch {
+        currentUserId.value = ''
+      }
     } catch {
       ElMessage.error('加载模型配置失败')
     } finally {
@@ -93,7 +100,7 @@ export function useModelsPage() {
       name: model.name,
       api_type: model.api_type || 'openai',
       api_url: model.api_url,
-      api_key: model.api_key,
+      api_key: '',
       model: model.model,
       temperature: model.temperature,
       context_length: model.context_length ?? null,
@@ -214,6 +221,11 @@ export function useModelsPage() {
     }
   }
 
+  function isOwner(model: ModelConfigItem): boolean {
+    if (!currentUserId.value) return true
+    return !model.user_id || String(model.user_id) === currentUserId.value
+  }
+
   onMounted(() => {
     void loadModels()
   })
@@ -239,6 +251,7 @@ export function useModelsPage() {
     handleTest,
     handleDelete,
     handleSetDefault,
+    isOwner,
     page,
     pageSize,
     total,

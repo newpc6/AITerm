@@ -5,6 +5,7 @@ from sqlalchemy import select, update, func
 from app.db import async_session_maker
 from app.db.model_setting import ModelConfigModel
 from app.models.model_setting import ModelConfig
+from app.services.crypto_service import CryptoService
 from app.utils import now_iso
 
 
@@ -59,13 +60,14 @@ class ModelConfigRepository:
             return self._to_domain(model) if model else None
 
     async def create_model(self, model: ModelConfig) -> ModelConfig:
+        crypto = CryptoService.get_instance()
         async with async_session_maker() as session:
             now = now_iso()
             db_model = ModelConfigModel(
                 name=model.name,
                 api_type=model.api_type,
                 api_url=model.api_url,
-                api_key=model.api_key,
+                api_key=crypto.encrypt(model.api_key) if model.api_key else "",
                 model=model.model,
                 temperature=int(model.temperature * 100),
                 context_length=model.context_length,
@@ -97,7 +99,9 @@ class ModelConfigRepository:
             db_model.name = model.name
             db_model.api_type = model.api_type
             db_model.api_url = model.api_url
-            db_model.api_key = model.api_key
+            if model.api_key:
+                crypto = CryptoService.get_instance()
+                db_model.api_key = crypto.encrypt(model.api_key)
             db_model.model = model.model
             db_model.temperature = int(model.temperature * 100)
             db_model.context_length = model.context_length
@@ -150,6 +154,7 @@ class ModelConfigRepository:
     def _to_domain(self, model: ModelConfigModel) -> Optional[ModelConfig]:
         if not model:
             return None
+        crypto = CryptoService.get_instance()
         extra_params = {}
         extra_body = {}
         extra_headers = {}
@@ -169,12 +174,19 @@ class ModelConfigRepository:
         except:
             pass
 
+        api_key = ""
+        if model.api_key:
+            try:
+                api_key = crypto.decrypt(model.api_key)
+            except Exception:
+                api_key = model.api_key
+
         return ModelConfig(
             id=str(model.id),
             name=model.name,
             api_type=model.api_type,
             api_url=model.api_url,
-            api_key=model.api_key,
+            api_key=api_key,
             model=model.model,
             temperature=model.temperature / 100.0,
             context_length=model.context_length,

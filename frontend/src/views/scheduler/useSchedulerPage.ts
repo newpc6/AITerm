@@ -7,6 +7,20 @@ import type { ApiResponse, AgentItem } from '@/types/api'
 interface TaskItem { id: string; name: string; description: string; agent_name: string; cron_expression: string; enabled: boolean; last_run_at?: string; last_result?: string; next_run_at?: string }
 interface TaskLog { id: string; status: string; output: string; error: string; started_at: string }
 
+const CRON_PRESETS = [
+  { label: '每分钟', value: '* * * * *' },
+  { label: '每5分钟', value: '*/5 * * * *' },
+  { label: '每小时', value: '0 * * * *' },
+  { label: '每天上午8点', value: '0 8 * * *' },
+  { label: '每天中午12点', value: '0 12 * * *' },
+  { label: '工作日每天上午9点', value: '0 9 * * 1-5' },
+  { label: '每周一上午8点', value: '0 8 * * 1' },
+  { label: '每月1号上午8点', value: '0 8 1 * *' },
+  { label: '每小时第30分', value: '30 * * * *' },
+  { label: '每30分钟', value: '*/30 * * * *' },
+  { label: '每天两次（8点/20点）', value: '0 8,20 * * *' },
+]
+
 export function useSchedulerPage() {
   const loading = ref(false)
   const tasks = ref<TaskItem[]>([])
@@ -41,6 +55,10 @@ export function useSchedulerPage() {
     dialogVisible.value = true
   }
 
+  function applyCronPreset(val: string) {
+    form.value.cron_expression = val
+  }
+
   async function handleSave() {
     if (!form.value.name.trim() || !form.value.input_message.trim()) return
     saving.value = true
@@ -71,5 +89,5 @@ export function useSchedulerPage() {
 
   onMounted(() => { void load() })
 
-  return { loading, tasks, agents, dialogVisible, editingId, saving, form, logDialogVisible, logs, logLoading, load, openCreate, openEdit, handleSave, handleDelete, handleRun, showLogs }
+  return { loading, tasks, agents, dialogVisible, editingId, saving, form, logDialogVisible, logs, logLoading, load, openCreate, openEdit, handleSave, handleDelete, handleRun, showLogs, CRON_PRESETS, applyCronPreset }
 }
