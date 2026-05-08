@@ -1,5 +1,4 @@
-import { onMounted, ref, nextTick, watch } from 'vue'
-import { ElMessage } from 'element-plus'
+import { onMounted, ref, nextTick, watch, computed } from 'vue'
 import { getAgents, runAgentWorkbench } from '@/api/aiterm'
 import { http } from '@/api/http'
 import type { ApiResponse, AgentItem } from '@/types/api'
@@ -169,9 +168,11 @@ export function useWorkbenchPage() {
     })
   }
 
-  function setMessagesRef(panel: AgentPanel, el: HTMLElement) {
-    panel.messagesEl = el
+  function setMessagesRef(panel: AgentPanel, el: any) {
+    panel.messagesEl = el as HTMLElement | null
   }
+
+  const columnsStyle = computed(() => `repeat(${Math.min(panels.value.length, 3)}, 1fr)`)
 
   function formatTime(ts: string) {
     if (!ts) return ''
@@ -220,5 +221,6 @@ export function useWorkbenchPage() {
     formatTime,
     renderContent,
     parseToolCalls,
+    columnsStyle,
   }
 }
