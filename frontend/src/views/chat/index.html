@@ -238,8 +238,8 @@
           @submit-execute-input="submitExecuteInput" />
       </div>
 
-      <ChatComposer v-model="input" :chat-streaming="chatStreaming" :loading="loading" @submit="submitMessage"
-        @stop-chat="stopChatResponse" />
+      <ChatInput v-model="input" :streaming="chatStreaming" :disabled="loading" placeholder="输入你的问题或任务描述（回车发送，Ctrl+回车换行）"
+        @submit="submitMessage" @stop="stopChatResponse" />
     </div>
   </div>
 

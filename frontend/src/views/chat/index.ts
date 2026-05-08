@@ -1,7 +1,7 @@
 import { defineComponent } from 'vue'
 import { Share } from '@element-plus/icons-vue'
 
-import ChatComposer from './components/ChatComposer.vue'
+import ChatInput from '@/components/ChatInput.vue'
 import MessageList from './components/MessageList.vue'
 import ShareDialog from './components/ShareDialog.vue'
 import './index.scss'
@@ -11,7 +11,7 @@ import { useChatPage } from './useChatPage'
 export default defineComponent({
   name: 'ChatPage',
   components: {
-    ChatComposer,
+    ChatInput,
     MessageList,
     ShareDialog,
     Share,

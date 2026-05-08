@@ -89,6 +89,7 @@ a {
 }
 
 .page {
+  padding: var(--spacing-2xl);
   display: grid;
   gap: var(--spacing-2xl);
 }

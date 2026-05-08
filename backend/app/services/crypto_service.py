@@ -7,7 +7,7 @@ class CryptoService:
 
     def __init__(self):
         base = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        self.key_path = os.path.join(base, "configs", "secret.key")
+        self.key_path = os.path.join(os.path.dirname(base), "data", "secret.key")
         if os.path.exists(self.key_path):
             with open(self.key_path, "rb") as f:
                 self.key = f.read()

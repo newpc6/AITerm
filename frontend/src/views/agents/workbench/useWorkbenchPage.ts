@@ -12,7 +12,7 @@ export function useWorkbenchPage() {
     expandThinking: false,
     showTools: true,
     expandTools: false,
-    showFullInput: false,
+    showFullInput: true,
     expandFullInput: false,
     autoCollapse: true,
   })

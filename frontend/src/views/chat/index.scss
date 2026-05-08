@@ -204,12 +204,6 @@
   overflow: auto;
 }
 
-.chat-input {
-  display: grid;
-  gap: var(--spacing-md);
-  flex-shrink: 0;
-}
-
 .chat-actions {
   display: flex;
   align-items: center;

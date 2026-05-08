@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted, nextTick, computed, watch } from 'vue'
 import { getAuthToken } from '@/auth'
 import { getApiBaseUrl } from '@/config'
 import { http } from '@/api/http'
+import ChatInput from '@/components/ChatInput.vue'
 import type { ApiResponse } from '@/types/api'
 
 interface StepCard {
@@ -287,6 +288,9 @@ async function send() {
           }
         }
       } else if (currentEvent === 'done') {
+        for (var k = 0; k < liveCards.value.length; k++) {
+          cards.value.push(liveCards.value[k])
+        }
         liveCards.value = []
         streaming.value = false
         loading.value = true
@@ -356,8 +360,13 @@ async function send() {
     }
   }
 
-  streaming.value = false
+  if (liveCards.value.length > 0) {
+    for (var m = 0; m < liveCards.value.length; m++) {
+      cards.value.push(liveCards.value[m])
+    }
+  }
   liveCards.value = []
+  streaming.value = false
   sending.value = false
   aborter = null
   scrollToBottom()
@@ -450,7 +459,21 @@ onUnmounted(function () { if (aborter) aborter.abort() })
               <span class="step-card__toggle">{{ card._expanded ? '▲' : '▼' }}</span>
             </div>
             <div v-if="card._expanded" class="step-card__body step-card__body--mono step-card__body--pre">{{ card.text
-              }}</div>
+            }}</div>
+          </div>
+        </div>
+      </template>
+
+      <template v-if="streaming && liveCards.length === 0">
+        <div class="card-row card-row--assistant">
+          <div class="step-card step-card--loading">
+            <div class="step-card__head">
+              <span class="step-card__icon">🤖</span><span class="step-card__label">{{ props.agentName }}</span>
+              <span class="step-card__tag step-card__tag--pulse">处理中</span>
+            </div>
+            <div class="step-card__body step-card__body--loading">
+              <span class="step-card__spinner"></span> 等待回复中...
+            </div>
           </div>
         </div>
       </template>
@@ -504,21 +527,14 @@ onUnmounted(function () { if (aborter) aborter.abort() })
               <span class="step-card__toggle">{{ card._expanded ? '▲' : '▼' }}</span>
             </div>
             <div v-if="card._expanded" class="step-card__body step-card__body--mono step-card__body--pre">{{ card.text
-              }}</div>
+            }}</div>
           </div>
         </div>
       </template>
     </div>
 
-    <div class="agent-chat__input">
-      <el-input v-model="input" type="textarea" :rows="2" placeholder="输入消息..." :disabled="sending" resize="none"
-        @keydown.enter.exact.prevent="send()" />
-      <div class="agent-chat__actions">
-        <el-button v-if="streaming" circle type="danger" @click="stop" title="停止">⏹</el-button>
-        <el-button circle type="primary" :loading="sending" :disabled="!input.trim()" @click="send()"
-          title="发送">▶</el-button>
-      </div>
-    </div>
+    <ChatInput v-model="input" :streaming="streaming" :disabled="sending" placeholder="输入消息..." @submit="send"
+      @stop="stop" />
   </div>
 </template>
 
@@ -552,20 +568,6 @@ onUnmounted(function () { if (aborter) aborter.abort() })
   padding: 80px 20px;
   color: var(--color-text-muted);
   font-size: 15px;
-}
-
-.agent-chat__input {
-  padding: 12px 16px;
-  border-top: 1px solid var(--color-border-primary);
-  background: var(--color-bg-secondary);
-  flex-shrink: 0;
-}
-
-.agent-chat__actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-  margin-top: 8px;
 }
 
 .card-row {
@@ -816,5 +818,39 @@ onUnmounted(function () { if (aborter) aborter.abort() })
 .step-card__code--result {
   background: rgba(34, 197, 94, 0.04);
   border-left: 2px solid rgba(34, 197, 94, 0.25);
+}
+
+.step-card--loading {
+  background: var(--color-bg-card);
+  border: 1px solid var(--color-border-primary);
+  border-left: 3px solid #a0a0a0;
+}
+
+.step-card--loading .step-card__head {
+  color: var(--color-text-secondary);
+  border-bottom: 1px solid var(--color-border-primary);
+}
+
+.step-card__body--loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--color-text-muted);
+}
+
+.step-card__spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--color-border-primary);
+  border-top-color: var(--color-accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>
