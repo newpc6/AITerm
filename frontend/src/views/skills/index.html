@@ -39,9 +39,8 @@
           <el-tag v-for="t in s.tool_names.slice(0,6)" :key="t" size="small" type="info">{{ t }}</el-tag>
         </div>
         <div style="display:flex;gap:8px;border-top:1px solid var(--color-border-primary);padding-top:8px" @click.stop>
-          <el-button v-if="scope==='my' && isOwner(s)" size="small" link type="primary"
-            @click="openEdit(s)">编辑</el-button>
-          <el-button v-if="scope==='my' && isOwner(s) && s.status==='draft'" size="small" link type="warning"
+          <el-button v-if="isOwner(s)" size="small" link type="primary" @click="openEdit(s)">编辑</el-button>
+          <el-button v-if="isOwner(s) && s.status==='draft'" size="small" link type="warning"
             @click="handleSubmit(s.id)">提交审核</el-button>
           <el-button v-if="scope==='pending' && isOwner(s)" size="small" link type="warning"
             @click="handleWithdraw(s.id)">撤回</el-button>
@@ -53,10 +52,7 @@
             @click="handleInstall(s.id)">安装</el-button>
           <el-button v-if="s.installed && !isOwner(s)" size="small" link type="warning"
             @click="handleUninstall(s.id)">卸载</el-button>
-          <el-button v-if="scope==='my' && isOwner(s)" size="small" link type="danger"
-            @click="handleDelete(s.id)">删除</el-button>
-          <el-button v-if="isAdmin && !isOwner(s)" size="small" link type="danger"
-            @click="handleDelete(s.id)">删除</el-button>
+          <el-button v-if="isOwner(s)" size="small" link type="danger" @click="handleDelete(s.id)">删除</el-button>
         </div>
       </div>
     </div>
